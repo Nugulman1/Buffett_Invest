@@ -23,12 +23,13 @@ class FinancialStatementData:
         for item in raw_data:
             account_nm = item.get('account_nm', '')
             if account_nm:
-                # 계정값만 저장 (원본 데이터는 저장하지 않음)
-                self.account_index[account_nm] = {
-                    'thstrm_amount': item.get('thstrm_amount', '0'),
-                    'frmtrm_amount': item.get('frmtrm_amount', '0'),
-                    'bfefrmtrm_amount': item.get('bfefrmtrm_amount', '0'),
-                }
+                # 이미 같은 계정명이 있으면 덮어쓰지 않음 (CFS 우선)
+                if account_nm not in self.account_index:
+                    self.account_index[account_nm] = {
+                        'thstrm_amount': item.get('thstrm_amount', '0'),
+                        'frmtrm_amount': item.get('frmtrm_amount', '0'),
+                        'bfefrmtrm_amount': item.get('bfefrmtrm_amount', '0'),
+                    }
     
     def get_account_value(self, account_name, amount_type='thstrm_amount'):
         """
@@ -47,6 +48,39 @@ class FinancialStatementData:
         return 0
 
 
+class YearlyFinancialData:
+    """년도별 재무 데이터 객체"""
+    
+    def __init__(self, year: int, corp_code: str = ""):
+        """
+        Args:
+            year: 사업연도
+            corp_code: 고유번호 (8자리)
+        """
+        # 회사 정보
+        self.year: int = year
+        self.corp_code: str = corp_code
+        
+        # 기본 지표 (계산용)
+        self.total_assets: int = 0  # 자산총계
+        self.operating_income: int = 0  # 영업이익
+        self.net_income: int = 0  # 당기순이익
+        self.current_liabilities: int = 0  # 유동부채
+        self.interest_bearing_current_liabilities: int = 0  # 이자부유동부채
+        self.tangible_asset_acquisition: int = 0  # 유형자산 취득
+        self.intangible_asset_acquisition: int = 0  # 무형자산 취득
+        self.cfo: int = 0  # 영업활동현금흐름
+        self.interest_expense: int = 0  # 이자비용
+        self.beta: float = 1.0  # 베타 (고정)
+        self.mrp: float = 5.0  # MRP (고정)
+        
+        # 계산된 지표
+        self.fcf: int = 0  # 자유현금흐름
+        self.icr: float = 0.0  # 이자보상비율 (ratio)
+        self.roic: float = 0.0  # 투하자본수익률 (%)
+        self.wacc: float = 0.0  # 가중평균자본비용 (%)
+
+
 class CompanyFinancialObject:
     """회사 재무제표 데이터 객체"""
     
@@ -56,14 +90,7 @@ class CompanyFinancialObject:
         self.business_type_code: str = ""
         self.business_type_name: str = ""
         self.corp_code: str = ""
-        self.collection_year: int = 0
+        self.bond_yield_5y: float = 0.0  # 채권수익률 (국채 5년, 가장 최근 값)
         
-        # 재무 지표
-        self.FCF: int = 0
-        self.CFO: int = 0
-        self.Net_Income: int = 0
-        
-        # 비율 지표
-        self.ICR: float = 0.0  # 이자보상비율 (ratio)
-        self.ROIC: float = 0.0  # 투하자본수익률 (%)
-        self.WACC: float = 0.0  # 가중평균자본비용 (%)
+        # 년도별 데이터 리스트
+        self.yearly_data: list[YearlyFinancialData] = []

@@ -1,9 +1,12 @@
 """
 DART 데이터 수집 서비스
 """
+import json
+from pathlib import Path
 from datetime import datetime
 from apps.dart.client import DartClient
-from apps.models import FinancialStatementData
+from apps.models import FinancialStatementData, YearlyFinancialData, CompanyFinancialObject
+from apps.utils.utils import normalize_account_name
 
 
 class DartDataService:
@@ -37,58 +40,110 @@ class DartDataService:
             start_year = current_year - count - 1
             end_year = current_year - 2
         
-        return list(range(start_year, end_year))
+        return list(range(start_year, end_year + 1))  # end_year 포함
     
-    def collect_financial_data(self, corp_code, years=None):
+    def collect_financial_data(self, corp_code: str, year: str):
         """
-        최근 5년 연간 보고서 재무제표 데이터 수집
+        단일 연도의 연간 보고서 재무제표 데이터 수집
         
         Args:
             corp_code: 고유번호 (8자리)
-            years: 수집할 연도 리스트 (None이면 자동 계산)
+            year: 사업연도 (예: '2024')
         
         Returns:
-            FinancialStatementData 객체 리스트 (연도별)
+            FinancialStatementData 객체 (단일, 실패 시 None)
         """
-        if years is None:
-            years = self._get_recent_years(5)
+        # 연결재무제표 우선 시도, 없으면 별도재무제표
+        for fs_div in ['CFS', 'OFS']:
+            try:
+                raw_data = self.client.get_financial_statement(
+                    corp_code=corp_code,
+                    bsns_year=year,
+                    reprt_code='11011',  # 사업보고서
+                    fs_div=fs_div
+                )
+                
+                if raw_data:
+                    return FinancialStatementData(
+                        year=year,
+                        reprt_code='11011',
+                        fs_div=fs_div,
+                        raw_data=raw_data
+                    )
+            except Exception as e:
+                if fs_div == 'CFS':
+                    continue
+                else:
+                    print(f"경고: {year}년 재무제표 수집 실패: {e}")
+                    return None
         
-        financial_statements = []
+        return None
+    
+    def _load_indicator_mappings(self):
+        """
+        매핑표 로드
         
+        Returns:
+            매핑 테이블 딕셔너리
+        """
+        mappings_path = Path(__file__).parent.parent.parent / 'indicators_mappings.json'
+        with open(mappings_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    
+    def fill_basic_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
+        """
+        CompanyFinancialObject의 yearly_data에 기본 지표를 채움 (in-place 수정)
+        
+        기본 지표: 자산총계, 영업이익, 유동부채, 당기순이익
+        
+        Args:
+            corp_code: 고유번호 (8자리)
+            years: 수집할 연도 리스트 (예: [2020, 2021, 2022, 2023, 2024])
+            company_data: 채울 CompanyFinancialObject 객체
+        """
+        # 매핑표 로드
+        mappings = self._load_indicator_mappings()
+        
+        # 각 연도별로 처리
         for year in years:
             year_str = str(year)
             
-            # 연결재무제표 우선 시도, 없으면 별도재무제표
-            for fs_div in ['CFS', 'OFS']:
-                try:
-                    # 재무제표 조회
-                    raw_data = self.client.get_financial_statement(
-                        corp_code=corp_code,
-                        bsns_year=year_str,
-                        reprt_code='11011',  # 사업보고서
-                        fs_div=fs_div
-                    )
+            # 단일 연도 재무제표 데이터 수집
+            fs_data = self.collect_financial_data(corp_code, year_str)
+            if not fs_data:
+                continue  # 수집 실패 시 해당 연도 스킵
+            
+            # YearlyFinancialData 객체 생성
+            yearly_data = YearlyFinancialData(year=year, corp_code=corp_code)
+            
+            # 각 지표에 대해 매핑 및 추출
+            for indicator_key, mapping_config in mappings.items():
+                internal_field = mapping_config.get('internal_field')
+                dart_variants = mapping_config.get('dart_variants', [])
+                
+                # dart_variants를 순회하며 매칭 시도
+                value = 0
+                for variant in dart_variants:
+                    # 정규화된 계정명으로 매칭 시도
+                    normalized_variant = normalize_account_name(variant)
                     
-                    if raw_data:
-                        # FinancialStatementData 객체 생성
-                        fs_data = FinancialStatementData(
-                            year=year_str,
-                            reprt_code='11011',
-                            fs_div=fs_div,
-                            raw_data=raw_data
-                        )
-                        financial_statements.append(fs_data)
-                        break  # 성공하면 다음 연도로
-                        
-                except Exception as e:
-                    # 연결재무제표 실패 시 별도재무제표 시도
-                    if fs_div == 'CFS':
-                        continue
-                    else:
-                        # 둘 다 실패하면 해당 연도는 스킵
-                        print(f"경고: {year}년 재무제표 수집 실패: {e}")
-                        break
-        
-        return financial_statements
+                    # account_index의 키들과 비교 (정규화 후 비교)
+                    for account_name in fs_data.account_index.keys():
+                        normalized_account = normalize_account_name(account_name)
+                        if normalized_account == normalized_variant:
+                            value = fs_data.get_account_value(account_name, 'thstrm_amount')
+                            break
+                    
+                    if value != 0:
+                        break  # 매칭 성공 시 종료
+                
+                # 객체에 직접 할당 (이미 값이 있으면 CFS 우선이므로 덮어쓰지 않음)
+                if internal_field and hasattr(yearly_data, internal_field):
+                    current_value = getattr(yearly_data, internal_field)
+                    if current_value == 0:  # 아직 값이 없을 때만 할당
+                        setattr(yearly_data, internal_field, value)
+            
+            # yearly_data를 company_data에 추가
+            company_data.yearly_data.append(yearly_data)
 
 
