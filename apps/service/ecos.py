@@ -12,7 +12,7 @@ class EcosDataService:
     
     def collect_bond_yield_5y(self, date=None):
         """
-        국채 5년 수익률 데이터 수집 (당일)
+        국채 5년 수익률 데이터 수집 (지난 달)
         
         Args:
             date: 조회일자 (YYYYMMDD 형식, None이면 오늘 날짜)
