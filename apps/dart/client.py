@@ -177,7 +177,7 @@ class DartClient:
         # list 필드에서 재무제표 데이터 반환
         return result.get('list', [])
     
-    def get_report_list(self, corp_code, bgn_de, end_de, last_reprt_at='N'):
+    def get_report_list(self, corp_code, bgn_de, end_de, last_reprt_at='N', page_no=1, page_count=1000):
         """
         공시보고서 목록 조회
         
@@ -186,6 +186,8 @@ class DartClient:
             bgn_de: 시작일자 (YYYYMMDD)
             end_de: 종료일자 (YYYYMMDD)
             last_reprt_at: 최종보고서만 조회 여부 ('Y' 또는 'N')
+            page_no: 페이지 번호 (기본값: 1)
+            page_count: 페이지당 건수 (기본값: 100, 최대: 1000)
             
         Returns:
             보고서 목록 데이터
@@ -194,7 +196,9 @@ class DartClient:
             'corp_code': corp_code,
             'bgn_de': bgn_de,
             'end_de': end_de,
-            'last_reprt_at': last_reprt_at
+            'last_reprt_at': last_reprt_at,
+            'page_no': page_no,
+            'page_count': min(page_count, 1000)  # 최대 1000건으로 제한
         }
         
         result = self._make_request("list.json", params=params)
@@ -202,7 +206,12 @@ class DartClient:
         if isinstance(result, dict) and result.get('status') != '000':
             raise Exception(f"보고서 목록 조회 실패: {result.get('message', '알 수 없는 오류')}")
         
-        return result.get('list', [])
+        # total_page 정보를 포함하여 반환 (페이지네이션을 위해)
+        return {
+            'list': result.get('list', []),
+            'total_page': result.get('total_page', 1),
+            'total_count': result.get('total_count', 0)
+        }
     
     def download_xbrl(self, rcept_no, save_path=None):
         """
@@ -228,6 +237,89 @@ class DartClient:
             return save_path
         else:
             return binary_data
+    
+    def get_annual_report_rcept_no(self, corp_code: str, year: str) -> str:
+        """
+        해당 연도의 사업보고서 접수번호 조회
+        
+        Args:
+            corp_code: 고유번호 (8자리)
+            year: 사업연도 (예: '2024')
+            
+        Returns:
+            접수번호 (14자리) 또는 None
+        """
+        # 연간보고서는 다음 해에 발행되므로 다음 해 기간으로 검색
+        # 사업보고서는 보통 다음 해 3월~4월에 제출되므로, 3월~4월만 검색
+        next_year = int(year) + 1
+        bgn_de = f"{next_year}0301"  # 다음 해 3월 1일부터
+        end_de = f"{next_year}0430"   # 다음 해 4월 30일까지
+        
+        try:
+            # 모든 보고서 조회 (last_reprt_at='N') 및 페이지당 1000건으로 조회 (최대값)
+            # 페이지네이션 처리: 여러 페이지가 있을 수 있으므로 모든 페이지를 조회
+            all_reports = []
+            page_no = 1
+            total_page = 1
+            while True:
+                result = self.get_report_list(corp_code, bgn_de, end_de, last_reprt_at='N', page_no=page_no, page_count=1000)
+                report_list = result.get('list', []) if isinstance(result, dict) else []
+                total_page = result.get('total_page', 1) if isinstance(result, dict) else 1
+                
+                if not report_list:
+                    break
+                all_reports.extend(report_list)
+                # total_page를 확인하여 모든 페이지를 조회
+                if page_no >= total_page:
+                    break
+                page_no += 1
+            report_list = all_reports
+            
+            if not report_list:
+                return None
+            
+            # 사업보고서 찾기 (report_nm에 "사업보고서" 포함)
+            for report in report_list:
+                report_nm = report.get('report_nm', '')
+                
+                # report_nm에 "사업보고서"가 포함되어 있는지 확인
+                if '사업보고서' in report_nm:
+                    rcept_no = report.get('rcept_no', '')
+                    if rcept_no and len(rcept_no) >= 4:
+                        rcept_year = rcept_no[:4]
+                        # 접수번호의 연도가 다음 해와 일치하면 해당 연도의 사업보고서로 간주
+                        if rcept_year == str(next_year):
+                            return rcept_no
+            
+            return None
+            
+        except Exception as e:
+            print(f"경고: {year}년 사업보고서 접수번호 조회 실패: {e}")
+            print(f"  에러 타입: {type(e).__name__}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def download_xbrl_and_extract_annual_report(self, rcept_no: str) -> bytes:
+        """
+        XBRL 파일 다운로드 및 사업보고서 XML 추출
+        
+        Args:
+            rcept_no: 접수번호 (14자리)
+            
+        Returns:
+            사업보고서 XML 파일 바이너리 데이터
+        """
+        from apps.service.xbrl_parser import XbrlParser
+        
+        # ZIP 파일 다운로드
+        zip_data = self.download_xbrl(rcept_no)
+        
+        # 사업보고서 XML 추출
+        parser = XbrlParser()
+        xml_content = parser.extract_annual_report_file(zip_data)
+        
+        return xml_content
     
     # 향후 필요한 메서드들을 여기에 추가
     # 예: 공시 정보 조회 등

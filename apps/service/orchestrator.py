@@ -45,6 +45,13 @@ class DataOrchestrator:
         # DART 기본 지표 수집 (한 번의 호출로 모든 연도 처리)
         self.dart_service.fill_basic_indicators(corp_code, years, company_data)
         
+        # XBRL 데이터 수집 (유형자산 취득, 무형자산 취득, CFO)
+        try:
+            self.dart_service.collect_xbrl_indicators(corp_code, years, company_data)
+        except Exception as e:
+            print(f"경고: XBRL 데이터 수집 실패: {e}")
+            # XBRL 수집 실패 시에도 기본 지표 수집은 계속 진행
+        
         # ECOS 데이터 수집 (채권수익률 - 가장 최근 값 한 번만 수집)
         try:
             bond_yield = self.ecos_service.collect_bond_yield_5y()

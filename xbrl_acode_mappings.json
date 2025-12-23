@@ -1,0 +1,27 @@
+{
+    "tangible_asset_acquisition": {
+        "primary_acode": "ifrs-full:PurchaseOfPropertyPlantAndEquipment",
+        "candidate_acodes": [
+            "ifrs-full_PurchaseOfPropertyPlantAndEquipment",
+            "ifrs-full_PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities"
+        ],
+        "description": "유형자산 취득"
+    },
+    "intangible_asset_acquisition": {
+        "primary_acode": "ifrs-full:PurchaseOfIntangibleAssets",
+        "candidate_acodes": [
+            "ifrs-full_PurchaseOfIntangibleAssets",
+            "ifrs-full_PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities"
+        ],
+        "description": "무형자산 취득"
+    },
+    "cfo": {
+        "primary_acode": "ifrs-full:NetCashFlowsFromUsedInOperatingActivities",
+        "candidate_acodes": [
+            "ifrs-full_NetCashFlowsFromUsedInOperatingActivities",
+            "ifrs-full_CashFlowsFromUsedInOperatingActivities",
+            "ifrs-full_CashGeneratedFromOperations"
+        ],
+        "description": "영업활동현금흐름 (CFO)"
+    }
+}

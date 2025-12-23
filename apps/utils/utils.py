@@ -32,6 +32,51 @@ def normalize_account_name(account_name: str) -> str:
     return normalized
 
 
+def format_amount_korean(amount: int) -> str:
+    """
+    금액을 조, 억, 만 단위로 보기 쉽게 포맷팅
+    
+    Args:
+        amount: 금액 (정수)
+        
+    Returns:
+        포맷팅된 문자열 (예: "514조 5,319억 4,800만원")
+    """
+    if amount == 0:
+        return "0원"
+    
+    # 음수 처리
+    is_negative = amount < 0
+    amount = abs(amount)
+    
+    # 조, 억, 만 단위 계산
+    cho = amount // 1_000_000_000_000  # 조
+    eok = (amount % 1_000_000_000_000) // 100_000_000  # 억
+    man = (amount % 100_000_000) // 10_000  # 만
+    remainder = amount % 10_000  # 나머지
+    
+    parts = []
+    
+    if cho > 0:
+        parts.append(f"{cho:,}조")
+    if eok > 0:
+        parts.append(f"{eok:,}억")
+    if man > 0:
+        parts.append(f"{man:,}만")
+    if remainder > 0:
+        parts.append(f"{remainder:,}")
+    
+    if not parts:
+        result = "0원"
+    else:
+        result = " ".join(parts) + "원"
+    
+    if is_negative:
+        result = f"-{result}"
+    
+    return result
+
+
 def print_latest_year_indicators(company_data: CompanyFinancialObject):
     """
     CompanyFinancialObject의 가장 최근 년도 지표 데이터를 출력 (수집 확인용)
@@ -55,26 +100,26 @@ def print_latest_year_indicators(company_data: CompanyFinancialObject):
         print(f"채권수익률 (5년): 수집되지 않음")
     print("=" * 80)
     print("\n[기본 지표]")
-    print(f"  자산총계: {latest_data.total_assets:,} 원")
-    print(f"  영업이익: {latest_data.operating_income:,} 원")
-    print(f"  당기순이익: {latest_data.net_income:,} 원")
-    print(f"  유동부채: {latest_data.current_liabilities:,} 원")
-    print(f"  이자부유동부채: {latest_data.interest_bearing_current_liabilities:,} 원")
-    print(f"  유형자산 취득: {latest_data.tangible_asset_acquisition:,} 원")
-    print(f"  무형자산 취득: {latest_data.intangible_asset_acquisition:,} 원")
-    print(f"  CFO (영업활동현금흐름): {latest_data.cfo:,} 원")
-    print(f"  이자비용: {latest_data.interest_expense:,} 원")
+    print(f"  자산총계: {format_amount_korean(latest_data.total_assets)} ({latest_data.total_assets:,} 원)")
+    print(f"  영업이익: {format_amount_korean(latest_data.operating_income)} ({latest_data.operating_income:,} 원)")
+    print(f"  당기순이익: {format_amount_korean(latest_data.net_income)} ({latest_data.net_income:,} 원)")
+    print(f"  유동부채: {format_amount_korean(latest_data.current_liabilities)} ({latest_data.current_liabilities:,} 원)")
+    print(f"  이자부유동부채: {format_amount_korean(latest_data.interest_bearing_current_liabilities)} ({latest_data.interest_bearing_current_liabilities:,} 원)")
+    print(f"  유형자산 취득: {format_amount_korean(latest_data.tangible_asset_acquisition)} ({latest_data.tangible_asset_acquisition:,} 원)")
+    print(f"  무형자산 취득: {format_amount_korean(latest_data.intangible_asset_acquisition)} ({latest_data.intangible_asset_acquisition:,} 원)")
+    print(f"  CFO (영업활동현금흐름): {format_amount_korean(latest_data.cfo)} ({latest_data.cfo:,} 원)")
+    print(f"  이자비용: {format_amount_korean(latest_data.interest_expense)} ({latest_data.interest_expense:,} 원)")
     print(f"  베타: {latest_data.beta}")
     print(f"  MRP: {latest_data.mrp}%")
     
     print("\n[계산된 지표]")
-    print(f"  FCF (자유현금흐름): {latest_data.fcf:,} 원")
+    print(f"  FCF (자유현금흐름): {format_amount_korean(latest_data.fcf)} ({latest_data.fcf:,} 원)")
     print(f"  ICR (이자보상비율): {latest_data.icr:.2f}")
     print(f"  ROIC (투하자본수익률): {latest_data.roic:.2f}%")
     print(f"  WACC (가중평균자본비용): {latest_data.wacc:.2f}%")
     
     print("\n[전체 년도 목록]")
     for yearly_data in sorted(company_data.yearly_data, key=lambda x: x.year, reverse=True):
-        print(f"  {yearly_data.year}년: 자산총계={yearly_data.total_assets:,}, 영업이익={yearly_data.operating_income:,}")
+        print(f"  {yearly_data.year}년: 자산총계={format_amount_korean(yearly_data.total_assets)}, 영업이익={format_amount_korean(yearly_data.operating_income)}")
     print("=" * 80)
 

@@ -7,6 +7,7 @@ from datetime import datetime
 from apps.dart.client import DartClient
 from apps.models import FinancialStatementData, YearlyFinancialData, CompanyFinancialObject
 from apps.utils.utils import normalize_account_name
+from apps.service.xbrl_parser import XbrlParser
 
 
 class DartDataService:
@@ -145,5 +146,64 @@ class DartDataService:
             
             # yearly_data를 company_data에 추가
             company_data.yearly_data.append(yearly_data)
+    
+    def collect_xbrl_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
+        """
+        XBRL 파일에서 추가 지표 수집 (유형자산 취득, 무형자산 취득, CFO)
+        
+        Args:
+            corp_code: 고유번호 (8자리)
+            years: 수집할 연도 리스트
+            company_data: 채울 CompanyFinancialObject 객체 (in-place 수정)
+        """
+        parser = XbrlParser()
+        
+        # 각 연도별로 처리
+        for year in years:
+            year_str = str(year)
+            
+            # 해당 연도의 YearlyFinancialData 찾기
+            yearly_data = None
+            for yd in company_data.yearly_data:
+                if yd.year == year:
+                    yearly_data = yd
+                    break
+            
+            # YearlyFinancialData가 없으면 생성
+            if yearly_data is None:
+                yearly_data = YearlyFinancialData(year=year, corp_code=corp_code)
+                company_data.yearly_data.append(yearly_data)
+            
+            try:
+                # 사업보고서 접수번호 조회
+                try:
+                    rcept_no = self.client.get_annual_report_rcept_no(corp_code, year_str)
+                    if not rcept_no:
+                        print(f"경고: {year}년 사업보고서 접수번호를 찾을 수 없습니다.")
+                        print(f"  corp_code: {corp_code}, year: {year_str}")
+                        continue
+                except Exception as e:
+                    print(f"경고: {year}년 사업보고서 접수번호 조회 중 오류 발생: {e}")
+                    print(f"  에러 타입: {type(e).__name__}")
+                    print(f"  corp_code: {corp_code}, year: {year_str}")
+                    import traceback
+                    traceback.print_exc()
+                    continue
+                
+                # XBRL 다운로드 및 사업보고서 XML 추출
+                xml_content = self.client.download_xbrl_and_extract_annual_report(rcept_no)
+                
+                # XBRL 파싱
+                xbrl_data = parser.parse_xbrl_file(xml_content)
+                
+                # YearlyFinancialData에 채우기
+                yearly_data.tangible_asset_acquisition = xbrl_data.get('tangible_asset_acquisition', 0)
+                yearly_data.intangible_asset_acquisition = xbrl_data.get('intangible_asset_acquisition', 0)
+                yearly_data.cfo = xbrl_data.get('cfo', 0)
+                
+            except Exception as e:
+                print(f"경고: {year}년 XBRL 데이터 수집 실패: {e}")
+                # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)
+                continue
 
 
