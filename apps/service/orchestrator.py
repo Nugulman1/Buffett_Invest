@@ -49,8 +49,8 @@ class DataOrchestrator:
         try:
             self.dart_service.collect_xbrl_indicators(corp_code, years, company_data)
         except Exception as e:
-            print(f"경고: XBRL 데이터 수집 실패: {e}")
             # XBRL 수집 실패 시에도 기본 지표 수집은 계속 진행
+            pass
         
         # ECOS 데이터 수집 (채권수익률 - 가장 최근 값 한 번만 수집)
         try:

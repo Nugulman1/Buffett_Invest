@@ -71,6 +71,13 @@ class YearlyFinancialData:
         self.intangible_asset_acquisition: int = 0  # 무형자산 취득
         self.cfo: int = 0  # 영업활동현금흐름
         self.interest_expense: int = 0  # 이자비용
+        self.equity: int = 0  # 자기자본
+        self.cash_and_cash_equivalents: int = 0  # 현금및현금성자산
+        self.short_term_borrowings: int = 0  # 단기차입금
+        self.current_portion_of_long_term_borrowings: int = 0  # 유동성장기차입금
+        self.long_term_borrowings: int = 0  # 장기차입금
+        self.bonds: int = 0  # 사채
+        self.lease_liabilities: int = 0  # 리스부채
         self.beta: float = 1.0  # 베타 (고정)
         self.mrp: float = 5.0  # MRP (고정)
         

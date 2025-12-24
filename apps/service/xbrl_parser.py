@@ -38,18 +38,9 @@ class XbrlParser:
         Returns:
             사업보고서 XML 파일 바이너리 데이터
         """
-        # #region agent log
-        import json
-        with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"K","location":"xbrl_parser.py:29","message":"extract_annual_report_file entry","data":{"zip_size":len(zip_data)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-        # #endregion
         
         with zipfile.ZipFile(io.BytesIO(zip_data)) as z:
             file_list = z.namelist()
-            # #region agent log
-            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"K","location":"xbrl_parser.py:42","message":"ZIP file list","data":{"total_files":len(file_list),"xml_files":[f for f in file_list if f.endswith('.xml')]},"timestamp":int(__import__('time').time()*1000)})+'\n')
-            # #endregion
             
             # ZIP 파일 내 모든 파일 목록 확인
             for filename in file_list:
@@ -57,20 +48,11 @@ class XbrlParser:
                     # XML 파일 읽기
                     xml_content = z.read(filename)
                     
-                    # #region agent log
-                    with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"K","location":"xbrl_parser.py:50","message":"checking XML file","data":{"filename":filename,"xml_size":len(xml_content)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                    # #endregion
                     
                     # DOCUMENT-NAME ACODE="11011" 확인 (사업보고서)
                     # XML 파싱 전에 문자열 검색으로 먼저 확인 (더 빠르고 안전)
                     xml_str = xml_content.decode('utf-8', errors='ignore')
                     
-                    # #region agent log
-                    with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        has_doc_name = 'DOCUMENT-NAME' in xml_str and 'ACODE="11011"' in xml_str
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"L","location":"xbrl_parser.py:58","message":"string search for DOCUMENT-NAME","data":{"filename":filename,"has_doc_name":has_doc_name},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                    # #endregion
                     
                     # 문자열 검색으로 DOCUMENT-NAME ACODE="11011" 확인
                     if 'DOCUMENT-NAME' in xml_str and 'ACODE="11011"' in xml_str:
@@ -91,42 +73,17 @@ class XbrlParser:
                                         doc_name = elem
                                         break
                             
-                            # #region agent log
-                            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"L","location":"xbrl_parser.py:75","message":"XML parsed successfully","data":{"filename":filename,"root_tag":root.tag,"doc_name_found":doc_name is not None},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                            # #endregion
-                            
                             if doc_name is not None:
-                                # #region agent log
-                                with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"L","location":"xbrl_parser.py:80","message":"annual report found via XML parsing","data":{"filename":filename},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                                # #endregion
                                 return xml_content
                         except (ET.ParseError, ExpatError, UnicodeDecodeError) as e:
                             # 파싱 실패해도 문자열 검색으로 찾았으므로 반환
-                            # #region agent log
-                            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"L","location":"xbrl_parser.py:88","message":"XML parse failed but string search found DOCUMENT-NAME, returning anyway","data":{"filename":filename,"error":str(e)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                            # #endregion
                             return xml_content
                         except Exception as e:
                             # 파싱 실패해도 문자열 검색으로 찾았으므로 반환
-                            # #region agent log
-                            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"L","location":"xbrl_parser.py:93","message":"unexpected error but string search found, returning anyway","data":{"filename":filename,"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                            # #endregion
                             return xml_content
                     else:
-                        # #region agent log
-                        with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"L","location":"xbrl_parser.py:97","message":"DOCUMENT-NAME not found in string search","data":{"filename":filename},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                        # #endregion
                         continue
         
-        # #region agent log
-        with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"K","location":"xbrl_parser.py:90","message":"annual report not found","data":{},"timestamp":int(__import__('time').time()*1000)})+'\n')
-        # #endregion
         raise ValueError("ZIP 파일에서 사업보고서 XML을 찾을 수 없습니다.")
     
     def _normalize_decimal(self, value: str, adecimal: str) -> int:
@@ -214,11 +171,6 @@ class XbrlParser:
         """
         acode_index = {}
         
-        # #region agent log
-        import json
-        with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"O","location":"xbrl_parser.py:218","message":"regex parsing started","data":{"xml_str_length":len(xml_str)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-        # #endregion
         
         # TE 태그를 정규식으로 찾기 (속성 순서가 다를 수 있으므로 각각 찾기)
         # <TE ... ACODE="..." ... ACONTEXT="..." ... ADECIMAL="...">...값...</TE>
@@ -272,10 +224,6 @@ class XbrlParser:
                 'adecimal': adecimal
             })
         
-        # #region agent log
-        with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"O","location":"xbrl_parser.py:270","message":"regex parsing completed","data":{"te_tags_found":te_count,"matched_after_filter":matched_count,"acode_index_size":len(acode_index)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-        # #endregion
         
         return acode_index
     
@@ -392,110 +340,49 @@ class XbrlParser:
                 "cfo": 72982621000000
             }
         """
-        # #region agent log
-        import json
-        with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:228","message":"parse_xbrl_file entry","data":{"xml_size":len(xml_content)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-        # #endregion
         
         try:
-            # #region agent log
-            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:235","message":"attempting XML parse","data":{},"timestamp":int(__import__('time').time()*1000)})+'\n')
-            # #endregion
             
             # XML 파싱 시도 - 여러 방법 시도
             root = None
             try:
                 root = ET.fromstring(xml_content)
             except ET.ParseError as e1:
-                # #region agent log
-                with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:343","message":"ET.fromstring failed, trying incremental parser","data":{"error":str(e1)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                # #endregion
                 # Incremental parser 시도
                 try:
                     parser = ET.XMLParser()
                     parser.feed(xml_content)
                     root = parser.close()
                 except Exception as e2:
-                    # #region agent log
-                    with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:351","message":"incremental parser also failed, trying regex","data":{"error":str(e2)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                    # #endregion
                     # XML 파싱 실패 시 정규식으로 대체
                     xml_str = xml_content.decode('utf-8', errors='ignore')
-                    # #region agent log
-                    with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"N","location":"xbrl_parser.py:356","message":"building acode index from regex","data":{},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                    # #endregion
                     acode_index = self.build_acode_index_from_regex(xml_str)
-                    # #region agent log
-                    with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"N","location":"xbrl_parser.py:360","message":"acode index built from regex","data":{"acode_count":len(acode_index)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                    # #endregion
                     
                     # 각 지표 추출
                     result = {}
                     for indicator_key in self.mappings.keys():
                         value = self.extract_value_by_acode(acode_index, indicator_key)
                         result[indicator_key] = value
-                        # #region agent log
-                        with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"N","location":"xbrl_parser.py:370","message":"extracted indicator from regex","data":{"indicator_key":indicator_key,"value":value},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                        # #endregion
                     
-                    # #region agent log
-                    with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"N","location":"xbrl_parser.py:375","message":"parse_xbrl_file completed using regex","data":{"result_keys":list(result.keys())},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                    # #endregion
                     return result
             
             if root is None:
                 raise ValueError("XML 파싱 실패: root가 None입니다")
             
-            # #region agent log
-            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:382","message":"XML parsed successfully","data":{"root_tag":root.tag},"timestamp":int(__import__('time').time()*1000)})+'\n')
-            # #endregion
             
             # ACODE 인덱스 생성
-            # #region agent log
-            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:387","message":"building acode index","data":{},"timestamp":int(__import__('time').time()*1000)})+'\n')
-            # #endregion
             acode_index = self.build_acode_index(root)
             
-            # #region agent log
-            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:267","message":"acode index built","data":{"acode_count":len(acode_index)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-            # #endregion
             
             # 각 지표 추출
             result = {}
             for indicator_key in self.mappings.keys():
                 value = self.extract_value_by_acode(acode_index, indicator_key)
                 result[indicator_key] = value
-                # #region agent log
-                with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:275","message":"extracted indicator","data":{"indicator_key":indicator_key,"value":value},"timestamp":int(__import__('time').time()*1000)})+'\n')
-                # #endregion
             
-            # #region agent log
-            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:279","message":"parse_xbrl_file completed","data":{"result_keys":list(result.keys())},"timestamp":int(__import__('time').time()*1000)})+'\n')
-            # #endregion
             return result
         except ET.ParseError as e:
-            # #region agent log
-            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:283","message":"parse_xbrl_file failed with ParseError","data":{"error":str(e)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-            # #endregion
             raise ValueError(f"XML 파싱 실패: {e}")
         except Exception as e:
-            # #region agent log
-            with open(r'c:\Long_Term_Investing\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"xbrl_parser.py:288","message":"parse_xbrl_file failed with unexpected error","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)})+'\n')
-            # #endregion
             raise
 

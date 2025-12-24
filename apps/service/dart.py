@@ -179,15 +179,8 @@ class DartDataService:
                 try:
                     rcept_no = self.client.get_annual_report_rcept_no(corp_code, year_str)
                     if not rcept_no:
-                        print(f"경고: {year}년 사업보고서 접수번호를 찾을 수 없습니다.")
-                        print(f"  corp_code: {corp_code}, year: {year_str}")
                         continue
                 except Exception as e:
-                    print(f"경고: {year}년 사업보고서 접수번호 조회 중 오류 발생: {e}")
-                    print(f"  에러 타입: {type(e).__name__}")
-                    print(f"  corp_code: {corp_code}, year: {year_str}")
-                    import traceback
-                    traceback.print_exc()
                     continue
                 
                 # XBRL 다운로드 및 사업보고서 XML 추출
@@ -202,7 +195,6 @@ class DartDataService:
                 yearly_data.cfo = xbrl_data.get('cfo', 0)
                 
             except Exception as e:
-                print(f"경고: {year}년 XBRL 데이터 수집 실패: {e}")
                 # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)
                 continue
 
