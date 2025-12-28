@@ -50,7 +50,8 @@
     "current_portion_of_long_term_borrowings": {
         "primary_acode": "ifrs-full:CurrentPortionOfLongTermBorrowings",
         "candidate_acodes": [
-            "ifrs-full_CurrentPortionOfLongTermBorrowings"
+            "ifrs-full_CurrentPortionOfLongTermBorrowings",
+            "ifrs-full_CurrentPortionOfLongtermBorrowings"
         ],
         "description": "유동성장기차입금"
     },

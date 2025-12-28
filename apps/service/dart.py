@@ -122,20 +122,17 @@ class DartDataService:
                 internal_field = mapping_config.get('internal_field')
                 dart_variants = mapping_config.get('dart_variants', [])
                 
-                # dart_variants를 순회하며 매칭 시도
+                # dart_variants를 순회하며 매칭 시도 (O(1) 조회)
                 value = 0
                 for variant in dart_variants:
                     # 정규화된 계정명으로 매칭 시도
                     normalized_variant = normalize_account_name(variant)
                     
-                    # account_index의 키들과 비교 (정규화 후 비교)
-                    for account_name in fs_data.account_index.keys():
-                        normalized_account = normalize_account_name(account_name)
-                        if normalized_account == normalized_variant:
-                            value = fs_data.get_account_value(account_name, 'thstrm_amount')
-                            break
-                    
-                    if value != 0:
+                    # 정규화된 인덱스에서 직접 조회 (O(1))
+                    if normalized_variant in fs_data.normalized_account_index:
+                        data = fs_data.normalized_account_index[normalized_variant]
+                        amount = data.get('thstrm_amount', '0')
+                        value = int(amount.replace(',', '')) if amount else 0
                         break  # 매칭 성공 시 종료
                 
                 # 객체에 직접 할당 (이미 값이 있으면 CFS 우선이므로 덮어쓰지 않음)
@@ -149,7 +146,7 @@ class DartDataService:
     
     def collect_xbrl_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
         """
-        XBRL 파일에서 추가 지표 수집 (유형자산 취득, 무형자산 취득, CFO)
+        XBRL 파일에서 추가 지표 수집
         
         Args:
             corp_code: 고유번호 (8자리)
@@ -173,7 +170,7 @@ class DartDataService:
             if yearly_data is None:
                 yearly_data = YearlyFinancialData(year=year, corp_code=corp_code)
                 company_data.yearly_data.append(yearly_data)
-            
+           
             try:
                 # 사업보고서 접수번호 조회
                 try:
@@ -193,6 +190,13 @@ class DartDataService:
                 yearly_data.tangible_asset_acquisition = xbrl_data.get('tangible_asset_acquisition', 0)
                 yearly_data.intangible_asset_acquisition = xbrl_data.get('intangible_asset_acquisition', 0)
                 yearly_data.cfo = xbrl_data.get('cfo', 0)
+                yearly_data.equity = xbrl_data.get('equity', 0)
+                yearly_data.cash_and_cash_equivalents = xbrl_data.get('cash_and_cash_equivalents', 0)
+                yearly_data.short_term_borrowings = xbrl_data.get('short_term_borrowings', 0)
+                yearly_data.current_portion_of_long_term_borrowings = xbrl_data.get('current_portion_of_long_term_borrowings', 0)
+                yearly_data.long_term_borrowings = xbrl_data.get('long_term_borrowings', 0)
+                yearly_data.bonds = xbrl_data.get('bonds', 0)
+                yearly_data.lease_liabilities = xbrl_data.get('lease_liabilities', 0)
                 
             except Exception as e:
                 # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)

@@ -16,6 +16,7 @@ class XbrlParser:
     def __init__(self):
         """XBRL 파서 초기화"""
         self.mappings = self._load_acode_mappings()
+        self._normalized_mappings = self._preprocess_mappings()
     
     def _load_acode_mappings(self):
         """
@@ -27,6 +28,32 @@ class XbrlParser:
         mappings_path = Path(__file__).parent.parent.parent / 'xbrl_acode_mappings.json'
         with open(mappings_path, 'r', encoding='utf-8') as f:
             return json.load(f)
+    
+    def _preprocess_mappings(self):
+        """
+        매핑 테이블 사전 처리: 후보 ACODE들을 정규화해서 저장
+        
+        Returns:
+            정규화된 매핑 딕셔너리 {indicator_key: [normalized_acode1, normalized_acode2, ...]}
+        """
+        normalized = {}
+        for indicator_key, mapping in self.mappings.items():
+            primary_acode = mapping.get('primary_acode', '')
+            candidate_acodes = mapping.get('candidate_acodes', [])
+            
+            # primary_acode와 candidate_acodes를 합쳐서 정규화
+            all_acodes = [primary_acode] + candidate_acodes
+            
+            # 콜론을 언더스코어로 변환한 버전도 미리 생성
+            normalized_acodes = []
+            for acode in all_acodes:
+                normalized_acodes.append(acode)
+                if ':' in acode:
+                    normalized_acodes.append(acode.replace(':', '_'))
+            
+            normalized[indicator_key] = normalized_acodes
+        
+        return normalized
     
     def extract_annual_report_file(self, zip_data: bytes) -> bytes:
         """
@@ -48,41 +75,14 @@ class XbrlParser:
                     # XML 파일 읽기
                     xml_content = z.read(filename)
                     
-                    
                     # DOCUMENT-NAME ACODE="11011" 확인 (사업보고서)
-                    # XML 파싱 전에 문자열 검색으로 먼저 확인 (더 빠르고 안전)
+                    # 문자열 검색으로 확인 (더 빠르고 안전)
                     xml_str = xml_content.decode('utf-8', errors='ignore')
-                    
                     
                     # 문자열 검색으로 DOCUMENT-NAME ACODE="11011" 확인
                     if 'DOCUMENT-NAME' in xml_str and 'ACODE="11011"' in xml_str:
-                        # XML 파싱 시도 (파싱 실패해도 문자열 검색으로 찾았으므로 반환)
-                        try:
-                            # 기본 파서로 시도
-                            root = ET.fromstring(xml_content)
-                            
-                            # 여러 방법으로 DOCUMENT-NAME 찾기 시도
-                            doc_name = root.find('.//DOCUMENT-NAME[@ACODE="11011"]')
-                            if doc_name is None:
-                                # 직접 자식 요소로 찾기
-                                doc_name = root.find('DOCUMENT-NAME[@ACODE="11011"]')
-                            if doc_name is None:
-                                # 모든 DOCUMENT-NAME 찾아서 ACODE 확인
-                                for elem in root.iter('DOCUMENT-NAME'):
-                                    if elem.get('ACODE') == '11011':
-                                        doc_name = elem
-                                        break
-                            
-                            if doc_name is not None:
-                                return xml_content
-                        except (ET.ParseError, ExpatError, UnicodeDecodeError) as e:
-                            # 파싱 실패해도 문자열 검색으로 찾았으므로 반환
-                            return xml_content
-                        except Exception as e:
-                            # 파싱 실패해도 문자열 검색으로 찾았으므로 반환
-                            return xml_content
-                    else:
-                        continue
+                        # 사업보고서 파일이므로 바로 반환
+                        return xml_content
         
         raise ValueError("ZIP 파일에서 사업보고서 XML을 찾을 수 없습니다.")
     
@@ -145,8 +145,10 @@ class XbrlParser:
         if 'CFY' not in context_ref:
             return False
         
-        # 연간만 채택 (dFY = duration Fiscal Year, 분기 제외)
-        if 'dFY' not in context_ref:
+        # 연간만 채택
+        # - dFY (duration Fiscal Year): 현금흐름표, 손익계산서용 (기간)
+        # - eFY (ending Fiscal Year): 재무상태표용 (시점)
+        if 'dFY' not in context_ref and 'eFY' not in context_ref:
             return False
         
         # 연결재무제표 우선 (ConsolidatedMember)
@@ -161,7 +163,7 @@ class XbrlParser:
     
     def build_acode_index_from_regex(self, xml_str: str) -> dict:
         """
-        정규식을 사용하여 ACODE 인덱스 생성 (XML 파싱 실패 시 대체 방법)
+        정규식을 사용하여 ACODE 인덱스 생성
         
         Args:
             xml_str: XML 문자열
@@ -170,7 +172,6 @@ class XbrlParser:
             ACODE를 키로 하는 딕셔너리
         """
         acode_index = {}
-        
         
         # TE 태그를 정규식으로 찾기 (속성 순서가 다를 수 있으므로 각각 찾기)
         # <TE ... ACODE="..." ... ACONTEXT="..." ... ADECIMAL="...">...값...</TE>
@@ -223,7 +224,6 @@ class XbrlParser:
                 'context': acontext,
                 'adecimal': adecimal
             })
-        
         
         return acode_index
     
@@ -291,37 +291,27 @@ class XbrlParser:
         특정 지표의 ACODE로 값 추출
         
         Args:
-            acode_index: build_acode_index()로 생성한 인덱스
+            acode_index: build_acode_index_from_regex()로 생성한 인덱스
             indicator_key: 지표 키 (예: "tangible_asset_acquisition")
             
         Returns:
             추출된 값 (정수, 없으면 0)
         """
-        if indicator_key not in self.mappings:
+        if indicator_key not in self._normalized_mappings:
             return 0
         
-        mapping = self.mappings[indicator_key]
-        primary_acode = mapping.get('primary_acode', '')
-        candidate_acodes = mapping.get('candidate_acodes', [])
+        # 이미 정규화된 후보 ACODE 리스트 사용 (사전 처리됨)
+        normalized_acodes = self._normalized_mappings[indicator_key]
         
-        # primary_acode와 candidate_acodes를 합쳐서 시도
-        all_acodes = [primary_acode] + candidate_acodes
-        
-        # 콜론(:)을 언더스코어(_)로 변환한 버전도 시도
-        normalized_acodes = []
-        for acode in all_acodes:
-            normalized_acodes.append(acode)
-            if ':' in acode:
-                normalized_acodes.append(acode.replace(':', '_'))
-        
-        # 각 ACODE 시도
+        # 각 ACODE 시도 (O(1) 조회)
         for acode in normalized_acodes:
             if acode in acode_index:
                 entries = acode_index[acode]
                 if entries:
                     # 첫 번째 항목 사용 (당기 데이터)
                     entry = entries[0]
-                    return self._normalize_decimal(entry['value'], entry['adecimal'])
+                    value = self._normalize_decimal(entry['value'], entry['adecimal'])
+                    return value
         
         return 0
     
@@ -340,49 +330,15 @@ class XbrlParser:
                 "cfo": 72982621000000
             }
         """
+        # 정규식을 사용하여 ACODE 인덱스 생성
+        xml_str = xml_content.decode('utf-8', errors='ignore')
+        acode_index = self.build_acode_index_from_regex(xml_str)
         
-        try:
-            
-            # XML 파싱 시도 - 여러 방법 시도
-            root = None
-            try:
-                root = ET.fromstring(xml_content)
-            except ET.ParseError as e1:
-                # Incremental parser 시도
-                try:
-                    parser = ET.XMLParser()
-                    parser.feed(xml_content)
-                    root = parser.close()
-                except Exception as e2:
-                    # XML 파싱 실패 시 정규식으로 대체
-                    xml_str = xml_content.decode('utf-8', errors='ignore')
-                    acode_index = self.build_acode_index_from_regex(xml_str)
-                    
-                    # 각 지표 추출
-                    result = {}
-                    for indicator_key in self.mappings.keys():
-                        value = self.extract_value_by_acode(acode_index, indicator_key)
-                        result[indicator_key] = value
-                    
-                    return result
-            
-            if root is None:
-                raise ValueError("XML 파싱 실패: root가 None입니다")
-            
-            
-            # ACODE 인덱스 생성
-            acode_index = self.build_acode_index(root)
-            
-            
-            # 각 지표 추출
-            result = {}
-            for indicator_key in self.mappings.keys():
-                value = self.extract_value_by_acode(acode_index, indicator_key)
-                result[indicator_key] = value
-            
-            return result
-        except ET.ParseError as e:
-            raise ValueError(f"XML 파싱 실패: {e}")
-        except Exception as e:
-            raise
+        # 각 지표 추출
+        result = {}
+        for indicator_key in self.mappings.keys():
+            value = self.extract_value_by_acode(acode_index, indicator_key)
+            result[indicator_key] = value
+        
+        return result
 

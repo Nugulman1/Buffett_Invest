@@ -72,20 +72,60 @@ def test_xbrl_collection_samsung():
         
         for yearly_data in sorted(company_data.yearly_data, key=lambda x: x.year, reverse=True):
             print(f"\n[{yearly_data.year}년 데이터]")
+            
+            # 투자활동 관련
             print(f"  유형자산 취득: {format_amount_korean(yearly_data.tangible_asset_acquisition)}")
             print(f"    ({yearly_data.tangible_asset_acquisition:,} 원)")
             print(f"  무형자산 취득: {format_amount_korean(yearly_data.intangible_asset_acquisition)}")
             print(f"    ({yearly_data.intangible_asset_acquisition:,} 원)")
+            
+            # 현금흐름 관련
             print(f"  CFO (영업활동현금흐름): {format_amount_korean(yearly_data.cfo)}")
             print(f"    ({yearly_data.cfo:,} 원)")
             
+            # 재무상태 관련
+            print(f"  자기자본: {format_amount_korean(yearly_data.equity)}")
+            print(f"    ({yearly_data.equity:,} 원)")
+            print(f"  현금및현금성자산: {format_amount_korean(yearly_data.cash_and_cash_equivalents)}")
+            print(f"    ({yearly_data.cash_and_cash_equivalents:,} 원)")
+            
+            # 이자부채 관련
+            print(f"  단기차입금: {format_amount_korean(yearly_data.short_term_borrowings)}")
+            print(f"    ({yearly_data.short_term_borrowings:,} 원)")
+            print(f"  유동성장기차입금: {format_amount_korean(yearly_data.current_portion_of_long_term_borrowings)}")
+            print(f"    ({yearly_data.current_portion_of_long_term_borrowings:,} 원)")
+            print(f"  장기차입금: {format_amount_korean(yearly_data.long_term_borrowings)}")
+            print(f"    ({yearly_data.long_term_borrowings:,} 원)")
+            print(f"  사채: {format_amount_korean(yearly_data.bonds)}")
+            print(f"    ({yearly_data.bonds:,} 원)")
+            print(f"  리스부채: {format_amount_korean(yearly_data.lease_liabilities)}")
+            print(f"    ({yearly_data.lease_liabilities:,} 원)")
+            
             # 데이터 수집 여부 확인
+            missing_data = []
             if yearly_data.tangible_asset_acquisition == 0:
-                print("    ⚠ 유형자산 취득 데이터가 수집되지 않았습니다.")
+                missing_data.append("유형자산 취득")
             if yearly_data.intangible_asset_acquisition == 0:
-                print("    ⚠ 무형자산 취득 데이터가 수집되지 않았습니다.")
+                missing_data.append("무형자산 취득")
             if yearly_data.cfo == 0:
-                print("    ⚠ CFO 데이터가 수집되지 않았습니다.")
+                missing_data.append("CFO")
+            if yearly_data.equity == 0:
+                missing_data.append("자기자본")
+            if yearly_data.cash_and_cash_equivalents == 0:
+                missing_data.append("현금및현금성자산")
+            if yearly_data.short_term_borrowings == 0:
+                missing_data.append("단기차입금")
+            if yearly_data.current_portion_of_long_term_borrowings == 0:
+                missing_data.append("유동성장기차입금")
+            if yearly_data.long_term_borrowings == 0:
+                missing_data.append("장기차입금")
+            if yearly_data.bonds == 0:
+                missing_data.append("사채")
+            if yearly_data.lease_liabilities == 0:
+                missing_data.append("리스부채")
+            
+            if missing_data:
+                print(f"\n  ⚠ 수집되지 않은 데이터: {', '.join(missing_data)}")
         
         print("\n" + "=" * 80)
         print("테스트 완료!")

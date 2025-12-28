@@ -45,7 +45,7 @@ class DataOrchestrator:
         # DART 기본 지표 수집 (한 번의 호출로 모든 연도 처리)
         self.dart_service.fill_basic_indicators(corp_code, years, company_data)
         
-        # XBRL 데이터 수집 (유형자산 취득, 무형자산 취득, CFO)
+        # XBRL 데이터 수집
         try:
             self.dart_service.collect_xbrl_indicators(corp_code, years, company_data)
         except Exception as e:

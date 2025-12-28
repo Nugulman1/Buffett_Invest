@@ -14,22 +14,39 @@ class FinancialStatementData:
             fs_div: 재무제표 구분 (CFS: 연결, OFS: 별도)
             raw_data: 원본 재무제표 데이터 리스트 (인덱싱용, 저장하지 않음)
         """
+        # 순환 import 방지를 위해 함수 내부에서 lazy import
+        from apps.utils.utils import normalize_account_name
+        
         self.year = year
         self.reprt_code = reprt_code
         self.fs_div = fs_div
         
         # O(1) 조회를 위한 인덱싱 (계정명을 키로, 값만 저장)
         self.account_index = {}
+        # 정규화된 계정명 인덱스 (O(1) 조회용)
+        self.normalized_account_index = {}
+        
         for item in raw_data:
             account_nm = item.get('account_nm', '')
             if account_nm:
                 # 이미 같은 계정명이 있으면 덮어쓰지 않음 (CFS 우선)
                 if account_nm not in self.account_index:
-                    self.account_index[account_nm] = {
+                    account_data = {
+                        'original_key': account_nm,
                         'thstrm_amount': item.get('thstrm_amount', '0'),
                         'frmtrm_amount': item.get('frmtrm_amount', '0'),
                         'bfefrmtrm_amount': item.get('bfefrmtrm_amount', '0'),
                     }
+                    self.account_index[account_nm] = {
+                        'thstrm_amount': account_data['thstrm_amount'],
+                        'frmtrm_amount': account_data['frmtrm_amount'],
+                        'bfefrmtrm_amount': account_data['bfefrmtrm_amount'],
+                    }
+                    
+                    # 정규화된 계정명으로 인덱스 생성 (CFS 우선 유지)
+                    normalized_key = normalize_account_name(account_nm)
+                    if normalized_key not in self.normalized_account_index:
+                        self.normalized_account_index[normalized_key] = account_data
     
     def get_account_value(self, account_name, amount_type='thstrm_amount'):
         """
@@ -61,16 +78,12 @@ class YearlyFinancialData:
         self.year: int = year
         self.corp_code: str = corp_code
         
-        # 기본 지표 (계산용)
-        self.total_assets: int = 0  # 자산총계
+        # === 계산에 사용하는 기본 지표 ===
         self.operating_income: int = 0  # 영업이익
-        self.net_income: int = 0  # 당기순이익
-        self.current_liabilities: int = 0  # 유동부채
-        self.interest_bearing_current_liabilities: int = 0  # 이자부유동부채
+        self.interest_expense: int = 0  # 이자비용
         self.tangible_asset_acquisition: int = 0  # 유형자산 취득
         self.intangible_asset_acquisition: int = 0  # 무형자산 취득
         self.cfo: int = 0  # 영업활동현금흐름
-        self.interest_expense: int = 0  # 이자비용
         self.equity: int = 0  # 자기자본
         self.cash_and_cash_equivalents: int = 0  # 현금및현금성자산
         self.short_term_borrowings: int = 0  # 단기차입금
@@ -78,6 +91,13 @@ class YearlyFinancialData:
         self.long_term_borrowings: int = 0  # 장기차입금
         self.bonds: int = 0  # 사채
         self.lease_liabilities: int = 0  # 리스부채
+        
+        # === 현재 계산에 사용하지 않는 지표 ===
+        # (향후 계산 공식 변경 시 사용 가능, 데이터 수집은 계속 진행)
+        self.total_assets: int = 0  # 자산총계
+        self.net_income: int = 0  # 당기순이익
+        self.current_liabilities: int = 0  # 유동부채
+        self.interest_bearing_current_liabilities: int = 0  # 이자부유동부채
         self.beta: float = 1.0  # 베타 (고정)
         self.mrp: float = 5.0  # MRP (고정)
         
