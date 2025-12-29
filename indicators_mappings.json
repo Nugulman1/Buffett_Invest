@@ -42,5 +42,27 @@
             "유동부채총계"
         ],
         "description": "유동부채 (재무상태표)"
+    },
+    "자본총계": {
+        "internal_field": "total_equity",
+        "dart_variants": [
+            "자본총계",
+            "자기자본총계",
+            "자본총계합계",
+            "자본총계(연결)",
+            "자본총계(별도)"
+        ],
+        "description": "자본총계 (재무상태표)"
+    },
+    "매출액": {
+        "internal_field": "revenue",
+        "dart_variants": [
+            "매출액",
+            "매출",
+            "매출액합계",
+            "매출액(연결)",
+            "매출액(별도)"
+        ],
+        "description": "매출액 (손익계산서)"
     }
 }

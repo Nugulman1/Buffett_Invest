@@ -78,8 +78,18 @@ class YearlyFinancialData:
         self.year: int = year
         self.corp_code: str = corp_code
         
+        # === 기본 지표 (DART API) ===
+        self.revenue: int = 0  # 매출액 (5Y)
+        self.operating_income: int = 0  # 영업이익 (5Y)
+        self.net_income: int = 0  # 당기순이익 (5Y)
+        self.total_assets: int = 0  # 자산총계
+        self.total_equity: int = 0  # 자본총계
+        self.gross_profit_margin: float = 0.0  # 매출총이익률 (%)
+        self.selling_admin_expense_ratio: float = 0.0  # 판관비율 (%)
+        self.total_assets_operating_income_ratio: float = 0.0  # 총자산영업이익률 (%)
+        self.roe: float = 0.0  # ROE (%)
+        
         # === 계산에 사용하는 기본 지표 ===
-        self.operating_income: int = 0  # 영업이익
         self.finance_costs: int = 0  # 금융비용 (WACC 계산에 사용)
         self.tangible_asset_acquisition: int = 0  # 유형자산 취득
         self.intangible_asset_acquisition: int = 0  # 무형자산 취득
@@ -94,8 +104,6 @@ class YearlyFinancialData:
         
         # === 현재 계산에 사용하지 않는 지표 ===
         # (향후 계산 공식 변경 시 사용 가능, 데이터 수집은 계속 진행)
-        self.total_assets: int = 0  # 자산총계
-        self.net_income: int = 0  # 당기순이익
         self.current_liabilities: int = 0  # 유동부채
         self.interest_bearing_current_liabilities: int = 0  # 이자부유동부채
         self.interest_expense: int = 0  # 이자비용 (사용 안 함, 금융비용으로 대체됨)
@@ -122,3 +130,10 @@ class CompanyFinancialObject:
         
         # 년도별 데이터 리스트
         self.yearly_data: list[YearlyFinancialData] = []
+        
+        # === 필터 결과 ===
+        self.passed_all_filters: bool = True  # 전체 필터 통과 여부
+        self.filter_operating_income: bool = True  # 영업이익 필터 통과 여부
+        self.filter_net_income: bool = True  # 당기순이익 필터 통과 여부
+        self.filter_revenue_cagr: bool = True  # 매출액 CAGR 필터 통과 여부
+        self.filter_total_assets_operating_income_ratio: bool = True  # 총자산영업이익률 필터 통과 여부

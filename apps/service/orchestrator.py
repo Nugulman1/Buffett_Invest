@@ -4,6 +4,7 @@
 from apps.service.dart import DartDataService
 from apps.service.ecos import EcosDataService
 from apps.service.calculator import IndicatorCalculator
+from apps.service.filter import CompanyFilter
 from apps.models import CompanyFinancialObject, YearlyFinancialData
 from apps.dart.client import DartClient
 
@@ -46,9 +47,18 @@ class DataOrchestrator:
         # DART 기본 지표 수집 (한 번의 호출로 모든 연도 처리)
         self.dart_service.fill_basic_indicators(corp_code, years, company_data)
         
-        # XBRL 데이터 수집
+        # DART 재무지표 수집 (매출총이익률, 판관비율, 총자산영업이익률, ROE)
         try:
-            self.dart_service.collect_xbrl_indicators(corp_code, years, company_data)
+            self.dart_service.fill_financial_indicators(corp_code, years, company_data)
+        except Exception as e:
+            # 재무지표 수집 실패 시에도 기본 지표 수집은 계속 진행
+            pass
+        
+        # XBRL 데이터 수집 (가장 최근 년도만 수집)
+        try:
+            latest_year = [max(years)] if years else []
+            if latest_year:
+                self.dart_service.collect_xbrl_indicators(corp_code, latest_year, company_data)
         except Exception as e:
             # XBRL 수집 실패 시에도 기본 지표 수집은 계속 진행
             pass
@@ -67,6 +77,13 @@ class DataOrchestrator:
         except Exception as e:
             print(f"경고: 계산 지표 계산 실패: {e}")
             # 계산 실패 시에도 수집된 데이터는 반환
+        
+        # 필터 적용
+        try:
+            CompanyFilter.apply_all_filters(company_data)
+        except Exception as e:
+            print(f"경고: 필터 적용 실패: {e}")
+            # 필터 실패 시에도 수집된 데이터는 반환
         
         # (추후) DB 저장 로직
         # self._save_to_db(company_data)

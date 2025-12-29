@@ -1,0 +1,162 @@
+"""
+장기 투자 필터링 서비스
+"""
+import logging
+from apps.models import CompanyFinancialObject
+from apps.service.calculator import IndicatorCalculator
+
+logger = logging.getLogger(__name__)
+
+
+class CompanyFilter:
+    """장기 투자 필터링 서비스"""
+    
+    @staticmethod
+    def filter_operating_income(company_data: CompanyFinancialObject) -> bool:
+        """
+        영업이익 필터: 최근 5년 중 영업이익 ≤ 0 인 연도 ≤ 1회
+        
+        Args:
+            company_data: CompanyFinancialObject 객체
+        
+        Returns:
+            필터 통과 여부 (bool)
+        """
+        if not company_data.yearly_data:
+            return False
+        
+        # 최근 5년 데이터 정렬 (오름차순)
+        sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
+        
+        if len(sorted_data) < 5:
+            logger.warning(f"영업이익 필터: 최근 5년 데이터가 부족합니다 (수집된 연도: {len(sorted_data)}개)")
+            return False
+        
+        # 최근 5년만 사용
+        recent_5_years = sorted_data[-5:]
+        
+        # 영업이익 ≤ 0 인 연도 개수 계산
+        negative_count = sum(1 for data in recent_5_years if data.operating_income <= 0)
+        
+        # 영업이익 ≤ 0 인 연도가 1회 이하인지 확인
+        return negative_count <= 1
+    
+    @staticmethod
+    def filter_net_income(company_data: CompanyFinancialObject) -> bool:
+        """
+        당기순이익 필터: 최근 5년 당기순이익 합계 > 0
+        
+        Args:
+            company_data: CompanyFinancialObject 객체
+        
+        Returns:
+            필터 통과 여부 (bool)
+        """
+        if not company_data.yearly_data:
+            return False
+        
+        # 최근 5년 데이터 정렬 (오름차순)
+        sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
+        
+        if len(sorted_data) < 5:
+            logger.warning(f"당기순이익 필터: 최근 5년 데이터가 부족합니다 (수집된 연도: {len(sorted_data)}개)")
+            return False
+        
+        # 최근 5년만 사용
+        recent_5_years = sorted_data[-5:]
+        
+        # 당기순이익 합계 계산
+        total_net_income = sum(data.net_income for data in recent_5_years)
+        
+        # 합계가 0보다 큰지 확인
+        return total_net_income > 0
+    
+    @staticmethod
+    def filter_revenue_cagr(company_data: CompanyFinancialObject) -> bool:
+        """
+        매출액 CAGR 필터: 매출액 5년 CAGR ≥ 0%
+        
+        Args:
+            company_data: CompanyFinancialObject 객체
+        
+        Returns:
+            필터 통과 여부 (bool)
+        """
+        if not company_data.yearly_data:
+            return False
+        
+        # 최근 5년 데이터 정렬 (오름차순)
+        sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
+        
+        if len(sorted_data) < 5:
+            logger.warning(f"매출액 CAGR 필터: 최근 5년 데이터가 부족합니다 (수집된 연도: {len(sorted_data)}개)")
+            return False
+        
+        # 최근 5년만 사용
+        recent_5_years = sorted_data[-5:]
+        
+        # 시작값 (1년차)과 최종값 (5년차)
+        start_value = recent_5_years[0].revenue
+        end_value = recent_5_years[4].revenue
+        
+        # CAGR 계산 (1년차와 5년차 사이는 4년)
+        cagr = IndicatorCalculator.calculate_cagr(start_value, end_value, 4)
+        
+        # CAGR ≥ 0% 인지 확인
+        return cagr >= 0.0
+    
+    @staticmethod
+    def filter_total_assets_operating_income_ratio(company_data: CompanyFinancialObject) -> bool:
+        """
+        총자산영업이익률 필터: 총자산영업이익률 5년 평균 > 0
+        
+        Args:
+            company_data: CompanyFinancialObject 객체
+        
+        Returns:
+            필터 통과 여부 (bool)
+        """
+        if not company_data.yearly_data:
+            return False
+        
+        # 최근 5년 데이터 정렬 (오름차순)
+        sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
+        
+        if len(sorted_data) < 5:
+            logger.warning(f"총자산영업이익률 필터: 최근 5년 데이터가 부족합니다 (수집된 연도: {len(sorted_data)}개)")
+            return False
+        
+        # 최근 5년만 사용
+        recent_5_years = sorted_data[-5:]
+        
+        # 총자산영업이익률 평균 계산
+        ratios = [data.total_assets_operating_income_ratio for data in recent_5_years]
+        average_ratio = sum(ratios) / len(ratios) if ratios else 0.0
+        
+        # 평균이 0보다 큰지 확인
+        return average_ratio > 0.0
+    
+    @classmethod
+    def apply_all_filters(cls, company_data: CompanyFinancialObject) -> None:
+        """
+        모든 필터를 적용하고 결과를 CompanyFinancialObject에 저장
+        
+        하나라도 false면 passed_all_filters를 false로 설정합니다.
+        
+        Args:
+            company_data: CompanyFinancialObject 객체 (in-place 수정)
+        """
+        # 각 필터 적용
+        company_data.filter_operating_income = cls.filter_operating_income(company_data)
+        company_data.filter_net_income = cls.filter_net_income(company_data)
+        company_data.filter_revenue_cagr = cls.filter_revenue_cagr(company_data)
+        company_data.filter_total_assets_operating_income_ratio = cls.filter_total_assets_operating_income_ratio(company_data)
+        
+        # 전체 필터 통과 여부: 모든 필터가 True여야 함
+        company_data.passed_all_filters = (
+            company_data.filter_operating_income and
+            company_data.filter_net_income and
+            company_data.filter_revenue_cagr and
+            company_data.filter_total_assets_operating_income_ratio
+        )
+

@@ -150,7 +150,16 @@ class DartClient:
     
     def get_financial_statement(self, corp_code, bsns_year, reprt_code='11011', fs_div='CFS'):
         """
-        재무제표 조회
+        재무제표 조회 (원시 금액 데이터)
+        
+        재무제표의 계정별 금액 데이터를 조회합니다.
+        - API: fnlttSinglAcnt.json
+        - 데이터 형태: 계정명(account_nm)과 금액(thstrm_amount) - 원 단위
+        - 예시: {"account_nm": "매출액", "thstrm_amount": "100,000,000,000"} → 1000억원
+        
+        get_financial_indicators()와의 차이:
+        - 이 메서드: 원시 금액 데이터 (매출액 1000억원, 영업이익 100억원 등)
+        - get_financial_indicators(): 계산된 비율 지표 (매출총이익률 20%, ROE 15% 등)
         
         Args:
             corp_code: 기업 고유번호 (8자리)
@@ -159,7 +168,7 @@ class DartClient:
             fs_div: 재무제표 구분 ('CFS': 연결, 'OFS': 별도)
             
         Returns:
-            재무제표 데이터 (list)
+            재무제표 데이터 (list) - 각 항목은 계정명과 금액을 포함
         """
         params = {
             'corp_code': corp_code,
@@ -320,6 +329,48 @@ class DartClient:
         xml_content = parser.extract_annual_report_file(zip_data)
         
         return xml_content
+    
+    def get_financial_indicators(self, corp_code, bsns_year, reprt_code='11011'):
+        """
+        재무지표 조회 (계산된 비율 지표)
+        
+        이미 계산된 재무 비율/지표를 조회합니다.
+        - API: fnlttSinglIndx.json
+        - 데이터 형태: 지표 코드(idx_code)와 비율 값(thstrm_amount) - % 단위
+        - 예시: {"idx_code": "M211300", "thstrm_amount": "20.5"} → 매출총이익률 20.5%
+        
+        get_financial_statement()와의 차이:
+        - get_financial_statement(): 원시 금액 데이터 (매출액 1000억원, 영업이익 100억원 등)
+        - 이 메서드: 계산된 비율 지표 (매출총이익률 20%, ROE 15% 등)
+        
+        주요 지표 코드:
+        - M211300: 매출총이익률
+        - M211800: 판관비율
+        - M212000: 총자산영업이익률
+        - M211550: ROE
+        
+        Args:
+            corp_code: 기업 고유번호 (8자리)
+            bsns_year: 사업연도 (예: '2024')
+            reprt_code: 보고서 코드 ('11011': 사업보고서)
+            
+        Returns:
+            재무지표 데이터 (list) - 각 항목은 지표 코드와 비율 값을 포함
+        """
+        params = {
+            'corp_code': corp_code,
+            'bsns_year': bsns_year,
+            'reprt_code': reprt_code
+        }
+        
+        result = self._make_request("fnlttSinglIndx.json", params=params)
+        
+        # 응답 검증
+        if isinstance(result, dict) and result.get('status') != '000':
+            raise Exception(f"재무지표 조회 실패: {result.get('message', '알 수 없는 오류')}")
+        
+        # list 필드에서 재무지표 데이터 반환
+        return result.get('list', [])
     
     # 향후 필요한 메서드들을 여기에 추가
     # 예: 공시 정보 조회 등

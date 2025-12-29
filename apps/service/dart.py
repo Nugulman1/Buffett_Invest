@@ -95,7 +95,7 @@ class DartDataService:
         """
         CompanyFinancialObject의 yearly_data에 기본 지표를 채움 (in-place 수정)
         
-        기본 지표: 자산총계, 영업이익, 유동부채, 당기순이익
+        기본 지표: 매출액, 영업이익, 당기순이익, 자산총계, 자본총계, 유동부채
         
         Args:
             corp_code: 고유번호 (8자리)
@@ -199,6 +199,68 @@ class DartDataService:
                 yearly_data.lease_liabilities = xbrl_data.get('lease_liabilities', 0)
                 yearly_data.finance_costs = xbrl_data.get('finance_costs', 0)
                 
+            except Exception as e:
+                # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)
+                continue
+    
+    def fill_financial_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
+        """
+        재무지표 API를 통해 재무지표 수집 (매출총이익률, 판관비율, 총자산영업이익률, ROE)
+        
+        Args:
+            corp_code: 고유번호 (8자리)
+            years: 수집할 연도 리스트
+            company_data: 채울 CompanyFinancialObject 객체 (in-place 수정)
+        """
+        # 재무지표 코드 매핑
+        indicator_mappings = {
+            'M211300': 'gross_profit_margin',  # 매출총이익률
+            'M211800': 'selling_admin_expense_ratio',  # 판관비율
+            'M212000': 'total_assets_operating_income_ratio',  # 총자산영업이익률
+            'M211550': 'roe'  # ROE
+        }
+        
+        # 각 연도별로 처리
+        for year in years:
+            year_str = str(year)
+            
+            # 해당 연도의 YearlyFinancialData 찾기
+            yearly_data = None
+            for yd in company_data.yearly_data:
+                if yd.year == year:
+                    yearly_data = yd
+                    break
+            
+            # YearlyFinancialData가 없으면 생성
+            if yearly_data is None:
+                yearly_data = YearlyFinancialData(year=year, corp_code=corp_code)
+                company_data.yearly_data.append(yearly_data)
+            
+            try:
+                # 재무지표 API 호출
+                indicators_data = self.client.get_financial_indicators(
+                    corp_code=corp_code,
+                    bsns_year=year_str,
+                    reprt_code='11011'  # 사업보고서
+                )
+                
+                # 각 지표 코드에 대해 매핑
+                for idx_code, field_name in indicator_mappings.items():
+                    # 해당 idx_code를 가진 지표 찾기
+                    for indicator in indicators_data:
+                        if indicator.get('idx_code') == idx_code:
+                            # thstrm_amount 값 추출 (당기값)
+                            amount_str = indicator.get('thstrm_amount', '0')
+                            if amount_str and amount_str != '':
+                                try:
+                                    # 쉼표 제거 후 float 변환 (% 단위)
+                                    value = float(amount_str.replace(',', ''))
+                                    setattr(yearly_data, field_name, value)
+                                except (ValueError, AttributeError):
+                                    # 변환 실패 시 0으로 유지
+                                    pass
+                            break
+                        
             except Exception as e:
                 # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)
                 continue
