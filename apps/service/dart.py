@@ -197,6 +197,7 @@ class DartDataService:
                 yearly_data.long_term_borrowings = xbrl_data.get('long_term_borrowings', 0)
                 yearly_data.bonds = xbrl_data.get('bonds', 0)
                 yearly_data.lease_liabilities = xbrl_data.get('lease_liabilities', 0)
+                yearly_data.finance_costs = xbrl_data.get('finance_costs', 0)
                 
             except Exception as e:
                 # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)

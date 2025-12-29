@@ -3,6 +3,7 @@
 """
 from apps.service.dart import DartDataService
 from apps.service.ecos import EcosDataService
+from apps.service.calculator import IndicatorCalculator
 from apps.models import CompanyFinancialObject, YearlyFinancialData
 from apps.dart.client import DartClient
 
@@ -60,8 +61,12 @@ class DataOrchestrator:
             print(f"경고: 채권수익률 수집 실패: {e}")
             # 채권수익률은 실패해도 계속 진행
         
-        # (추후) 계산 로직 호출하여 계산 지표 채우기
-        # self._calculate_indicators(company_data)
+        # 계산 로직 호출하여 계산 지표 채우기
+        try:
+            IndicatorCalculator.calculate_all_indicators(company_data)
+        except Exception as e:
+            print(f"경고: 계산 지표 계산 실패: {e}")
+            # 계산 실패 시에도 수집된 데이터는 반환
         
         # (추후) DB 저장 로직
         # self._save_to_db(company_data)

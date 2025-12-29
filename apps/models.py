@@ -80,7 +80,7 @@ class YearlyFinancialData:
         
         # === 계산에 사용하는 기본 지표 ===
         self.operating_income: int = 0  # 영업이익
-        self.interest_expense: int = 0  # 이자비용
+        self.finance_costs: int = 0  # 금융비용 (WACC 계산에 사용)
         self.tangible_asset_acquisition: int = 0  # 유형자산 취득
         self.intangible_asset_acquisition: int = 0  # 무형자산 취득
         self.cfo: int = 0  # 영업활동현금흐름
@@ -98,6 +98,7 @@ class YearlyFinancialData:
         self.net_income: int = 0  # 당기순이익
         self.current_liabilities: int = 0  # 유동부채
         self.interest_bearing_current_liabilities: int = 0  # 이자부유동부채
+        self.interest_expense: int = 0  # 이자비용 (사용 안 함, 금융비용으로 대체됨)
         self.beta: float = 1.0  # 베타 (고정)
         self.mrp: float = 5.0  # MRP (고정)
         

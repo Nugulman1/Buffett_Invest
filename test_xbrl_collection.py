@@ -17,53 +17,41 @@ sys.path.insert(0, str(BASE_DIR))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
-from apps.dart.client import DartClient
-from apps.service.dart import DartDataService
-from apps.service.xbrl_parser import XbrlParser
-from apps.models import CompanyFinancialObject
+from apps.service.orchestrator import DataOrchestrator
 from apps.utils.utils import format_amount_korean
 
 
 def test_xbrl_collection_samsung():
     """
-    삼성전자 XBRL 데이터 수집 테스트
+    삼성전자 재무 데이터 수집 및 계산 테스트
     """
     print("=" * 80)
-    print("XBRL 데이터 수집 테스트: 삼성전자 (005930)")
+    print("재무 데이터 수집 및 계산 테스트: 삼성전자 (005930)")
     print("=" * 80)
     
     try:
-        dart_client = DartClient()
-        dart_service = DartDataService()
+        orchestrator = DataOrchestrator()
         
         # 1. 삼성전자 정보 조회
         print("\n[1단계] 삼성전자 기업 정보 조회...")
-        company_info = dart_client.get_company_basic_info('005930')
+        company_info = orchestrator.dart_client.get_company_basic_info('005930')
         corp_code = company_info['corp_code']
         corp_name = company_info['corp_name']
         
         print(f"  ✓ 기업명: {corp_name}")
         print(f"  ✓ 고유번호: {corp_code}")
         
-        # 2. 최근 연도 리스트 생성 (테스트용으로 최근 1년만)
-        print("\n[2단계] 수집할 연도 확인...")
-        years = dart_service._get_recent_years(1)  # 최근 1년만 테스트
-        print(f"  ✓ 수집 대상 연도: {years}")
+        # 2. 데이터 수집 및 계산
+        print("\n[2단계] 데이터 수집 및 계산 중...")
+        company_data = orchestrator.collect_company_data(corp_code)
         
-        # 3. CompanyFinancialObject 생성
-        company_data = CompanyFinancialObject()
-        company_data.corp_code = corp_code
-        company_data.company_name = corp_name
-        
-        # 4. XBRL 데이터 수집
-        print("\n[3단계] XBRL 데이터 수집 중...")
-        dart_service.collect_xbrl_indicators(corp_code, years, company_data)
-        
-        print(f"  ✓ XBRL 데이터 수집 완료")
+        print(f"  ✓ 데이터 수집 완료")
         print(f"  ✓ 수집된 연도 수: {len(company_data.yearly_data)}개")
+        if company_data.bond_yield_5y > 0:
+            print(f"  ✓ 채권수익률 (5년): {company_data.bond_yield_5y:.2f}%")
         
-        # 5. 수집된 데이터 출력
-        print("\n[4단계] 수집된 XBRL 데이터 확인")
+        # 3. 수집된 데이터 출력 (계산에 사용하는 기본 지표 + 계산된 지표만)
+        print("\n[3단계] 수집된 데이터 및 계산 결과 확인")
         print("=" * 80)
         
         if not company_data.yearly_data:
@@ -73,59 +61,28 @@ def test_xbrl_collection_samsung():
         for yearly_data in sorted(company_data.yearly_data, key=lambda x: x.year, reverse=True):
             print(f"\n[{yearly_data.year}년 데이터]")
             
-            # 투자활동 관련
-            print(f"  유형자산 취득: {format_amount_korean(yearly_data.tangible_asset_acquisition)}")
-            print(f"    ({yearly_data.tangible_asset_acquisition:,} 원)")
-            print(f"  무형자산 취득: {format_amount_korean(yearly_data.intangible_asset_acquisition)}")
-            print(f"    ({yearly_data.intangible_asset_acquisition:,} 원)")
+            # === 계산에 사용하는 기본 지표 ===
+            print("\n[기본 지표]")
+            if company_data.bond_yield_5y > 0:
+                print(f"  채권수익률 (5년): {company_data.bond_yield_5y:.2f}%")
+            print(f"  영업이익: {format_amount_korean(yearly_data.operating_income)} ({yearly_data.operating_income:,} 원)")
+            print(f"  금융비용: {format_amount_korean(yearly_data.finance_costs)} ({yearly_data.finance_costs:,} 원)")
+            print(f"  유형자산 취득: {format_amount_korean(yearly_data.tangible_asset_acquisition)} ({yearly_data.tangible_asset_acquisition:,} 원)")
+            print(f"  무형자산 취득: {format_amount_korean(yearly_data.intangible_asset_acquisition)} ({yearly_data.intangible_asset_acquisition:,} 원)")
+            print(f"  CFO (영업활동현금흐름): {format_amount_korean(yearly_data.cfo)} ({yearly_data.cfo:,} 원)")
+            print(f"  자기자본: {format_amount_korean(yearly_data.equity)} ({yearly_data.equity:,} 원)")
+            print(f"  현금및현금성자산: {format_amount_korean(yearly_data.cash_and_cash_equivalents)} ({yearly_data.cash_and_cash_equivalents:,} 원)")
+            print(f"  단기차입금: {format_amount_korean(yearly_data.short_term_borrowings)} ({yearly_data.short_term_borrowings:,} 원)")
+            print(f"  유동성장기차입금: {format_amount_korean(yearly_data.current_portion_of_long_term_borrowings)} ({yearly_data.current_portion_of_long_term_borrowings:,} 원)")
+            print(f"  장기차입금: {format_amount_korean(yearly_data.long_term_borrowings)} ({yearly_data.long_term_borrowings:,} 원)")
+            print(f"  사채: {format_amount_korean(yearly_data.bonds)} ({yearly_data.bonds:,} 원)")
+            print(f"  리스부채: {format_amount_korean(yearly_data.lease_liabilities)} ({yearly_data.lease_liabilities:,} 원)")
             
-            # 현금흐름 관련
-            print(f"  CFO (영업활동현금흐름): {format_amount_korean(yearly_data.cfo)}")
-            print(f"    ({yearly_data.cfo:,} 원)")
-            
-            # 재무상태 관련
-            print(f"  자기자본: {format_amount_korean(yearly_data.equity)}")
-            print(f"    ({yearly_data.equity:,} 원)")
-            print(f"  현금및현금성자산: {format_amount_korean(yearly_data.cash_and_cash_equivalents)}")
-            print(f"    ({yearly_data.cash_and_cash_equivalents:,} 원)")
-            
-            # 이자부채 관련
-            print(f"  단기차입금: {format_amount_korean(yearly_data.short_term_borrowings)}")
-            print(f"    ({yearly_data.short_term_borrowings:,} 원)")
-            print(f"  유동성장기차입금: {format_amount_korean(yearly_data.current_portion_of_long_term_borrowings)}")
-            print(f"    ({yearly_data.current_portion_of_long_term_borrowings:,} 원)")
-            print(f"  장기차입금: {format_amount_korean(yearly_data.long_term_borrowings)}")
-            print(f"    ({yearly_data.long_term_borrowings:,} 원)")
-            print(f"  사채: {format_amount_korean(yearly_data.bonds)}")
-            print(f"    ({yearly_data.bonds:,} 원)")
-            print(f"  리스부채: {format_amount_korean(yearly_data.lease_liabilities)}")
-            print(f"    ({yearly_data.lease_liabilities:,} 원)")
-            
-            # 데이터 수집 여부 확인
-            missing_data = []
-            if yearly_data.tangible_asset_acquisition == 0:
-                missing_data.append("유형자산 취득")
-            if yearly_data.intangible_asset_acquisition == 0:
-                missing_data.append("무형자산 취득")
-            if yearly_data.cfo == 0:
-                missing_data.append("CFO")
-            if yearly_data.equity == 0:
-                missing_data.append("자기자본")
-            if yearly_data.cash_and_cash_equivalents == 0:
-                missing_data.append("현금및현금성자산")
-            if yearly_data.short_term_borrowings == 0:
-                missing_data.append("단기차입금")
-            if yearly_data.current_portion_of_long_term_borrowings == 0:
-                missing_data.append("유동성장기차입금")
-            if yearly_data.long_term_borrowings == 0:
-                missing_data.append("장기차입금")
-            if yearly_data.bonds == 0:
-                missing_data.append("사채")
-            if yearly_data.lease_liabilities == 0:
-                missing_data.append("리스부채")
-            
-            if missing_data:
-                print(f"\n  ⚠ 수집되지 않은 데이터: {', '.join(missing_data)}")
+            # === 계산된 지표 ===
+            print("\n[계산된 지표]")
+            print(f"  FCF (자유현금흐름): {format_amount_korean(yearly_data.fcf)} ({yearly_data.fcf:,} 원)")
+            print(f"  ROIC (투하자본수익률): {yearly_data.roic:.2f}%")
+            print(f"  WACC (가중평균자본비용): {yearly_data.wacc:.2f}%")
         
         print("\n" + "=" * 80)
         print("테스트 완료!")
@@ -135,71 +92,6 @@ def test_xbrl_collection_samsung():
         print(f"\n❌ 오류 발생: {str(e)}")
         import traceback
         traceback.print_exc()
-
-
-def test_xbrl_parser_direct():
-    """
-    XBRL 파서 직접 테스트 (로컬 파일 사용)
-    """
-    print("=" * 80)
-    print("XBRL 파서 직접 테스트 (로컬 파일)")
-    print("=" * 80)
-    
-    try:
-        parser = XbrlParser()
         
-        # 로컬 XBRL 파일 경로
-        xbrl_file_path = Path(__file__).parent / 'samsung_2024_annual_report_xbrl' / '20250311001085.xml'
-        
-        if not xbrl_file_path.exists():
-            print(f"경고: XBRL 파일을 찾을 수 없습니다: {xbrl_file_path}")
-            return
-        
-        print(f"\n[1단계] XBRL 파일 로드: {xbrl_file_path}")
-        with open(xbrl_file_path, 'rb') as f:
-            xml_content = f.read()
-        
-        print(f"  ✓ 파일 크기: {len(xml_content):,} bytes")
-        
-        # XBRL 파싱
-        print("\n[2단계] XBRL 파싱 중...")
-        xbrl_data = parser.parse_xbrl_file(xml_content)
-        
-        print("  ✓ 파싱 완료")
-        
-        # 결과 출력
-        print("\n[3단계] 추출된 데이터")
-        print("=" * 80)
-        print(f"  유형자산 취득: {format_amount_korean(xbrl_data.get('tangible_asset_acquisition', 0))}")
-        print(f"    ({xbrl_data.get('tangible_asset_acquisition', 0):,} 원)")
-        print(f"  무형자산 취득: {format_amount_korean(xbrl_data.get('intangible_asset_acquisition', 0))}")
-        print(f"    ({xbrl_data.get('intangible_asset_acquisition', 0):,} 원)")
-        print(f"  CFO: {format_amount_korean(xbrl_data.get('cfo', 0))}")
-        print(f"    ({xbrl_data.get('cfo', 0):,} 원)")
-        
-        print("\n" + "=" * 80)
-        print("테스트 완료!")
-        print("=" * 80)
-        
-    except Exception as e:
-        print(f"\n❌ 오류 발생: {str(e)}")
-        import traceback
-        traceback.print_exc()
-
-
-if __name__ == '__main__':
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='XBRL 데이터 수집 테스트')
-    parser.add_argument('--mode', choices=['api', 'local'], default='api',
-                        help='테스트 모드: api (API 다운로드), local (로컬 파일)')
-    
-    args = parser.parse_args()
-    
-    if args.mode == 'api':
-        # API를 통한 XBRL 데이터 수집 테스트
-        test_xbrl_collection_samsung()
-    else:
-        # 로컬 파일을 사용한 파서 테스트
-        test_xbrl_parser_direct()
-
+if __name__ == "__main__":
+    test_xbrl_collection_samsung()

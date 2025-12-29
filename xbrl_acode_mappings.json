@@ -50,8 +50,7 @@
     "current_portion_of_long_term_borrowings": {
         "primary_acode": "ifrs-full:CurrentPortionOfLongTermBorrowings",
         "candidate_acodes": [
-            "ifrs-full_CurrentPortionOfLongTermBorrowings",
-            "ifrs-full_CurrentPortionOfLongtermBorrowings"
+            "ifrs-full_CurrentPortionOfLongTermBorrowings"
         ],
         "description": "유동성장기차입금"
     },
@@ -77,5 +76,12 @@
             "ifrs-full_LeaseLiabilities"
         ],
         "description": "리스부채"
+    },
+    "finance_costs": {
+        "primary_acode": "ifrs-full:FinanceCosts",
+        "candidate_acodes": [
+            "ifrs-full_FinanceCosts"
+        ],
+        "description": "금융비용"
     }
 }

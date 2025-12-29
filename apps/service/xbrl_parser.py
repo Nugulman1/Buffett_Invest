@@ -8,6 +8,7 @@ from xml.parsers.expat import ExpatError
 from pathlib import Path
 import json
 import re
+from apps.utils.utils import normalize_acode
 
 
 class XbrlParser:
@@ -44,12 +45,26 @@ class XbrlParser:
             # primary_acode와 candidate_acodes를 합쳐서 정규화
             all_acodes = [primary_acode] + candidate_acodes
             
-            # 콜론을 언더스코어로 변환한 버전도 미리 생성
+            # 정규화 함수를 사용하여 모든 ACODE 정규화
             normalized_acodes = []
             for acode in all_acodes:
-                normalized_acodes.append(acode)
-                if ':' in acode:
-                    normalized_acodes.append(acode.replace(':', '_'))
+                if acode:
+                    # 콜론이 있는 경우 원본(콜론 포함)과 변환된 버전(언더스코어) 둘 다 생성
+                    if ':' in acode:
+                        # 원본 정규화 (콜론 유지, 소문자만 변환)
+                        normalized_with_colon = acode.lower()
+                        if normalized_with_colon not in normalized_acodes:
+                            normalized_acodes.append(normalized_with_colon)
+                        
+                        # 콜론을 언더스코어로 변환한 버전도 생성
+                        normalized_with_underscore = normalize_acode(acode)
+                        if normalized_with_underscore not in normalized_acodes:
+                            normalized_acodes.append(normalized_with_underscore)
+                    else:
+                        # 콜론이 없으면 정규화만
+                        normalized_acode = normalize_acode(acode)
+                        if normalized_acode not in normalized_acodes:
+                            normalized_acodes.append(normalized_acode)
             
             normalized[indicator_key] = normalized_acodes
         
@@ -191,6 +206,9 @@ class XbrlParser:
                 continue
             acode = acode_match.group(1)
             
+            # ACODE 정규화 (매핑 테이블과 비교를 위해)
+            normalized_acode = normalize_acode(acode)
+            
             # ACONTEXT 추출
             acontext_match = re.search(r'ACONTEXT="([^"]*)"', attrs_str)
             acontext = acontext_match.group(1) if acontext_match else ''
@@ -216,10 +234,11 @@ class XbrlParser:
             if not value_str or value_str == '-':
                 continue
             
-            if acode not in acode_index:
-                acode_index[acode] = []
+            # 정규화된 ACODE를 키로 사용 (대소문자 차이 해결)
+            if normalized_acode not in acode_index:
+                acode_index[normalized_acode] = []
             
-            acode_index[acode].append({
+            acode_index[normalized_acode].append({
                 'value': value_str,
                 'context': acontext,
                 'adecimal': adecimal

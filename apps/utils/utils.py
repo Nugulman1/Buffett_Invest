@@ -11,6 +11,7 @@ def normalize_account_name(account_name: str) -> str:
     계정명 매칭을 위한 전처리:
     - 공백 제거
     - 괄호 정리 (중복 괄호 처리 등)
+    - 영어 소문자 변환
     
     Args:
         account_name: 원본 계정명
@@ -28,6 +29,35 @@ def normalize_account_name(account_name: str) -> str:
     # 예: "당기순이익(손실)" -> "당기순이익(손실)"
     # 예: "영업이익(손실) (연결)" -> "영업이익(손실)(연결)"
     normalized = normalized.replace(" (", "(").replace(") ", ")")
+    
+    # 영어 소문자 변환
+    normalized = normalized.lower()
+    
+    return normalized
+
+
+def normalize_acode(acode: str) -> str:
+    """
+    ACODE 정규화 함수
+    
+    XBRL ACODE 매칭을 위한 전처리:
+    - 콜론(:)을 언더스코어(_)로 변환
+    - 영어 소문자 변환
+    
+    Args:
+        acode: 원본 ACODE (예: "ifrs-full:CurrentPortionOfLongTermBorrowings")
+        
+    Returns:
+        정규화된 ACODE (예: "ifrs-full_currentportionoflongtermborrowings")
+    """
+    if not acode:
+        return ""
+    
+    # 콜론을 언더스코어로 변환
+    normalized = acode.replace(":", "_")
+    
+    # 영어 소문자 변환
+    normalized = normalized.lower()
     
     return normalized
 
