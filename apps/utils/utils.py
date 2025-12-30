@@ -4,6 +4,31 @@
 from apps.models import CompanyFinancialObject
 
 
+def is_financial_industry(induty_code: str) -> bool:
+    """
+    KSIC 코드로 금융업 여부 판별
+    
+    금융업 KSIC 코드:
+    - 651: 일반 금융업
+    - 659: 기타 금융업
+    - 660: 보험 및 연금업
+    - 671: 금융 관련 서비스업
+    
+    Args:
+        induty_code: KSIC 업종 코드 (예: '264', '651')
+        
+    Returns:
+        금융업 여부 (bool)
+    """
+    if not induty_code:
+        return False
+    
+    # 앞 3자리로 판별
+    code_prefix = str(induty_code)[:3]
+    financial_codes = ['651', '659', '660', '671']
+    return code_prefix in financial_codes
+
+
 def normalize_account_name(account_name: str) -> str:
     """
     계정명 정규화 함수

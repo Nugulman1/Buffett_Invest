@@ -330,20 +330,26 @@ class DartClient:
         
         return xml_content
     
-    def get_financial_indicators(self, corp_code, bsns_year, reprt_code='11011'):
+    def get_financial_indicators(self, corp_code, bsns_year, reprt_code='11011', idx_cl_code='M210000'):
         """
         재무지표 조회 (계산된 비율 지표)
         
         이미 계산된 재무 비율/지표를 조회합니다.
-        - API: fnlttSinglIndx.json
-        - 데이터 형태: 지표 코드(idx_code)와 비율 값(thstrm_amount) - % 단위
-        - 예시: {"idx_code": "M211300", "thstrm_amount": "20.5"} → 매출총이익률 20.5%
+        - API: fnlttCmpnyIndx.json (다중회사 주요재무지표)
+        - 데이터 형태: 지표 코드(idx_code)와 지표값(idx_val)
+        - 예시: {"idx_code": "M211300", "idx_val": "20.5"} → 매출총이익률 20.5%
         
         get_financial_statement()와의 차이:
         - get_financial_statement(): 원시 금액 데이터 (매출액 1000억원, 영업이익 100억원 등)
         - 이 메서드: 계산된 비율 지표 (매출총이익률 20%, ROE 15% 등)
         
-        주요 지표 코드:
+        지표분류코드:
+        - M210000: 수익성지표 (매출총이익률, ROE, 판관비율, 총자산영업이익률 등)
+        - M220000: 안정성지표
+        - M230000: 성장성지표
+        - M240000: 활동성지표
+        
+        주요 지표 코드 (수익성지표):
         - M211300: 매출총이익률
         - M211800: 판관비율
         - M212000: 총자산영업이익률
@@ -353,17 +359,19 @@ class DartClient:
             corp_code: 기업 고유번호 (8자리)
             bsns_year: 사업연도 (예: '2024')
             reprt_code: 보고서 코드 ('11011': 사업보고서)
+            idx_cl_code: 지표분류코드 (기본값: 'M210000' - 수익성지표)
             
         Returns:
-            재무지표 데이터 (list) - 각 항목은 지표 코드와 비율 값을 포함
+            재무지표 데이터 (list) - 각 항목은 지표 코드와 지표값을 포함
         """
         params = {
             'corp_code': corp_code,
             'bsns_year': bsns_year,
-            'reprt_code': reprt_code
+            'reprt_code': reprt_code,
+            'idx_cl_code': idx_cl_code
         }
         
-        result = self._make_request("fnlttSinglIndx.json", params=params)
+        result = self._make_request("fnlttCmpnyIndx.json", params=params)
         
         # 응답 검증
         if isinstance(result, dict) and result.get('status') != '000':

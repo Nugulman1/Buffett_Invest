@@ -1,0 +1,263 @@
+{% extends 'base.html' %}
+
+{% block title %}기업 상세 정보 - 장기 투자 분석{% endblock %}
+
+{% block content %}
+<div x-data="companyDetail('{{ corp_code }}')" class="row">
+    <div class="col-12">
+        <!-- 로딩 상태 -->
+        <div x-show="loading" class="text-center py-5">
+            <div class="loading-spinner mx-auto mb-3"></div>
+            <p class="text-muted">데이터를 불러오는 중...</p>
+        </div>
+
+        <!-- 에러 상태 -->
+        <div x-show="error && !loading" class="alert alert-danger">
+            <h5 class="alert-heading">
+                <i class="bi bi-exclamation-triangle me-2"></i>오류 발생
+            </h5>
+            <p class="mb-0" x-text="error"></p>
+        </div>
+
+        <!-- 데이터 표시 -->
+        <template x-if="!loading && !error && companyData">
+            <div>
+                <!-- 헤더 -->
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h2 class="card-title mb-2" x-text="companyData?.company_name || '-'"></h2>
+                                <p class="text-muted mb-2" x-text="companyData?.business_type_name || '-'"></p>
+                                <p class="text-muted-small mb-0">
+                                    <code x-text="companyData?.corp_code || '-'"></code>
+                                </p>
+                            </div>
+                            <div>
+                                <span class="badge fs-6 px-3 py-2"
+                                    :class="companyData?.passed_all_filters ? 'bg-success' : 'bg-danger'"
+                                    x-text="companyData?.passed_all_filters ? '필터 통과' : '필터 미통과'"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 필터 결과 -->
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <h4 class="card-title mb-3">
+                            <i class="bi bi-funnel me-2"></i>필터 결과
+                        </h4>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center">
+                                    <span class="me-2">영업이익 필터:</span>
+                                    <span class="badge"
+                                        :class="companyData?.filter_operating_income ? 'bg-success' : 'bg-danger'"
+                                        x-text="companyData?.filter_operating_income ? '통과' : '미통과'"></span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center">
+                                    <span class="me-2">당기순이익 필터:</span>
+                                    <span class="badge"
+                                        :class="companyData?.filter_net_income ? 'bg-success' : 'bg-danger'"
+                                        x-text="companyData?.filter_net_income ? '통과' : '미통과'"></span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center">
+                                    <span class="me-2">매출액 CAGR 필터:</span>
+                                    <span class="badge"
+                                        :class="companyData?.filter_revenue_cagr ? 'bg-success' : 'bg-danger'"
+                                        x-text="companyData?.filter_revenue_cagr ? '통과' : '미통과'"></span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center">
+                                    <span class="me-2">총자산 영업이익률 필터:</span>
+                                    <span class="badge"
+                                        :class="companyData?.filter_total_assets_operating_income_ratio ? 'bg-success' : 'bg-danger'"
+                                        x-text="companyData?.filter_total_assets_operating_income_ratio ? '통과' : '미통과'"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 기본 정보 -->
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <h4 class="card-title mb-3">
+                            <i class="bi bi-info-circle me-2"></i>기본 정보
+                        </h4>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <strong>업종 코드:</strong>
+                                <span x-text="companyData?.business_type_code || '-'"></span>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <strong>5년 만기 국채 수익률:</strong>
+                                <span
+                                    x-text="companyData?.bond_yield_5y ? (companyData.bond_yield_5y * 100).toFixed(2) + '%' : '-'"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 재무 지표 테이블 -->
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <h4 class="card-title mb-3">
+                            <i class="bi bi-table me-2"></i>최근 5년 재무 지표
+                        </h4>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>연도</th>
+                                        <th class="text-end">매출액</th>
+                                        <th class="text-end">영업이익</th>
+                                        <th class="text-end">당기순이익</th>
+                                        <th class="text-end">총자산</th>
+                                        <th class="text-end">자기자본</th>
+                                        <th class="text-end">매출총이익률</th>
+                                        <th class="text-end">판관비율</th>
+                                        <th class="text-end">총자산 영업이익률</th>
+                                        <th class="text-end">ROE</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="yearData in yearlyDataSorted" :key="yearData.year">
+                                        <tr>
+                                            <td><strong x-text="yearData.year"></strong></td>
+                                            <td class="text-end" x-text="formatAmount(yearData.revenue)"></td>
+                                            <td class="text-end" x-text="formatAmount(yearData.operating_income)"></td>
+                                            <td class="text-end" x-text="formatAmount(yearData.net_income)"></td>
+                                            <td class="text-end" x-text="formatAmount(yearData.total_assets)"></td>
+                                            <td class="text-end" x-text="formatAmount(yearData.total_equity)"></td>
+                                            <td class="text-end" x-text="formatPercent(yearData.gross_profit_margin)">
+                                            </td>
+                                            <td class="text-end"
+                                                x-text="formatPercent(yearData.selling_admin_expense_ratio)"></td>
+                                            <td class="text-end"
+                                                x-text="formatPercent(yearData.total_assets_operating_income_ratio)">
+                                            </td>
+                                            <td class="text-end" x-text="formatPercent(yearData.roe)"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 사업보고서 링크 -->
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <h4 class="card-title mb-3">
+                            <i class="bi bi-file-earmark-text me-2"></i>사업보고서
+                        </h4>
+                        <div x-show="annualReportLink">
+                            <a :href="annualReportLink" target="_blank" class="btn btn-primary">
+                                <i class="bi bi-box-arrow-up-right me-2"></i>
+                                DART 공시시스템에서 사업보고서 보기
+                            </a>
+                        </div>
+                        <div x-show="!annualReportLink && !loadingReportLink" class="text-muted">
+                            사업보고서 링크를 불러올 수 없습니다.
+                        </div>
+                        <div x-show="loadingReportLink" class="text-muted">
+                            <span class="loading-spinner me-2"></span>링크를 불러오는 중...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>
+
+<script>
+    function companyDetail(corpCode) {
+        return {
+            corpCode: corpCode,
+            loading: true,
+            loadingReportLink: false,
+            error: null,
+            companyData: null,
+            annualReportLink: null,
+
+            get yearlyDataSorted() {
+                if (!this.companyData || !this.companyData.yearly_data) {
+                    return [];
+                }
+                return [...this.companyData.yearly_data].sort((a, b) => b.year - a.year);
+            },
+
+            async init() {
+                await this.fetchCompanyData();
+                await this.fetchAnnualReportLink();
+            },
+
+            async fetchCompanyData() {
+                this.loading = true;
+                this.error = null;
+
+                try {
+                    const response = await fetch(`/api/companies/${this.corpCode}/financial-data/`);
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        this.companyData = data;
+                    } else {
+                        this.error = data.error || '데이터를 불러올 수 없습니다.';
+                    }
+                } catch (error) {
+                    this.error = '데이터를 불러오는 중 오류가 발생했습니다: ' + error.message;
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            async fetchAnnualReportLink() {
+                this.loadingReportLink = true;
+
+                try {
+                    const response = await fetch(`/api/companies/${this.corpCode}/annual-report-link/`);
+                    const data = await response.json();
+
+                    if (response.ok && data.link) {
+                        this.annualReportLink = data.link;
+                    }
+                } catch (error) {
+                    // 링크 조회 실패는 치명적이지 않으므로 에러를 표시하지 않음
+                    console.error('사업보고서 링크 조회 실패:', error);
+                } finally {
+                    this.loadingReportLink = false;
+                }
+            },
+
+            formatAmount(value) {
+                if (value === null || value === undefined || value === 0) {
+                    return '-';
+                }
+
+                // 억 단위로 변환
+                const eok = value / 100000000;
+                if (eok >= 1000) {
+                    return (eok / 1000).toFixed(2) + '조';
+                } else {
+                    return eok.toFixed(2) + '억';
+                }
+            },
+
+            formatPercent(value) {
+                if (value === null || value === undefined) {
+                    return '-';
+                }
+                return (value * 100).toFixed(2) + '%';
+            }
+        }
+    }
+</script>
+{% endblock %}

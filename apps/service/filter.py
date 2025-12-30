@@ -76,12 +76,20 @@ class CompanyFilter:
         """
         매출액 CAGR 필터: 매출액 5년 CAGR ≥ 0%
         
+        단, 금융업인 경우 자동으로 True 반환 (금융업은 매출액 개념이 다름)
+        
         Args:
             company_data: CompanyFinancialObject 객체
         
         Returns:
             필터 통과 여부 (bool)
         """
+        # 금융업인 경우 자동으로 True 반환
+        from apps.utils.utils import is_financial_industry
+        if is_financial_industry(company_data.business_type_code):
+            logger.info(f"금융업으로 판별되어 매출액 CAGR 필터를 자동 통과 처리합니다.")
+            return True
+        
         if not company_data.yearly_data:
             return False
         

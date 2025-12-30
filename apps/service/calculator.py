@@ -2,7 +2,7 @@
 재무 지표 계산 서비스
 """
 import logging
-from apps.models import YearlyFinancialData, CompanyFinancialObject
+from apps.models import YearlyFinancialDataObject, CompanyFinancialObject
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class IndicatorCalculator:
         return cagr * 100
     
     @staticmethod
-    def calculate_fcf(yearly_data: YearlyFinancialData) -> int:
+    def calculate_fcf(yearly_data: YearlyFinancialDataObject) -> int:
         """
         FCF (Free Cash Flow, 자유현금흐름) 계산
         
@@ -64,7 +64,7 @@ class IndicatorCalculator:
         주의: CAPEX는 절대값으로 처리합니다 (음수인 경우 자산 처분 등으로 인한 것)
         
         Args:
-            yearly_data: YearlyFinancialData 객체
+            yearly_data: YearlyFinancialDataObject 객체
         
         Returns:
             FCF 값 (정수, 원화)
@@ -74,7 +74,7 @@ class IndicatorCalculator:
         return fcf
     
     @staticmethod
-    def calculate_icr(yearly_data: YearlyFinancialData) -> float:
+    def calculate_icr(yearly_data: YearlyFinancialDataObject) -> float:
         """
         ICR (Interest Coverage Ratio, 이자보상비율) 계산
         
@@ -84,7 +84,7 @@ class IndicatorCalculator:
         금융비용은 이자비용보다 넓은 개념이므로 실제 ICR보다 약간 낮게 나올 수 있습니다.
         
         Args:
-            yearly_data: YearlyFinancialData 객체
+            yearly_data: YearlyFinancialDataObject 객체
         
         Returns:
             ICR 값 (배수, float)
@@ -97,14 +97,14 @@ class IndicatorCalculator:
         return icr
     
     @staticmethod
-    def calculate_roic(yearly_data: YearlyFinancialData, tax_rate: float = DEFAULT_TAX_RATE) -> float:
+    def calculate_roic(yearly_data: YearlyFinancialDataObject, tax_rate: float = DEFAULT_TAX_RATE) -> float:
         """
         ROIC (Return on Invested Capital, 투하자본수익률) 계산
         
         공식: (영업이익 × (1 - 법인세율)) / (자기자본 + 이자부채 − 현금및현금성자산)
         
         Args:
-            yearly_data: YearlyFinancialData 객체
+            yearly_data: YearlyFinancialDataObject 객체
             tax_rate: 법인세율 (기본값: 0.25)
         
         Returns:
@@ -140,7 +140,7 @@ class IndicatorCalculator:
     
     @staticmethod
     def calculate_wacc(
-        yearly_data: YearlyFinancialData,
+        yearly_data: YearlyFinancialDataObject,
         bond_yield: float,
         tax_rate: float = DEFAULT_TAX_RATE,
         equity_risk_premium: float = DEFAULT_EQUITY_RISK_PREMIUM
@@ -160,7 +160,7 @@ class IndicatorCalculator:
         ROIC에 가산 수치를 넣어야 합니다 (금융비용 - 이자비용 차이).
         
         Args:
-            yearly_data: YearlyFinancialData 객체
+            yearly_data: YearlyFinancialDataObject 객체
             bond_yield: 국채수익률 (퍼센트 형태, 예: 3.5 = 3.5%)
             tax_rate: 법인세율 (기본값: 0.25)
             equity_risk_premium: 주주기대수익률 (퍼센트 형태, 기본값: 5.0)
@@ -222,9 +222,9 @@ class IndicatorCalculator:
         """
         모든 계산 지표 채우기
         
-        주의: XBRL 데이터 수집의 한계가 있어 가장 최근 년도만 계산합니다.
+        주의: XBRL 데이터 수집이 중단되어 계산 지표 계산도 중단되었습니다.
         FCF, ICR, ROIC, WACC 계산에 필요한 데이터(CFO, 금융비용, 자기자본 등)는
-        XBRL에서만 수집 가능하며, 2023년 이하는 XBRL이 없어 계산할 수 없습니다.
+        XBRL에서만 수집 가능하며, 표본이 너무 적어서 데이터화를 못할듯하여 일단 중단했습니다.
         
         Args:
             company_data: CompanyFinancialObject 객체
@@ -234,25 +234,26 @@ class IndicatorCalculator:
         if not company_data.yearly_data:
             return
         
+        # XBRL 데이터 수집 중단으로 인해 계산 지표 계산도 중단
         # 가장 최근 년도만 계산 (XBRL 데이터 수집의 한계)
-        latest_data = max(company_data.yearly_data, key=lambda x: x.year)
-        
-        # FCF 계산
-        latest_data.fcf = cls.calculate_fcf(latest_data)
-        
-        # ICR 계산 주석 처리
-        # 해당 계산에 이자비용을 금융비용으로 대체했으나 계산값이 너무 튀어 일단 주석처리함
-        # latest_data.icr = cls.calculate_icr(latest_data)
-        
-        # ROIC 계산
-        latest_data.roic = cls.calculate_roic(latest_data, tax_rate)
-        
-        # WACC 계산 주석 처리
-        # 해당 계산에 이자비용을 금융비용으로 대체했으나 계산값이 너무 튀어 일단 주석처리함
-        # latest_data.wacc = cls.calculate_wacc(
-        #     latest_data,
-        #     company_data.bond_yield_5y,
-        #     tax_rate,
-        #     equity_risk_premium
-        # )
+        # latest_data = max(company_data.yearly_data, key=lambda x: x.year)
+        # 
+        # # FCF 계산
+        # latest_data.fcf = cls.calculate_fcf(latest_data)
+        # 
+        # # ICR 계산 주석 처리
+        # # 해당 계산에 이자비용을 금융비용으로 대체했으나 계산값이 너무 튀어 일단 주석처리함
+        # # latest_data.icr = cls.calculate_icr(latest_data)
+        # 
+        # # ROIC 계산
+        # latest_data.roic = cls.calculate_roic(latest_data, tax_rate)
+        # 
+        # # WACC 계산 주석 처리
+        # # 해당 계산에 이자비용을 금융비용으로 대체했으나 계산값이 너무 튀어 일단 주석처리함
+        # # latest_data.wacc = cls.calculate_wacc(
+        # #     latest_data,
+        # #     company_data.bond_yield_5y,
+        # #     tax_rate,
+        # #     equity_risk_premium
+        # # )
 

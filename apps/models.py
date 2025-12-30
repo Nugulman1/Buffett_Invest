@@ -1,6 +1,67 @@
 """
 재무제표 데이터 모델
 """
+from django.db import models
+
+# Django ORM 모델 (Python 클래스보다 먼저 정의)
+class Company(models.Model):
+    """회사 정보 및 필터 결과를 저장하는 Django 모델"""
+    corp_code = models.CharField(max_length=8, primary_key=True, verbose_name='고유번호')
+    company_name = models.CharField(max_length=200, blank=True, verbose_name='회사명')
+    business_type_code = models.CharField(max_length=10, blank=True, verbose_name='업종코드')
+    business_type_name = models.CharField(max_length=50, blank=True, verbose_name='업종명')
+    bond_yield_5y = models.FloatField(default=0.0, verbose_name='채권수익률(5년)')
+    passed_all_filters = models.BooleanField(default=False, verbose_name='전체필터통과')
+    filter_operating_income = models.BooleanField(default=False, verbose_name='영업이익필터')
+    filter_net_income = models.BooleanField(default=False, verbose_name='당기순이익필터')
+    filter_revenue_cagr = models.BooleanField(default=False, verbose_name='매출액CAGR필터')
+    filter_total_assets_operating_income_ratio = models.BooleanField(default=False, verbose_name='총자산영업이익률필터')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
+    
+    class Meta:
+        db_table = 'company'
+        verbose_name = '회사'
+        verbose_name_plural = '회사들'
+        indexes = [
+            models.Index(fields=['corp_code']),
+        ]
+    
+    def __str__(self):
+        return f"{self.company_name} ({self.corp_code})"
+
+
+class YearlyFinancialData(models.Model):
+    """년도별 재무 데이터를 저장하는 Django 모델"""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='yearly_data', verbose_name='회사')
+    year = models.IntegerField(verbose_name='사업연도')
+    revenue = models.BigIntegerField(default=0, verbose_name='매출액')
+    operating_income = models.BigIntegerField(default=0, verbose_name='영업이익')
+    net_income = models.BigIntegerField(default=0, verbose_name='당기순이익')
+    total_assets = models.BigIntegerField(default=0, verbose_name='자산총계')
+    total_equity = models.BigIntegerField(default=0, verbose_name='자본총계')
+    gross_profit_margin = models.FloatField(default=0.0, verbose_name='매출총이익률')
+    selling_admin_expense_ratio = models.FloatField(default=0.0, verbose_name='판관비율')
+    total_assets_operating_income_ratio = models.FloatField(default=0.0, verbose_name='총자산영업이익률')
+    roe = models.FloatField(default=0.0, verbose_name='ROE')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
+    
+    class Meta:
+        db_table = 'yearly_financial_data'
+        verbose_name = '년도별재무데이터'
+        verbose_name_plural = '년도별재무데이터들'
+        unique_together = [['company', 'year']]
+        indexes = [
+            models.Index(fields=['company', 'year']),
+            models.Index(fields=['year']),
+        ]
+    
+    def __str__(self):
+        return f"{self.company.company_name} - {self.year}년"
+
+
+# 기존 Python 클래스들 (하위 호환성 유지)
 
 
 class FinancialStatementData:
@@ -65,8 +126,8 @@ class FinancialStatementData:
         return 0
 
 
-class YearlyFinancialData:
-    """년도별 재무 데이터 객체"""
+class YearlyFinancialDataObject:
+    """년도별 재무 데이터 객체 (Python 클래스)"""
     
     def __init__(self, year: int, corp_code: str = ""):
         """
@@ -129,7 +190,7 @@ class CompanyFinancialObject:
         self.bond_yield_5y: float = 0.0  # 채권수익률 (국채 5년, 가장 최근 값)
         
         # 년도별 데이터 리스트
-        self.yearly_data: list[YearlyFinancialData] = []
+        self.yearly_data: list[YearlyFinancialDataObject] = []
         
         # === 필터 결과 ===
         self.passed_all_filters: bool = True  # 전체 필터 통과 여부

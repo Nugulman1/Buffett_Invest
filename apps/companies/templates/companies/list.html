@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+
+{% block title %}기업 조회 - 장기 투자 분석{% endblock %}
+
+{% block content %}
+<div x-data="companyList()" class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-body p-4">
+                <h2 class="card-title mb-4">
+                    <i class="bi bi-building me-2"></i>기업 재무 데이터 조회
+                </h2>
+                <p class="text-muted mb-4">
+                    기업번호를 입력하세요. 쉼표(,) 또는 줄바꿈으로 구분하여 여러 기업을 한 번에 조회할 수 있습니다.
+                </p>
+
+                <div class="mb-3">
+                    <label for="corpCodesInput" class="form-label">기업번호</label>
+                    <textarea id="corpCodesInput" x-model="corpCodesText" class="form-control" rows="8"
+                        placeholder="예: 00126380&#10;00164742&#10;00126380,00164742"
+                        style="font-family: monospace;"></textarea>
+                    <div class="form-text">
+                        <i class="bi bi-info-circle me-1"></i>
+                        중복된 기업번호는 자동으로 제거됩니다.
+                    </div>
+                </div>
+
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="removeDuplicates" x-model="removeDuplicates"
+                        checked>
+                    <label class="form-check-label" for="removeDuplicates">
+                        중복 제거
+                    </label>
+                </div>
+
+                <button type="button" class="btn btn-primary btn-lg w-100" @click="fetchCompanies()"
+                    :disabled="loading">
+                    <span x-show="!loading">
+                        <i class="bi bi-search me-2"></i>조회
+                    </span>
+                    <span x-show="loading" class="loading-spinner me-2"></span>
+                    <span x-show="loading">조회 중...</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 결과 영역 -->
+        <div x-show="results.length > 0 || errors.length > 0" class="card">
+            <div class="card-body p-4">
+                <h3 class="card-title mb-4">
+                    <i class="bi bi-list-check me-2"></i>조회 결과
+                    <span class="badge bg-primary ms-2" x-text="results.length"></span>
+                </h3>
+
+                <!-- 성공한 결과 -->
+                <div x-show="results.length > 0" class="mb-4">
+                    <div class="row g-3">
+                        <template x-for="company in results" :key="company.corp_code">
+                            <div class="col-md-6 col-lg-4">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h5 class="card-title" x-text="company.company_name"></h5>
+                                        <p class="text-muted-small mb-2" x-text="company.business_type_name"></p>
+                                        <p class="text-muted-small mb-3">
+                                            <code x-text="company.corp_code"></code>
+                                        </p>
+                                        <div class="mb-3">
+                                            <span class="badge"
+                                                :class="company.passed_all_filters ? 'bg-success' : 'bg-danger'"
+                                                x-text="company.passed_all_filters ? '필터 통과' : '필터 미통과'"></span>
+                                        </div>
+                                        <a :href="'/companies/' + company.corp_code + '/'"
+                                            class="btn btn-sm btn-outline-primary w-100">
+                                            <i class="bi bi-arrow-right-circle me-1"></i>상세 보기
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- 에러 결과 -->
+                <div x-show="errors.length > 0" class="alert alert-warning">
+                    <h6 class="alert-heading">
+                        <i class="bi bi-exclamation-triangle me-2"></i>조회 실패
+                    </h6>
+                    <ul class="mb-0">
+                        <template x-for="error in errors" :key="error.corp_code">
+                            <li>
+                                <code x-text="error.corp_code"></code>: <span x-text="error.error"></span>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function companyList() {
+        return {
+            corpCodesText: '',
+            removeDuplicates: true,
+            loading: false,
+            results: [],
+            errors: [],
+
+            async fetchCompanies() {
+                if (!this.corpCodesText.trim()) {
+                    alert('기업번호를 입력해주세요.');
+                    return;
+                }
+
+                this.loading = true;
+                this.results = [];
+                this.errors = [];
+
+                try {
+                    // 기업번호 파싱
+                    let corpCodes = this.corpCodesText
+                        .split(/[,\n]/)
+                        .map(code => code.trim())
+                        .filter(code => code.length > 0);
+
+                    // 중복 제거
+                    if (this.removeDuplicates) {
+                        corpCodes = [...new Set(corpCodes)];
+                    }
+
+                    if (corpCodes.length === 0) {
+                        alert('유효한 기업번호가 없습니다.');
+                        this.loading = false;
+                        return;
+                    }
+
+                    // API 호출
+                    const response = await fetch('/api/companies/batch/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            corp_codes: corpCodes
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        this.results = data.results || [];
+                        this.errors = data.errors || [];
+                    } else {
+                        alert('조회 중 오류가 발생했습니다: ' + (data.error || '알 수 없는 오류'));
+                    }
+                } catch (error) {
+                    alert('조회 중 오류가 발생했습니다: ' + error.message);
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            getCookie(name) {
+                let cookieValue = null;
+                if (document.cookie && document.cookie !== '') {
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i].trim();
+                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return cookieValue;
+            }
+        }
+    }
+</script>
+{% endblock %}

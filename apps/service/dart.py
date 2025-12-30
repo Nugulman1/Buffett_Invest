@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from apps.dart.client import DartClient
-from apps.models import FinancialStatementData, YearlyFinancialData, CompanyFinancialObject
+from apps.models import FinancialStatementData, YearlyFinancialDataObject, CompanyFinancialObject
 from apps.utils.utils import normalize_account_name
 from apps.service.xbrl_parser import XbrlParser
 
@@ -115,7 +115,7 @@ class DartDataService:
                 continue  # 수집 실패 시 해당 연도 스킵
             
             # YearlyFinancialData 객체 생성
-            yearly_data = YearlyFinancialData(year=year, corp_code=corp_code)
+            yearly_data = YearlyFinancialDataObject(year=year, corp_code=corp_code)
             
             # 각 지표에 대해 매핑 및 추출
             for indicator_key, mapping_config in mappings.items():
@@ -144,64 +144,65 @@ class DartDataService:
             # yearly_data를 company_data에 추가
             company_data.yearly_data.append(yearly_data)
     
-    def collect_xbrl_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
-        """
-        XBRL 파일에서 추가 지표 수집
-        
-        Args:
-            corp_code: 고유번호 (8자리)
-            years: 수집할 연도 리스트
-            company_data: 채울 CompanyFinancialObject 객체 (in-place 수정)
-        """
-        parser = XbrlParser()
-        
-        # 각 연도별로 처리
-        for year in years:
-            year_str = str(year)
-            
-            # 해당 연도의 YearlyFinancialData 찾기
-            yearly_data = None
-            for yd in company_data.yearly_data:
-                if yd.year == year:
-                    yearly_data = yd
-                    break
-            
-            # YearlyFinancialData가 없으면 생성
-            if yearly_data is None:
-                yearly_data = YearlyFinancialData(year=year, corp_code=corp_code)
-                company_data.yearly_data.append(yearly_data)
-           
-            try:
-                # 사업보고서 접수번호 조회
-                try:
-                    rcept_no = self.client.get_annual_report_rcept_no(corp_code, year_str)
-                    if not rcept_no:
-                        continue
-                except Exception as e:
-                    continue
-                
-                # XBRL 다운로드 및 사업보고서 XML 추출
-                xml_content = self.client.download_xbrl_and_extract_annual_report(rcept_no)
-                
-                # XBRL 파싱
-                xbrl_data = parser.parse_xbrl_file(xml_content)
-                
-                # YearlyFinancialData에 채우기
-                yearly_data.tangible_asset_acquisition = xbrl_data.get('tangible_asset_acquisition', 0)
-                yearly_data.intangible_asset_acquisition = xbrl_data.get('intangible_asset_acquisition', 0)
-                yearly_data.cfo = xbrl_data.get('cfo', 0)
-                yearly_data.equity = xbrl_data.get('equity', 0)
-                yearly_data.cash_and_cash_equivalents = xbrl_data.get('cash_and_cash_equivalents', 0)
-                yearly_data.short_term_borrowings = xbrl_data.get('short_term_borrowings', 0)
-                yearly_data.current_portion_of_long_term_borrowings = xbrl_data.get('current_portion_of_long_term_borrowings', 0)
-                yearly_data.long_term_borrowings = xbrl_data.get('long_term_borrowings', 0)
-                yearly_data.bonds = xbrl_data.get('bonds', 0)
-                yearly_data.lease_liabilities = xbrl_data.get('lease_liabilities', 0)
-                yearly_data.finance_costs = xbrl_data.get('finance_costs', 0)
-                
-            except Exception as e:
-                # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)
-                continue
+    # XBRL 데이터 수집 중단: 표본이 너무 적어서 데이터화를 못할듯하여 일단 중단
+    # def collect_xbrl_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
+    #     """
+    #     XBRL 파일에서 추가 지표 수집
+    #     
+    #     Args:
+    #         corp_code: 고유번호 (8자리)
+    #         years: 수집할 연도 리스트
+    #         company_data: 채울 CompanyFinancialObject 객체 (in-place 수정)
+    #     """
+    #     parser = XbrlParser()
+    #     
+    #     # 각 연도별로 처리
+    #     for year in years:
+    #         year_str = str(year)
+    #         
+    #         # 해당 연도의 YearlyFinancialData 찾기
+    #         yearly_data = None
+    #         for yd in company_data.yearly_data:
+    #             if yd.year == year:
+    #                 yearly_data = yd
+    #                 break
+    #         
+    #         # YearlyFinancialData가 없으면 생성
+    #         if yearly_data is None:
+    #             yearly_data = YearlyFinancialData(year=year, corp_code=corp_code)
+    #             company_data.yearly_data.append(yearly_data)
+    #        
+    #         try:
+    #             # 사업보고서 접수번호 조회
+    #             try:
+    #                 rcept_no = self.client.get_annual_report_rcept_no(corp_code, year_str)
+    #                 if not rcept_no:
+    #                     continue
+    #             except Exception as e:
+    #                 continue
+    #             
+    #             # XBRL 다운로드 및 사업보고서 XML 추출
+    #             xml_content = self.client.download_xbrl_and_extract_annual_report(rcept_no)
+    #             
+    #             # XBRL 파싱
+    #             xbrl_data = parser.parse_xbrl_file(xml_content)
+    #             
+    #             # YearlyFinancialData에 채우기
+    #             yearly_data.tangible_asset_acquisition = xbrl_data.get('tangible_asset_acquisition', 0)
+    #             yearly_data.intangible_asset_acquisition = xbrl_data.get('intangible_asset_acquisition', 0)
+    #             yearly_data.cfo = xbrl_data.get('cfo', 0)
+    #             yearly_data.equity = xbrl_data.get('equity', 0)
+    #             yearly_data.cash_and_cash_equivalents = xbrl_data.get('cash_and_cash_equivalents', 0)
+    #             yearly_data.short_term_borrowings = xbrl_data.get('short_term_borrowings', 0)
+    #             yearly_data.current_portion_of_long_term_borrowings = xbrl_data.get('current_portion_of_long_term_borrowings', 0)
+    #             yearly_data.long_term_borrowings = xbrl_data.get('long_term_borrowings', 0)
+    #             yearly_data.bonds = xbrl_data.get('bonds', 0)
+    #             yearly_data.lease_liabilities = xbrl_data.get('lease_liabilities', 0)
+    #             yearly_data.finance_costs = xbrl_data.get('finance_costs', 0)
+    #             
+    #         except Exception as e:
+    #             # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)
+    #             continue
     
     def fill_financial_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
         """
@@ -233,7 +234,7 @@ class DartDataService:
             
             # YearlyFinancialData가 없으면 생성
             if yearly_data is None:
-                yearly_data = YearlyFinancialData(year=year, corp_code=corp_code)
+                yearly_data = YearlyFinancialDataObject(year=year, corp_code=corp_code)
                 company_data.yearly_data.append(yearly_data)
             
             try:
@@ -244,25 +245,56 @@ class DartDataService:
                     reprt_code='11011'  # 사업보고서
                 )
                 
+                if not indicators_data:
+                    print(f"  경고: {year}년 재무지표 데이터가 비어있습니다.")
+                    continue
+                
                 # 각 지표 코드에 대해 매핑
+                found_indicators = []
                 for idx_code, field_name in indicator_mappings.items():
                     # 해당 idx_code를 가진 지표 찾기
+                    found = False
                     for indicator in indicators_data:
                         if indicator.get('idx_code') == idx_code:
-                            # thstrm_amount 값 추출 (당기값)
-                            amount_str = indicator.get('thstrm_amount', '0')
-                            if amount_str and amount_str != '':
+                            found = True
+                            found_indicators.append(idx_code)
+                            # idx_val 값 추출 (API 문서에 따르면 idx_val 사용)
+                            # thstrm_amount도 확인 (하위 호환성)
+                            idx_val = indicator.get('idx_val')
+                            thstrm_amount = indicator.get('thstrm_amount')
+                            
+                            # idx_val 우선, 없으면 thstrm_amount 사용
+                            value_str = idx_val if idx_val is not None else thstrm_amount
+                            
+                            if value_str is not None and value_str != '' and str(value_str).strip() != '':
                                 try:
-                                    # 쉼표 제거 후 float 변환 (% 단위)
-                                    value = float(amount_str.replace(',', ''))
-                                    setattr(yearly_data, field_name, value)
-                                except (ValueError, AttributeError):
+                                    # 문자열로 변환 후 쉼표 제거 및 float 변환
+                                    value_str_clean = str(value_str).replace(',', '').strip()
+                                    if value_str_clean:
+                                        value = float(value_str_clean)
+                                        # DART API는 백분율로 반환하므로 소수로 변환 (예: 30.335% -> 0.30335)
+                                        value = value / 100.0
+                                        setattr(yearly_data, field_name, value)
+                                    else:
+                                        print(f"  경고: {year}년 {idx_code} 값이 비어있습니다.")
+                                except (ValueError, AttributeError) as ve:
                                     # 변환 실패 시 0으로 유지
-                                    pass
+                                    print(f"  경고: {year}년 {idx_code} 값 변환 실패: {value_str}, 오류: {ve}")
+                            else:
+                                print(f"  경고: {year}년 {idx_code} 값이 비어있습니다. (idx_val: {idx_val}, thstrm_amount: {thstrm_amount})")
                             break
+                    
+                    if not found:
+                        print(f"  경고: {year}년 {idx_code} 지표를 찾을 수 없습니다.")
+                
+                if found_indicators:
+                    print(f"  ✓ {year}년 재무지표 수집 완료: {', '.join(found_indicators)}")
                         
             except Exception as e:
                 # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)
+                print(f"  오류: {year}년 재무지표 수집 중 예외 발생: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
 
 
