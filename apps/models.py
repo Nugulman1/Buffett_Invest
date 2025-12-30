@@ -11,6 +11,7 @@ class Company(models.Model):
     business_type_code = models.CharField(max_length=10, blank=True, verbose_name='업종코드')
     business_type_name = models.CharField(max_length=50, blank=True, verbose_name='업종명')
     bond_yield_5y = models.FloatField(default=0.0, verbose_name='채권수익률(5년)')
+    last_collected_at = models.DateTimeField(null=True, blank=True, verbose_name='마지막수집일시')
     passed_all_filters = models.BooleanField(default=False, verbose_name='전체필터통과')
     filter_operating_income = models.BooleanField(default=False, verbose_name='영업이익필터')
     filter_net_income = models.BooleanField(default=False, verbose_name='당기순이익필터')
@@ -29,6 +30,22 @@ class Company(models.Model):
     
     def __str__(self):
         return f"{self.company_name} ({self.corp_code})"
+
+
+class BondYield(models.Model):
+    """채권수익률 모델 (단일 레코드만 유지)"""
+    yield_value = models.FloatField(default=0.0, verbose_name='채권수익률(5년)')
+    collected_at = models.DateTimeField(verbose_name='수집일시')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
+    
+    class Meta:
+        db_table = 'bond_yield'
+        verbose_name = '채권수익률'
+        verbose_name_plural = '채권수익률'
+    
+    def __str__(self):
+        return f"채권수익률: {self.yield_value:.4f}% (수집일: {self.collected_at})"
 
 
 class YearlyFinancialData(models.Model):

@@ -71,14 +71,41 @@ class DataOrchestrator:
         #     # XBRL 수집 실패 시에도 기본 지표 수집은 계속 진행
         #     pass
         
-        # ECOS 데이터 수집 (채권수익률 - 가장 최근 값 한 번만 수집)
+        # ECOS 데이터 수집 (채권수익률 - 하루 기준으로 캐싱)
         try:
-            bond_yield = self.ecos_service.collect_bond_yield_5y()
-            # ECOS API는 백분율로 반환하므로 소수로 변환 (예: 3.057% -> 0.03057)
-            company_data.bond_yield_5y = bond_yield / 100.0 if bond_yield else 0.0
+            from django.utils import timezone
+            from datetime import timedelta
+            from django.apps import apps as django_apps
+            
+            BondYieldModel = django_apps.get_model('apps', 'BondYield')
+            
+            # DB에서 채권수익률 조회 (단일 레코드만 유지)
+            bond_yield_obj, created = BondYieldModel.objects.get_or_create(
+                id=1,  # 단일 레코드
+                defaults={
+                    'yield_value': 0.0,
+                    'collected_at': timezone.now() - timedelta(days=2)  # 기본값: 2일 전
+                }
+            )
+            
+            # 하루가 지났는지 확인
+            if timezone.now() - bond_yield_obj.collected_at > timedelta(days=1):
+                # ECOS API 호출하여 업데이트
+                bond_yield = self.ecos_service.collect_bond_yield_5y()
+                # ECOS API는 백분율로 반환하므로 소수로 변환 (예: 3.057% -> 0.03057)
+                bond_yield_value = bond_yield / 100.0 if bond_yield else 0.0
+                bond_yield_obj.yield_value = bond_yield_value
+                bond_yield_obj.collected_at = timezone.now()
+                bond_yield_obj.save()
+            else:
+                # 캐시된 값 사용
+                bond_yield_value = bond_yield_obj.yield_value
+            
+            company_data.bond_yield_5y = bond_yield_value
         except Exception as e:
             print(f"경고: 채권수익률 수집 실패: {e}")
             # 채권수익률은 실패해도 계속 진행
+            company_data.bond_yield_5y = 0.0
         
         # 계산 로직 호출하여 계산 지표 채우기
         try:
@@ -115,10 +142,14 @@ class DataOrchestrator:
         # 하지만 더 안전하게 모듈에서 직접 접근
         import django.apps
         from django.apps import apps as django_apps
+        from django.utils import timezone
         
         # Django 모델 가져오기
         CompanyModel = django_apps.get_model('apps', 'Company')
         YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+        
+        # 현재 시간 (수집 일시)
+        now = timezone.now()
         
         # Company 모델 저장 또는 업데이트
         company, created = CompanyModel.objects.get_or_create(
@@ -128,6 +159,7 @@ class DataOrchestrator:
                 'business_type_code': company_data.business_type_code,
                 'business_type_name': company_data.business_type_name,
                 'bond_yield_5y': company_data.bond_yield_5y,
+                'last_collected_at': now,
                 'passed_all_filters': company_data.passed_all_filters,
                 'filter_operating_income': company_data.filter_operating_income,
                 'filter_net_income': company_data.filter_net_income,
@@ -142,6 +174,7 @@ class DataOrchestrator:
             company.business_type_code = company_data.business_type_code
             company.business_type_name = company_data.business_type_name
             company.bond_yield_5y = company_data.bond_yield_5y
+            company.last_collected_at = now
             company.passed_all_filters = company_data.passed_all_filters
             company.filter_operating_income = company_data.filter_operating_income
             company.filter_net_income = company_data.filter_net_income

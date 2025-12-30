@@ -13,6 +13,9 @@ class DartClient:
     
     BASE_URL = "https://opendart.fss.or.kr/api"
     
+    # 종목코드 → corp_code 매핑 캐시 (클래스 변수)
+    _corp_code_mapping_cache = {}
+    
     def __init__(self, api_key=None):
         """
         DART 클라이언트 초기화
@@ -65,16 +68,15 @@ class DartClient:
         """
         return self._make_request("company.json", params={'corp_code': corp_code})
     
-    def _get_corp_code_by_stock_code(self, stock_code):
+    def load_corp_code_xml(self):
         """
-        종목코드로 기업 고유번호(corp_code) 조회
+        기업 고유번호 XML 파일을 다운로드하여 캐시에 저장
         
-        Args:
-            stock_code: 종목코드 (6자리, 예: '005930')
-            
-        Returns:
-            corp_code (고유번호) 또는 None
+        한 번만 다운로드하여 모든 종목코드 → corp_code 매핑을 메모리에 저장
         """
+        if self._corp_code_mapping_cache:
+            return  # 이미 로드됨
+        
         try:
             # 기업 고유번호 XML 파일 다운로드
             url = f"{self.BASE_URL}/corpCode.xml"
@@ -89,15 +91,36 @@ class DartClient:
             # XML 파싱
             root = ET.fromstring(xml_content)
             
-            # 종목코드로 corp_code 찾기
+            # 모든 종목코드 → corp_code 매핑을 캐시에 저장
             for corp in root:
                 stock_code_elem = corp.find('stock_code')
-                if stock_code_elem is not None and stock_code_elem.text == stock_code:
-                    return corp.find('corp_code').text
-            
-            return None
+                corp_code_elem = corp.find('corp_code')
+                if stock_code_elem is not None and stock_code_elem.text and corp_code_elem is not None:
+                    stock_code = stock_code_elem.text.strip()
+                    corp_code = corp_code_elem.text.strip()
+                    if stock_code and corp_code:
+                        self._corp_code_mapping_cache[stock_code] = corp_code
         except Exception as e:
-            raise Exception(f"고유번호 조회 실패: {str(e)}")
+            raise Exception(f"기업 고유번호 XML 로드 실패: {str(e)}")
+    
+    def _get_corp_code_by_stock_code(self, stock_code):
+        """
+        종목코드로 기업 고유번호(corp_code) 조회
+        
+        XML 캐시를 사용하여 한 번만 다운로드하고 재사용
+        
+        Args:
+            stock_code: 종목코드 (6자리, 예: '005930')
+            
+        Returns:
+            corp_code (고유번호) 또는 None
+        """
+        # 캐시가 비어있으면 먼저 로드
+        if not self._corp_code_mapping_cache:
+            self.load_corp_code_xml()
+        
+        # 캐시에서 조회
+        return self._corp_code_mapping_cache.get(stock_code)
     
     def get_company_by_stock_code(self, stock_code):
         """

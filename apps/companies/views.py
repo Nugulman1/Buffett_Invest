@@ -42,13 +42,13 @@ def get_financial_data(request, corp_code):
         CompanyModel = django_apps.get_model('apps', 'Company')
         YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
         
-        # DB에서 먼저 조회
+        # DB에서 먼저 조회 (prefetch_related로 쿼리 최적화)
         try:
-            company = CompanyModel.objects.get(corp_code=corp_code)
-            yearly_data_list = company.yearly_data.all().order_by('year')
+            company = CompanyModel.objects.prefetch_related('yearly_data').get(corp_code=corp_code)
+            yearly_data_list = list(company.yearly_data.all().order_by('year'))
             
             # DB에 데이터가 있으면 DB에서 반환
-            if yearly_data_list.exists():
+            if yearly_data_list:
                 data = {
                     'corp_code': company.corp_code,
                     'company_name': company.company_name,
@@ -147,6 +147,10 @@ def batch_get_financial_data(request):
         results = []
         errors = []
         
+        # Django 모델 가져오기
+        from django.apps import apps as django_apps
+        CompanyModel = django_apps.get_model('apps', 'Company')
+        
         orchestrator = DataOrchestrator()
         
         for corp_code_or_stock_code in corp_codes:
@@ -166,6 +170,22 @@ def batch_get_financial_data(request):
                 else:
                     corp_code = corp_code_or_stock_code
                 
+                # DB에서 먼저 조회
+                try:
+                    company = CompanyModel.objects.get(corp_code=corp_code)
+                    # DB에 데이터가 있으면 DB에서 반환
+                    results.append({
+                        'corp_code': company.corp_code,
+                        'company_name': company.company_name,
+                        'business_type_name': company.business_type_name,
+                        'passed_all_filters': company.passed_all_filters,
+                    })
+                    continue
+                except CompanyModel.DoesNotExist:
+                    # DB에 없으면 실시간 수집
+                    pass
+                
+                # DB에 없으면 실시간 수집
                 company_data = orchestrator.collect_company_data(corp_code)
                 results.append({
                     'corp_code': company_data.corp_code,
