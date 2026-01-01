@@ -1,6 +1,7 @@
 """
 DART OpenDART API 클라이언트
 """
+import time
 import requests
 import zipfile
 import io
@@ -27,18 +28,26 @@ class DartClient:
         if not self.api_key:
             raise ValueError("DART_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
     
-    def _make_request(self, endpoint, params=None, return_binary=False):
+    def _make_request(self, endpoint, params=None, return_binary=False, max_retries=None, timeout=None):
         """
-        API 요청 공통 메서드
+        API 요청 공통 메서드 (재시도 로직 포함)
         
         Args:
             endpoint: API 엔드포인트
             params: 요청 파라미터
             return_binary: True면 바이너리 데이터 반환 (XBRL 다운로드용)
+            max_retries: 최대 재시도 횟수 (None이면 settings에서 가져옴)
+            timeout: API 요청 타임아웃 (None이면 settings에서 가져옴)
             
         Returns:
             API 응답 데이터 (JSON 또는 바이너리)
         """
+        # 설정 파일에서 가져오기 (파라미터가 있으면 우선)
+        if max_retries is None:
+            max_retries = settings.DATA_COLLECTION['API_MAX_RETRIES']
+        if timeout is None:
+            timeout = settings.DATA_COLLECTION['API_TIMEOUT']
+        
         url = f"{self.BASE_URL}/{endpoint}"
         
         if params is None:
@@ -46,15 +55,88 @@ class DartClient:
         
         params['crtfc_key'] = self.api_key
         
-        try:
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            
-            if return_binary:
-                return response.content
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"DART API 요청 실패: {str(e)}")
+        # 재시도 가능한 HTTP 상태 코드 (일시적 오류)
+        retryable_status_codes = {429, 500, 502, 503, 504}
+        
+        last_exception = None
+        
+        for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (총 4번 시도)
+            try:
+                response = requests.get(url, params=params, timeout=timeout)
+                
+                # 성공한 경우
+                if response.status_code == 200:
+                    if return_binary:
+                        return response.content
+                    return response.json()
+                
+                # 재시도 가능한 오류인지 확인
+                if response.status_code in retryable_status_codes:
+                    if attempt < max_retries:  # 마지막 시도가 아니면 재시도
+                        # Rate Limit (429)인 경우 Retry-After 헤더 확인
+                        if response.status_code == 429:
+                            retry_after = response.headers.get('Retry-After')
+                            if retry_after:
+                                try:
+                                    wait_time = int(retry_after)
+                                except ValueError:
+                                    wait_time = 2 ** attempt  # Retry-After가 유효하지 않으면 exponential backoff
+                            else:
+                                wait_time = 2 ** attempt
+                        else:
+                            # Exponential Backoff: 2^attempt 초 대기 (1초, 2초, 4초...)
+                            wait_time = 2 ** attempt
+                        
+                        time.sleep(wait_time)
+                        continue  # 재시도
+                    else:
+                        # 마지막 시도에서도 실패
+                        response.raise_for_status()
+                else:
+                    # 재시도 불가능한 오류 (400, 401, 404 등)
+                    response.raise_for_status()
+                    
+            except requests.exceptions.Timeout as e:
+                # 타임아웃은 재시도 가능
+                last_exception = e
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise Exception(f"DART API 요청 실패 (타임아웃, 최대 {max_retries}회 재시도 후 실패): {str(e)}")
+                    
+            except requests.exceptions.ConnectionError as e:
+                # 네트워크 연결 오류는 재시도 가능
+                last_exception = e
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise Exception(f"DART API 요청 실패 (연결 오류, 최대 {max_retries}회 재시도 후 실패): {str(e)}")
+                    
+            except requests.exceptions.HTTPError as e:
+                # HTTP 오류 (이미 위에서 상태 코드로 처리했지만 안전장치)
+                last_exception = e
+                if attempt < max_retries and hasattr(e.response, 'status_code') and e.response.status_code in retryable_status_codes:
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                    continue
+                raise  # 재시도 불가능한 오류는 즉시 raise
+                
+            except requests.exceptions.RequestException as e:
+                # 기타 RequestException
+                last_exception = e
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise Exception(f"DART API 요청 실패 (최대 {max_retries}회 재시도 후 실패): {str(e)}")
+        
+        # 모든 재시도 실패 (이 코드는 실행되지 않아야 하지만 안전장치)
+        raise Exception(f"DART API 요청 실패 (최대 {max_retries}회 재시도 후 실패): {str(last_exception)}")
     
     def get_company_info(self, corp_code):
         """
@@ -81,7 +163,8 @@ class DartClient:
             # 기업 고유번호 XML 파일 다운로드
             url = f"{self.BASE_URL}/corpCode.xml"
             params = {'crtfc_key': self.api_key}
-            response = requests.get(url, params=params, timeout=30)
+            timeout = settings.DATA_COLLECTION['API_TIMEOUT']
+            response = requests.get(url, params=params, timeout=timeout)
             response.raise_for_status()
             
             # ZIP 파일 압축 해제

@@ -256,4 +256,64 @@ class IndicatorCalculator:
         # #     tax_rate,
         # #     equity_risk_premium
         # # )
+    
+    @staticmethod
+    def calculate_total_assets_operating_income_ratio(yearly_data: YearlyFinancialDataObject) -> float:
+        """
+        총자산영업이익률 계산
+        
+        공식: (영업이익 / 자산총계)
+        
+        주의: 프론트엔드 formatPercent가 value * 100을 하므로 소수 형태로 저장해야 합니다.
+        예: 30.335% -> 0.30335로 저장 (프론트에서 0.30335 * 100 = 30.335%로 표시)
+        
+        Args:
+            yearly_data: YearlyFinancialDataObject 객체
+        
+        Returns:
+            총자산영업이익률 (소수 형태, float, 예: 0.30335 = 30.335%)
+        """
+        if yearly_data.total_assets > 0:
+            return yearly_data.operating_income / yearly_data.total_assets
+        return 0.0
+    
+    @staticmethod
+    def calculate_roe(yearly_data: YearlyFinancialDataObject) -> float:
+        """
+        ROE (Return on Equity, 자기자본수익률) 계산
+        
+        공식: (당기순이익 / 자본총계)
+        
+        주의: 프론트엔드 formatPercent가 value * 100을 하므로 소수 형태로 저장해야 합니다.
+        예: 15.5% -> 0.155로 저장 (프론트에서 0.155 * 100 = 15.5%로 표시)
+        
+        Args:
+            yearly_data: YearlyFinancialDataObject 객체
+        
+        Returns:
+            ROE (소수 형태, float, 예: 0.155 = 15.5%)
+        """
+        if yearly_data.total_equity > 0:
+            return yearly_data.net_income / yearly_data.total_equity
+        return 0.0
+    
+    @staticmethod
+    def calculate_basic_financial_ratios(company_data: CompanyFinancialObject) -> None:
+        """
+        기본 재무지표 계산 (총자산영업이익률, ROE)
+        
+        기본 지표 API(fnlttSinglAcnt.json)에서 수집한 데이터로 계산 가능한 재무지표를 계산합니다.
+        API 호출 최적화를 위해 재무지표 API 호출을 제거하고 계산 방식으로 변경되었습니다.
+        
+        Args:
+            company_data: CompanyFinancialObject 객체 (in-place 수정)
+        """
+        for yearly_data in company_data.yearly_data:
+            # 총자산영업이익률 계산
+            yearly_data.total_assets_operating_income_ratio = (
+                IndicatorCalculator.calculate_total_assets_operating_income_ratio(yearly_data)
+            )
+            
+            # ROE 계산
+            yearly_data.roe = IndicatorCalculator.calculate_roe(yearly_data)
 

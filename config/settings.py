@@ -134,3 +134,17 @@ REST_FRAMEWORK = {
 DART_API_KEY = os.getenv('DART_API_KEY', '')
 ECOS_API_KEY = os.getenv('ECOS_API_KEY', '')
 
+# 데이터 수집 설정 (환경변수 또는 기본값)
+DATA_COLLECTION = {
+    # API 관련
+    'API_TIMEOUT': int(os.getenv('API_TIMEOUT', '30')),  # API 요청 타임아웃 (초)
+    'API_MAX_RETRIES': int(os.getenv('API_MAX_RETRIES', '3')),  # 최대 재시도 횟수
+    
+    # 데이터 수집 관련
+    'COLLECTION_LIMIT': int(os.getenv('COLLECTION_LIMIT', '10')),  # 기본 수집 개수
+    'MAX_WORKERS': int(os.getenv('MAX_WORKERS', '6')),  # 기본 병렬 처리 스레드 수
+    
+    # 로깅
+    'LOGGING_LEVEL': os.getenv('LOGGING_LEVEL', 'INFO'),  # 로깅 레벨
+}
+

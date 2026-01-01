@@ -1,6 +1,7 @@
 """
 데이터 수집 오케스트레이터
 """
+from django.db import transaction
 from apps.service.dart import DartDataService
 from apps.service.ecos import EcosDataService
 from apps.service.calculator import IndicatorCalculator
@@ -52,14 +53,9 @@ class DataOrchestrator:
         # DART 기본 지표 수집 (한 번의 호출로 모든 연도 처리)
         self.dart_service.fill_basic_indicators(corp_code, years, company_data)
         
-        # DART 재무지표 수집 (매출총이익률, 판관비율, 총자산영업이익률, ROE)
-        try:
-            self.dart_service.fill_financial_indicators(corp_code, years, company_data)
-        except Exception as e:
-            # 재무지표 수집 실패 시에도 기본 지표 수집은 계속 진행
-            print(f"경고: 재무지표 수집 실패: {e}")
-            import traceback
-            traceback.print_exc()
+        # 기본 재무지표 계산 (총자산영업이익률, ROE)
+        # API 호출 최적화를 위해 재무지표 API 호출을 제거하고 계산 방식으로 변경
+        IndicatorCalculator.calculate_basic_financial_ratios(company_data)
         
         # XBRL 데이터 수집 (가장 최근 년도만 수집)
         # 표본이 너무 적어서 데이터화를 못할듯하여 일단 중단
@@ -108,11 +104,11 @@ class DataOrchestrator:
             company_data.bond_yield_5y = 0.0
         
         # 계산 로직 호출하여 계산 지표 채우기
-        try:
-            IndicatorCalculator.calculate_all_indicators(company_data)
-        except Exception as e:
-            print(f"경고: 계산 지표 계산 실패: {e}")
-            # 계산 실패 시에도 수집된 데이터는 반환
+        # try:
+        #     IndicatorCalculator.calculate_all_indicators(company_data)
+        # except Exception as e:
+        #     print(f"경고: 계산 지표 계산 실패: {e}")
+        #     # 계산 실패 시에도 수집된 데이터는 반환
         
         # 필터 적용
         try:
@@ -130,9 +126,12 @@ class DataOrchestrator:
         
         return company_data
     
+    @transaction.atomic
     def _save_to_db(self, company_data: CompanyFinancialObject) -> None:
         """
         CompanyFinancialObject를 Django 모델로 변환하여 DB에 저장
+        
+        트랜잭션으로 원자성 보장: Company와 YearlyFinancialData 저장이 모두 성공하거나 모두 실패
         
         Args:
             company_data: CompanyFinancialObject 객체
@@ -152,7 +151,7 @@ class DataOrchestrator:
         now = timezone.now()
         
         # Company 모델 저장 또는 업데이트
-        company, created = CompanyModel.objects.get_or_create(
+        company, _ = CompanyModel.objects.update_or_create(
             corp_code=company_data.corp_code,
             defaults={
                 'company_name': company_data.company_name,
@@ -168,23 +167,9 @@ class DataOrchestrator:
             }
         )
         
-        # 기존 데이터인 경우 업데이트
-        if not created:
-            company.company_name = company_data.company_name
-            company.business_type_code = company_data.business_type_code
-            company.business_type_name = company_data.business_type_name
-            company.bond_yield_5y = company_data.bond_yield_5y
-            company.last_collected_at = now
-            company.passed_all_filters = company_data.passed_all_filters
-            company.filter_operating_income = company_data.filter_operating_income
-            company.filter_net_income = company_data.filter_net_income
-            company.filter_revenue_cagr = company_data.filter_revenue_cagr
-            company.filter_total_assets_operating_income_ratio = company_data.filter_total_assets_operating_income_ratio
-            company.save()
-        
         # YearlyFinancialData 모델 저장 또는 업데이트
         for yearly_data in company_data.yearly_data:
-            yearly_model, created = YearlyFinancialDataModel.objects.get_or_create(
+            YearlyFinancialDataModel.objects.update_or_create(
                 company=company,
                 year=yearly_data.year,
                 defaults={
@@ -193,24 +178,13 @@ class DataOrchestrator:
                     'net_income': yearly_data.net_income,
                     'total_assets': yearly_data.total_assets,
                     'total_equity': yearly_data.total_equity,
+                    # gross_profit_margin, selling_admin_expense_ratio는 수집하지 않음 (0.0으로 저장됨)
                     'gross_profit_margin': yearly_data.gross_profit_margin,
                     'selling_admin_expense_ratio': yearly_data.selling_admin_expense_ratio,
+                    # total_assets_operating_income_ratio, roe는 계산 방식으로 채워짐
                     'total_assets_operating_income_ratio': yearly_data.total_assets_operating_income_ratio,
                     'roe': yearly_data.roe,
                 }
             )
-            
-            # 기존 데이터인 경우 업데이트
-            if not created:
-                yearly_model.revenue = yearly_data.revenue
-                yearly_model.operating_income = yearly_data.operating_income
-                yearly_model.net_income = yearly_data.net_income
-                yearly_model.total_assets = yearly_data.total_assets
-                yearly_model.total_equity = yearly_data.total_equity
-                yearly_model.gross_profit_margin = yearly_data.gross_profit_margin
-                yearly_model.selling_admin_expense_ratio = yearly_data.selling_admin_expense_ratio
-                yearly_model.total_assets_operating_income_ratio = yearly_data.total_assets_operating_income_ratio
-                yearly_model.roe = yearly_data.roe
-                yearly_model.save()
 
 

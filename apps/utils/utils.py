@@ -1,6 +1,8 @@
 """
 재무제표 데이터 정규화 유틸리티
 """
+from datetime import datetime, date
+from django.apps import apps as django_apps
 from apps.models import CompanyFinancialObject
 
 
@@ -184,4 +186,49 @@ def print_latest_year_indicators(company_data: CompanyFinancialObject):
     for yearly_data in sorted(company_data.yearly_data, key=lambda x: x.year, reverse=True):
         print(f"  {yearly_data.year}년: 자산총계={format_amount_korean(yearly_data.total_assets)}, 영업이익={format_amount_korean(yearly_data.operating_income)}")
     print("=" * 80)
+
+
+def should_collect_company(corp_code: str) -> bool:
+    """
+    기업 수집 필요 여부 확인 (4월 1일 기준)
+    
+    DB에 기업이 없거나, last_collected_at이 없거나, 4월 1일 기준으로 1년이 지났으면 수집 필요.
+    
+    Args:
+        corp_code: 고유번호 (8자리)
+    
+    Returns:
+        수집 필요 여부 (bool) - True면 수집 필요, False면 수집 불필요
+    """
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    
+    try:
+        company = CompanyModel.objects.get(corp_code=corp_code)
+        
+        # last_collected_at이 없으면 수집
+        if not company.last_collected_at:
+            return True
+        
+        # 4월 1일 기준 확인
+        last_collected_date = company.last_collected_at.date()
+        current_date = datetime.now().date()
+        
+        # 마지막 수집일 기준 4월 1일
+        if last_collected_date.month >= 4:
+            last_april = date(last_collected_date.year, 4, 1)
+        else:
+            last_april = date(last_collected_date.year - 1, 4, 1)
+        
+        # 현재 날짜 기준 4월 1일
+        if current_date.month >= 4:
+            current_april = date(current_date.year, 4, 1)
+        else:
+            current_april = date(current_date.year - 1, 4, 1)
+        
+        # 현재 기준 4월 1일 > 마지막 수집 기준 4월 1일이면 재수집
+        return current_april > last_april
+        
+    except CompanyModel.DoesNotExist:
+        # DB에 없으면 수집
+        return True
 

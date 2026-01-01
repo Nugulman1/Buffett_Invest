@@ -57,10 +57,12 @@ class YearlyFinancialData(models.Model):
     net_income = models.BigIntegerField(default=0, verbose_name='당기순이익')
     total_assets = models.BigIntegerField(default=0, verbose_name='자산총계')
     total_equity = models.BigIntegerField(default=0, verbose_name='자본총계')
-    gross_profit_margin = models.FloatField(default=0.0, verbose_name='매출총이익률')
-    selling_admin_expense_ratio = models.FloatField(default=0.0, verbose_name='판관비율')
-    total_assets_operating_income_ratio = models.FloatField(default=0.0, verbose_name='총자산영업이익률')
-    roe = models.FloatField(default=0.0, verbose_name='ROE')
+    # 주의: 아래 두 필드는 현재 수집하지 않음 (기본 지표 API에 해당 계정이 없음)
+    # API 호출 최적화를 위해 재무지표 API 호출을 제거했으며, 매출총이익률과 판관비율은 수집하지 않음
+    gross_profit_margin = models.FloatField(default=0.0, verbose_name='매출총이익률')  # 사용 안 함 (API 호출 제거)
+    selling_admin_expense_ratio = models.FloatField(default=0.0, verbose_name='판관비율')  # 사용 안 함 (API 호출 제거)
+    total_assets_operating_income_ratio = models.FloatField(default=0.0, verbose_name='총자산영업이익률')  # 계산 방식 (영업이익/자산총계)
+    roe = models.FloatField(default=0.0, verbose_name='ROE')  # 계산 방식 (당기순이익/자본총계)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
     
@@ -162,10 +164,12 @@ class YearlyFinancialDataObject:
         self.net_income: int = 0  # 당기순이익 (5Y)
         self.total_assets: int = 0  # 자산총계
         self.total_equity: int = 0  # 자본총계
-        self.gross_profit_margin: float = 0.0  # 매출총이익률 (%)
-        self.selling_admin_expense_ratio: float = 0.0  # 판관비율 (%)
-        self.total_assets_operating_income_ratio: float = 0.0  # 총자산영업이익률 (%)
-        self.roe: float = 0.0  # ROE (%)
+        # 주의: 아래 두 필드는 현재 수집하지 않음 (기본 지표 API에 해당 계정이 없음)
+        # API 호출 최적화를 위해 재무지표 API 호출을 제거했으며, 매출총이익률과 판관비율은 수집하지 않음
+        self.gross_profit_margin: float = 0.0  # 매출총이익률 (%) - 사용 안 함 (API 호출 제거)
+        self.selling_admin_expense_ratio: float = 0.0  # 판관비율 (%) - 사용 안 함 (API 호출 제거)
+        self.total_assets_operating_income_ratio: float = 0.0  # 총자산영업이익률 (%) - 계산 방식 (영업이익/자산총계)
+        self.roe: float = 0.0  # ROE (%) - 계산 방식 (당기순이익/자본총계)
         
         # === 계산에 사용하는 기본 지표 ===
         self.finance_costs: int = 0  # 금융비용 (WACC 계산에 사용)

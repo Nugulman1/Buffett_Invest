@@ -54,10 +54,12 @@ def print_all_years_data(company_data):
         print(f"    당기순이익: {format_amount_korean(yearly_data.net_income)} ({yearly_data.net_income:,} 원)")
         print(f"    자산총계: {format_amount_korean(yearly_data.total_assets)} ({yearly_data.total_assets:,} 원)")
         print(f"    자본총계: {format_amount_korean(yearly_data.total_equity)} ({yearly_data.total_equity:,} 원)")
-        print(f"    매출총이익률: {yearly_data.gross_profit_margin:.2f}%")
-        print(f"    판관비율: {yearly_data.selling_admin_expense_ratio:.2f}%")
-        print(f"    총자산영업이익률: {yearly_data.total_assets_operating_income_ratio:.2f}%")
-        print(f"    ROE: {yearly_data.roe:.2f}%")
+        # 매출총이익률, 판관비율은 더 이상 수집하지 않음 (기본 지표 API에 해당 계정이 없음)
+        # print(f"    매출총이익률: {yearly_data.gross_profit_margin:.2f}%")  # 수집 안 함
+        # print(f"    판관비율: {yearly_data.selling_admin_expense_ratio:.2f}%")  # 수집 안 함
+        # 계산 방식으로 변경된 재무지표
+        print(f"    총자산영업이익률 (계산): {yearly_data.total_assets_operating_income_ratio:.2f}%")
+        print(f"    ROE (계산): {yearly_data.roe:.2f}%")
         
         # === 계산에 사용하는 기본 지표 (XBRL) ===
         # XBRL 데이터 수집 중단으로 주석처리

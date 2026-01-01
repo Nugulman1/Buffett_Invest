@@ -15,6 +15,7 @@ class CompanyFilter:
     def filter_operating_income(company_data: CompanyFinancialObject) -> bool:
         """
         영업이익 필터: 최근 5년 중 영업이익 ≤ 0 인 연도 ≤ 1회
+        (5년 데이터가 없어도 수집된 데이터로 계산)
         
         Args:
             company_data: CompanyFinancialObject 객체
@@ -25,18 +26,14 @@ class CompanyFilter:
         if not company_data.yearly_data:
             return False
         
-        # 최근 5년 데이터 정렬 (오름차순)
+        # 데이터 정렬 (오름차순)
         sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
         
-        if len(sorted_data) < 5:
-            logger.warning(f"영업이익 필터: 최근 5년 데이터가 부족합니다 (수집된 연도: {len(sorted_data)}개)")
-            return False
-        
-        # 최근 5년만 사용
-        recent_5_years = sorted_data[-5:]
+        # 최근 5년 또는 모든 데이터 사용 (5년 미만인 경우)
+        data_to_check = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
         
         # 영업이익 ≤ 0 인 연도 개수 계산
-        negative_count = sum(1 for data in recent_5_years if data.operating_income <= 0)
+        negative_count = sum(1 for data in data_to_check if data.operating_income <= 0)
         
         # 영업이익 ≤ 0 인 연도가 1회 이하인지 확인
         return negative_count <= 1
@@ -45,6 +42,7 @@ class CompanyFilter:
     def filter_net_income(company_data: CompanyFinancialObject) -> bool:
         """
         당기순이익 필터: 최근 5년 당기순이익 합계 > 0
+        (5년 데이터가 없어도 수집된 데이터로 계산)
         
         Args:
             company_data: CompanyFinancialObject 객체
@@ -55,18 +53,14 @@ class CompanyFilter:
         if not company_data.yearly_data:
             return False
         
-        # 최근 5년 데이터 정렬 (오름차순)
+        # 데이터 정렬 (오름차순)
         sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
         
-        if len(sorted_data) < 5:
-            logger.warning(f"당기순이익 필터: 최근 5년 데이터가 부족합니다 (수집된 연도: {len(sorted_data)}개)")
-            return False
-        
-        # 최근 5년만 사용
-        recent_5_years = sorted_data[-5:]
+        # 최근 5년 또는 모든 데이터 사용 (5년 미만인 경우)
+        data_to_check = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
         
         # 당기순이익 합계 계산
-        total_net_income = sum(data.net_income for data in recent_5_years)
+        total_net_income = sum(data.net_income for data in data_to_check)
         
         # 합계가 0보다 큰지 확인
         return total_net_income > 0
@@ -74,7 +68,8 @@ class CompanyFilter:
     @staticmethod
     def filter_revenue_cagr(company_data: CompanyFinancialObject) -> bool:
         """
-        매출액 CAGR 필터: 매출액 5년 CAGR ≥ 0%
+        매출액 CAGR 필터: 매출액 CAGR ≥ 0%
+        (5년 데이터가 없어도 수집된 데이터로 계산, 최소 2년 데이터 필요)
         
         단, 금융업인 경우 자동으로 True 반환 (금융업은 매출액 개념이 다름)
         
@@ -93,22 +88,20 @@ class CompanyFilter:
         if not company_data.yearly_data:
             return False
         
-        # 최근 5년 데이터 정렬 (오름차순)
+        # 데이터 정렬 (오름차순)
         sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
         
-        if len(sorted_data) < 5:
-            logger.warning(f"매출액 CAGR 필터: 최근 5년 데이터가 부족합니다 (수집된 연도: {len(sorted_data)}개)")
-            return False
+        # 최소 2년 데이터 필요 (CAGR 계산을 위해)
+        if len(sorted_data) < 2:
+            return True
         
-        # 최근 5년만 사용
-        recent_5_years = sorted_data[-5:]
+        # 시작값 (첫 년도)과 최종값 (마지막 년도)
+        start_value = sorted_data[0].revenue
+        end_value = sorted_data[-1].revenue
+        years_span = len(sorted_data) - 1  # 첫 년도와 마지막 년도 사이의 간격
         
-        # 시작값 (1년차)과 최종값 (5년차)
-        start_value = recent_5_years[0].revenue
-        end_value = recent_5_years[4].revenue
-        
-        # CAGR 계산 (1년차와 5년차 사이는 4년)
-        cagr = IndicatorCalculator.calculate_cagr(start_value, end_value, 4)
+        # CAGR 계산
+        cagr = IndicatorCalculator.calculate_cagr(start_value, end_value, years_span)
         
         # CAGR ≥ 0% 인지 확인
         return cagr >= 0.0
@@ -116,7 +109,8 @@ class CompanyFilter:
     @staticmethod
     def filter_total_assets_operating_income_ratio(company_data: CompanyFinancialObject) -> bool:
         """
-        총자산영업이익률 필터: 총자산영업이익률 5년 평균 > 0
+        총자산영업이익률 필터: 총자산영업이익률 평균 > 0
+        (5년 데이터가 없어도 수집된 데이터로 계산)
         
         Args:
             company_data: CompanyFinancialObject 객체
@@ -127,18 +121,14 @@ class CompanyFilter:
         if not company_data.yearly_data:
             return False
         
-        # 최근 5년 데이터 정렬 (오름차순)
+        # 데이터 정렬 (오름차순)
         sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
         
-        if len(sorted_data) < 5:
-            logger.warning(f"총자산영업이익률 필터: 최근 5년 데이터가 부족합니다 (수집된 연도: {len(sorted_data)}개)")
-            return False
-        
-        # 최근 5년만 사용
-        recent_5_years = sorted_data[-5:]
+        # 최근 5년 또는 모든 데이터 사용 (5년 미만인 경우)
+        data_to_check = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
         
         # 총자산영업이익률 평균 계산
-        ratios = [data.total_assets_operating_income_ratio for data in recent_5_years]
+        ratios = [data.total_assets_operating_income_ratio for data in data_to_check]
         average_ratio = sum(ratios) / len(ratios) if ratios else 0.0
         
         # 평균이 0보다 큰지 확인

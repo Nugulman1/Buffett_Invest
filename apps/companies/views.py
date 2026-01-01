@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from apps.service.orchestrator import DataOrchestrator
 from apps.models import CompanyFinancialObject
-from apps.utils.utils import format_amount_korean
+from apps.utils.utils import format_amount_korean, should_collect_company
 import json
 
 
@@ -35,7 +35,8 @@ def get_financial_data(request, corp_code):
     기업 재무 데이터 조회 API
     GET /api/companies/{corp_code}/financial-data/
     
-    DB에서 먼저 조회하고, 없으면 실시간 수집
+    DB에서 먼저 조회하고, 데이터가 없거나 오래되었으면 실시간 수집
+    (4월 1일 기준으로 1년이 지났으면 재수집)
     """
     try:
         from django.apps import apps as django_apps
@@ -47,8 +48,9 @@ def get_financial_data(request, corp_code):
             company = CompanyModel.objects.prefetch_related('yearly_data').get(corp_code=corp_code)
             yearly_data_list = list(company.yearly_data.all().order_by('year'))
             
-            # DB에 데이터가 있으면 DB에서 반환
-            if yearly_data_list:
+            # DB에 데이터가 있고 최신이면 DB에서 반환
+            # should_collect_company가 False면 수집 불필요 = DB 데이터가 최신 = DB에서 반환
+            if yearly_data_list and not should_collect_company(corp_code):
                 data = {
                     'corp_code': company.corp_code,
                     'company_name': company.company_name,
