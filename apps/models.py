@@ -48,6 +48,26 @@ class BondYield(models.Model):
         return f"채권수익률: {self.yield_value:.4f}% (수집일: {self.collected_at})"
 
 
+class ApiCallStats(models.Model):
+    """일별 API 호출 통계 모델"""
+    date = models.DateField(unique=True, verbose_name='날짜')
+    dart_calls = models.IntegerField(default=0, verbose_name='DART API 호출 횟수')
+    ecos_calls = models.IntegerField(default=0, verbose_name='ECOS API 호출 횟수')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
+    
+    class Meta:
+        db_table = 'api_call_stats'
+        verbose_name = 'API 호출 통계'
+        verbose_name_plural = 'API 호출 통계들'
+        indexes = [
+            models.Index(fields=['date']),
+        ]
+    
+    def __str__(self):
+        return f"{self.date} - DART: {self.dart_calls}회, ECOS: {self.ecos_calls}회"
+
+
 class YearlyFinancialData(models.Model):
     """년도별 재무 데이터를 저장하는 Django 모델"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='yearly_data', verbose_name='회사')

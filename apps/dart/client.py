@@ -6,7 +6,9 @@ import requests
 import zipfile
 import io
 import xml.etree.ElementTree as ET
+from datetime import date
 from django.conf import settings
+from django.utils import timezone
 
 
 class DartClient:
@@ -16,6 +18,13 @@ class DartClient:
     
     # 종목코드 → corp_code 매핑 캐시 (클래스 변수)
     _corp_code_mapping_cache = {}
+    
+    # API 호출 횟수 추적 (클래스 변수)
+    _api_call_count = 0
+    
+    # 일별 통계 업데이트 플래그 (성능 최적화: 배치 업데이트)
+    _last_stats_update_date = None
+    _pending_dart_calls = 0
     
     def __init__(self, api_key=None):
         """
@@ -62,10 +71,21 @@ class DartClient:
         
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (총 4번 시도)
             try:
+                # API 호출 횟수 증가
+                DartClient._api_call_count += 1
+                
+                # 일별 API 호출 통계 업데이트
+                DartClient._update_daily_stats()
+                
                 response = requests.get(url, params=params, timeout=timeout)
                 
                 # 성공한 경우
                 if response.status_code == 200:
+                    # API 호출 사이 지연 추가 (Rate Limiting 방지)
+                    api_delay = settings.DATA_COLLECTION.get('API_DELAY', 1.0)
+                    if api_delay > 0:
+                        time.sleep(api_delay)
+                    
                     if return_binary:
                         return response.content
                     return response.json()
@@ -161,6 +181,9 @@ class DartClient:
         
         try:
             # 기업 고유번호 XML 파일 다운로드
+            # API 호출 횟수 증가
+            DartClient._api_call_count += 1
+            
             url = f"{self.BASE_URL}/corpCode.xml"
             params = {'crtfc_key': self.api_key}
             timeout = settings.DATA_COLLECTION['API_TIMEOUT']
@@ -185,6 +208,65 @@ class DartClient:
                         self._corp_code_mapping_cache[stock_code] = corp_code
         except Exception as e:
             raise Exception(f"기업 고유번호 XML 로드 실패: {str(e)}")
+    
+    @classmethod
+    def _update_daily_stats(cls):
+        """일별 API 호출 통계 업데이트 (배치 처리로 성능 최적화)"""
+        try:
+            from django.apps import apps as django_apps
+            ApiCallStatsModel = django_apps.get_model('apps', 'ApiCallStats')
+            
+            today = date.today()
+            
+            # 날짜가 바뀌었거나 처음 호출이면 DB 업데이트
+            if cls._last_stats_update_date != today:
+                # 대기 중인 호출 횟수 저장
+                if cls._pending_dart_calls > 0:
+                    stats, _ = ApiCallStatsModel.objects.get_or_create(
+                        date=today,
+                        defaults={'dart_calls': 0, 'ecos_calls': 0}
+                    )
+                    stats.dart_calls += cls._pending_dart_calls
+                    stats.save(update_fields=['dart_calls', 'updated_at'])
+                    cls._pending_dart_calls = 0
+                
+                cls._last_stats_update_date = today
+            
+            # 대기 중인 호출 횟수 증가 (배치 업데이트)
+            cls._pending_dart_calls += 1
+            
+            # 10회마다 DB 업데이트 (성능 최적화)
+            if cls._pending_dart_calls >= 10:
+                stats, _ = ApiCallStatsModel.objects.get_or_create(
+                    date=today,
+                    defaults={'dart_calls': 0, 'ecos_calls': 0}
+                )
+                stats.dart_calls += cls._pending_dart_calls
+                stats.save(update_fields=['dart_calls', 'updated_at'])
+                cls._pending_dart_calls = 0
+                
+        except Exception:
+            # DB 오류 시 무시 (통계 수집 실패해도 API 호출은 계속)
+            pass
+    
+    @classmethod
+    def flush_daily_stats(cls):
+        """대기 중인 통계를 DB에 저장 (프로그램 종료 시 호출)"""
+        try:
+            from django.apps import apps as django_apps
+            ApiCallStatsModel = django_apps.get_model('apps', 'ApiCallStats')
+            
+            if cls._pending_dart_calls > 0:
+                today = date.today()
+                stats, _ = ApiCallStatsModel.objects.get_or_create(
+                    date=today,
+                    defaults={'dart_calls': 0, 'ecos_calls': 0}
+                )
+                stats.dart_calls += cls._pending_dart_calls
+                stats.save(update_fields=['dart_calls', 'updated_at'])
+                cls._pending_dart_calls = 0
+        except Exception:
+            pass
     
     def _get_corp_code_by_stock_code(self, stock_code):
         """

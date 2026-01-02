@@ -139,6 +139,7 @@ DATA_COLLECTION = {
     # API 관련
     'API_TIMEOUT': int(os.getenv('API_TIMEOUT', '30')),  # API 요청 타임아웃 (초)
     'API_MAX_RETRIES': int(os.getenv('API_MAX_RETRIES', '3')),  # 최대 재시도 횟수
+    'API_DELAY': float(os.getenv('API_DELAY', '1.0')),  # API 호출 사이 지연 (초, Rate Limiting 방지)
     
     # 데이터 수집 관련
     'COLLECTION_LIMIT': int(os.getenv('COLLECTION_LIMIT', '10')),  # 기본 수집 개수

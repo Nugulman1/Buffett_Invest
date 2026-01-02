@@ -79,7 +79,6 @@ class DartDataService:
                 if fs_div == 'CFS':
                     continue
                 else:
-                    print(f"경고: {year}년 재무제표 수집 실패: {e}")
                     return None
         
         return None
@@ -181,8 +180,8 @@ class DartDataService:
                     if result:
                         yearly_data_list.append(result)
                 except Exception as e:
-                    year = future_to_year[future]
-                    print(f"경고: {year}년 기본 지표 수집 중 예외 발생: {e}")
+                    # 보고서가 없어서 실패하는 경우이므로 출력하지 않음
+                    pass
         
         # 연도 순서대로 정렬하여 추가
         yearly_data_list.sort(key=lambda x: x[0])
@@ -302,28 +301,18 @@ class DartDataService:
                                     # DART API는 백분율로 반환하므로 소수로 변환 (예: 30.335% -> 0.30335)
                                     value = value / 100.0
                                     results[field_name] = value
-                                else:
-                                    print(f"  경고: {year}년 {idx_code} 값이 비어있습니다.")
-                            except (ValueError, AttributeError) as ve:
-                                # 변환 실패 시 0으로 유지
-                                print(f"  경고: {year}년 {idx_code} 값 변환 실패: {value_str}, 오류: {ve}")
-                        else:
-                            print(f"  경고: {year}년 {idx_code} 값이 비어있습니다. (idx_val: {idx_val}, thstrm_amount: {thstrm_amount})")
+                            except (ValueError, AttributeError):
+                                # 변환 실패 시 0으로 유지 (출력하지 않음)
+                                pass
                         break
                 
-                if not found:
-                    print(f"  경고: {year}년 {idx_code} 지표를 찾을 수 없습니다.")
-            
-            if found_indicators:
-                print(f"  ✓ {year}년 재무지표 수집 완료: {', '.join(found_indicators)}")
+                # 지표를 찾지 못한 경우는 출력하지 않음 (보고서가 없어서 그런 경우)
             
             return (year, results)
                         
         except Exception as e:
             # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)
-            print(f"  오류: {year}년 재무지표 수집 중 예외 발생: {e}")
-            import traceback
-            traceback.print_exc()
+            # 보고서가 없어서 실패하는 경우이므로 출력하지 않음
             return None
     
     # fill_financial_indicators() 메서드 제거됨

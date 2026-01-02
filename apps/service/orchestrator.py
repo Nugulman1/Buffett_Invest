@@ -19,12 +19,13 @@ class DataOrchestrator:
         self.ecos_service = EcosDataService()
         self.dart_client = DartClient()
     
-    def collect_company_data(self, corp_code: str) -> CompanyFinancialObject:
+    def collect_company_data(self, corp_code: str, save_to_db: bool = True) -> CompanyFinancialObject:
         """
         회사 데이터 수집 (DART + ECOS)
         
         Args:
             corp_code: 고유번호 (8자리)
+            save_to_db: DB 저장 여부 (기본값: True, 병렬 처리 시 False로 설정)
         
         Returns:
             CompanyFinancialObject
@@ -117,12 +118,13 @@ class DataOrchestrator:
             print(f"경고: 필터 적용 실패: {e}")
             # 필터 실패 시에도 수집된 데이터는 반환
         
-        # DB 저장 로직
-        try:
-            self._save_to_db(company_data)
-        except Exception as e:
-            print(f"경고: DB 저장 실패: {e}")
-            # DB 저장 실패 시에도 수집된 데이터는 반환
+        # DB 저장 로직 (save_to_db가 True일 때만 실행)
+        if save_to_db:
+            try:
+                self._save_to_db(company_data)
+            except Exception as e:
+                print(f"경고: DB 저장 실패: {e}")
+                # DB 저장 실패 시에도 수집된 데이터는 반환
         
         return company_data
     
