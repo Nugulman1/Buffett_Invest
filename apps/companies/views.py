@@ -29,6 +29,14 @@ def company_detail(request, corp_code):
     return render(request, 'companies/detail.html', {'corp_code': corp_code})
 
 
+def calculator(request):
+    """
+    재무 지표 계산기 페이지
+    GET /companies/calculator/
+    """
+    return render(request, 'companies/calculator.html')
+
+
 @api_view(['GET'])
 def get_financial_data(request, corp_code):
     """

@@ -121,8 +121,9 @@
                                         <th class="text-end">당기순이익</th>
                                         <th class="text-end">총자산</th>
                                         <th class="text-end">자기자본</th>
-                                        <th class="text-end">매출총이익률</th>
-                                        <th class="text-end">판관비율</th>
+                                        <!-- 매출총이익률과 판관비율은 현재 사용하지 않으므로 주석 처리 -->
+                                        <!-- <th class="text-end">매출총이익률</th> -->
+                                        <!-- <th class="text-end">판관비율</th> -->
                                         <th class="text-end">총자산 영업이익률</th>
                                         <th class="text-end">ROE</th>
                                     </tr>
@@ -136,10 +137,11 @@
                                             <td class="text-end" x-text="formatAmount(yearData.net_income)"></td>
                                             <td class="text-end" x-text="formatAmount(yearData.total_assets)"></td>
                                             <td class="text-end" x-text="formatAmount(yearData.total_equity)"></td>
-                                            <td class="text-end" x-text="formatPercent(yearData.gross_profit_margin)">
-                                            </td>
-                                            <td class="text-end"
-                                                x-text="formatPercent(yearData.selling_admin_expense_ratio)"></td>
+                                            <!-- 매출총이익률과 판관비율은 현재 사용하지 않으므로 주석 처리 -->
+                                            <!-- <td class="text-end" x-text="formatPercent(yearData.gross_profit_margin)">
+                                            </td> -->
+                                            <!-- <td class="text-end"
+                                                x-text="formatPercent(yearData.selling_admin_expense_ratio)"></td> -->
                                             <td class="text-end"
                                                 x-text="formatPercent(yearData.total_assets_operating_income_ratio)">
                                             </td>

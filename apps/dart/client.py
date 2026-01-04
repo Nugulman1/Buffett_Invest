@@ -180,18 +180,11 @@ class DartClient:
             return  # 이미 로드됨
         
         try:
-            # 기업 고유번호 XML 파일 다운로드
-            # API 호출 횟수 증가
-            DartClient._api_call_count += 1
-            
-            url = f"{self.BASE_URL}/corpCode.xml"
-            params = {'crtfc_key': self.api_key}
-            timeout = settings.DATA_COLLECTION['API_TIMEOUT']
-            response = requests.get(url, params=params, timeout=timeout)
-            response.raise_for_status()
+            # 기업 고유번호 XML 파일 다운로드 (_make_request 사용하여 재시도 로직 적용)
+            zip_content = self._make_request("corpCode.xml", return_binary=True)
             
             # ZIP 파일 압축 해제
-            with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+            with zipfile.ZipFile(io.BytesIO(zip_content)) as z:
                 xml_content = z.read('CORPCODE.xml')
             
             # XML 파싱
