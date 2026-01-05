@@ -25,7 +25,18 @@ def company_detail(request, corp_code):
     """
     기업 상세 정보 페이지
     GET /companies/{corp_code}/
+    
+    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
     """
+    # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
+    if len(corp_code) == 6 and corp_code.isdigit():
+        # 종목코드를 기업번호로 변환
+        from apps.dart.client import DartClient
+        dart_client = DartClient()
+        converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
+        if converted_corp_code:
+            corp_code = converted_corp_code
+    
     return render(request, 'companies/detail.html', {'corp_code': corp_code})
 
 
@@ -45,11 +56,26 @@ def get_financial_data(request, corp_code):
     
     DB에서 먼저 조회하고, 데이터가 없거나 오래되었으면 실시간 수집
     (4월 1일 기준으로 1년이 지났으면 재수집)
+    
+    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
     """
     try:
         from django.apps import apps as django_apps
         CompanyModel = django_apps.get_model('apps', 'Company')
         YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+        
+        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
+        if len(corp_code) == 6 and corp_code.isdigit():
+            # 종목코드를 기업번호로 변환
+            from apps.dart.client import DartClient
+            dart_client = DartClient()
+            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
+            if not converted_corp_code:
+                return Response(
+                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            corp_code = converted_corp_code
         
         # DB에서 먼저 조회 (prefetch_related로 쿼리 최적화)
         try:
@@ -70,6 +96,7 @@ def get_financial_data(request, corp_code):
                     'filter_net_income': company.filter_net_income,
                     'filter_revenue_cagr': company.filter_revenue_cagr,
                     'filter_total_assets_operating_income_ratio': company.filter_total_assets_operating_income_ratio,
+                    'memo': company.memo,
                     'yearly_data': [
                         {
                             'year': yd.year,
@@ -82,6 +109,9 @@ def get_financial_data(request, corp_code):
                             'selling_admin_expense_ratio': yd.selling_admin_expense_ratio,
                             'total_assets_operating_income_ratio': yd.total_assets_operating_income_ratio,
                             'roe': yd.roe,
+                            'fcf': yd.fcf,
+                            'roic': yd.roic,
+                            'wacc': yd.wacc,
                         }
                         for yd in yearly_data_list
                     ]
@@ -94,34 +124,74 @@ def get_financial_data(request, corp_code):
         orchestrator = DataOrchestrator()
         company_data = orchestrator.collect_company_data(corp_code)
         
-        # CompanyFinancialObject를 딕셔너리로 변환
-        data = {
-            'corp_code': company_data.corp_code,
-            'company_name': company_data.company_name,
-            'business_type_code': company_data.business_type_code,
-            'business_type_name': company_data.business_type_name,
-            'bond_yield_5y': company_data.bond_yield_5y,
-            'passed_all_filters': company_data.passed_all_filters,
-            'filter_operating_income': company_data.filter_operating_income,
-            'filter_net_income': company_data.filter_net_income,
-            'filter_revenue_cagr': company_data.filter_revenue_cagr,
-            'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
-            'yearly_data': [
-                {
-                    'year': yd.year,
-                    'revenue': yd.revenue,
-                    'operating_income': yd.operating_income,
-                    'net_income': yd.net_income,
-                    'total_assets': yd.total_assets,
-                    'total_equity': yd.total_equity,
-                    'gross_profit_margin': yd.gross_profit_margin,
-                    'selling_admin_expense_ratio': yd.selling_admin_expense_ratio,
-                    'total_assets_operating_income_ratio': yd.total_assets_operating_income_ratio,
-                    'roe': yd.roe,
-                }
-                for yd in company_data.yearly_data
-            ]
-        }
+        # 수집 후 DB에서 다시 조회 (새로 추가된 필드 포함)
+        try:
+            company = CompanyModel.objects.prefetch_related('yearly_data').get(corp_code=corp_code)
+            yearly_data_list = list(company.yearly_data.all().order_by('year'))
+            data = {
+                'corp_code': company.corp_code,
+                'company_name': company.company_name,
+                'business_type_code': company.business_type_code,
+                'business_type_name': company.business_type_name,
+                'bond_yield_5y': company.bond_yield_5y,
+                'passed_all_filters': company.passed_all_filters,
+                'filter_operating_income': company.filter_operating_income,
+                'filter_net_income': company.filter_net_income,
+                'filter_revenue_cagr': company.filter_revenue_cagr,
+                'filter_total_assets_operating_income_ratio': company.filter_total_assets_operating_income_ratio,
+                'memo': company.memo,
+                'yearly_data': [
+                    {
+                        'year': yd.year,
+                        'revenue': yd.revenue,
+                        'operating_income': yd.operating_income,
+                        'net_income': yd.net_income,
+                        'total_assets': yd.total_assets,
+                        'total_equity': yd.total_equity,
+                        'gross_profit_margin': yd.gross_profit_margin,
+                        'selling_admin_expense_ratio': yd.selling_admin_expense_ratio,
+                        'total_assets_operating_income_ratio': yd.total_assets_operating_income_ratio,
+                        'roe': yd.roe,
+                        'fcf': yd.fcf,
+                        'roic': yd.roic,
+                        'wacc': yd.wacc,
+                    }
+                    for yd in yearly_data_list
+                ]
+            }
+        except CompanyModel.DoesNotExist:
+            # 수집 실패 시 빈 데이터 반환
+            data = {
+                'corp_code': company_data.corp_code,
+                'company_name': company_data.company_name,
+                'business_type_code': company_data.business_type_code,
+                'business_type_name': company_data.business_type_name,
+                'bond_yield_5y': company_data.bond_yield_5y,
+                'passed_all_filters': company_data.passed_all_filters,
+                'filter_operating_income': company_data.filter_operating_income,
+                'filter_net_income': company_data.filter_net_income,
+                'filter_revenue_cagr': company_data.filter_revenue_cagr,
+                'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
+                'memo': None,
+                'yearly_data': [
+                    {
+                        'year': yd.year,
+                        'revenue': yd.revenue,
+                        'operating_income': yd.operating_income,
+                        'net_income': yd.net_income,
+                        'total_assets': yd.total_assets,
+                        'total_equity': yd.total_equity,
+                        'gross_profit_margin': yd.gross_profit_margin,
+                        'selling_admin_expense_ratio': yd.selling_admin_expense_ratio,
+                        'total_assets_operating_income_ratio': yd.total_assets_operating_income_ratio,
+                        'roe': yd.roe,
+                        'fcf': None,
+                        'roic': None,
+                        'wacc': None,
+                    }
+                    for yd in company_data.yearly_data
+                ]
+            }
         
         return Response(data, status=status.HTTP_200_OK)
         
@@ -224,6 +294,173 @@ def batch_get_financial_data(request):
         )
 
 
+@api_view(['POST'])
+def save_memo(request, corp_code):
+    """
+    기업 메모 저장 API
+    POST /api/companies/{corp_code}/memo/
+    
+    Body: {"memo": "메모 내용"}
+    
+    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
+    """
+    try:
+        from django.apps import apps as django_apps
+        CompanyModel = django_apps.get_model('apps', 'Company')
+        
+        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
+        if len(corp_code) == 6 and corp_code.isdigit():
+            # 종목코드를 기업번호로 변환
+            from apps.dart.client import DartClient
+            dart_client = DartClient()
+            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
+            if not converted_corp_code:
+                return Response(
+                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            corp_code = converted_corp_code
+        
+        memo = request.data.get('memo', '')
+        
+        # Company 모델 업데이트 또는 생성
+        company, created = CompanyModel.objects.update_or_create(
+            corp_code=corp_code,
+            defaults={'memo': memo}
+        )
+        
+        return Response({
+            'corp_code': company.corp_code,
+            'memo': company.memo,
+            'created': created
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def save_calculated_indicators(request, corp_code):
+    """
+    계산 지표 저장 API
+    POST /api/companies/{corp_code}/calculated-indicators/
+    
+    Body: {
+        "year": 2023,
+        "cfo": 1000000000,
+        "tangible_asset_acquisition": 500000000,
+        "intangible_asset_acquisition": 100000000,
+        "operating_income": 800000000,
+        "tax_rate": 25.0,
+        "equity": 5000000000,
+        "short_term_borrowings": 1000000000,
+        "current_portion_of_long_term_borrowings": 200000000,
+        "long_term_borrowings": 2000000000,
+        "bonds": 500000000,
+        "lease_liabilities": 300000000,
+        "cash_and_cash_equivalents": 1000000000,
+        "interest_expense": 200000000,
+        "bond_yield": 3.5,
+        "equity_risk_premium": 5.0
+    }
+    
+    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
+    """
+    try:
+        from django.apps import apps as django_apps
+        from apps.service.calculator import IndicatorCalculator
+        from apps.models import YearlyFinancialDataObject
+        
+        CompanyModel = django_apps.get_model('apps', 'Company')
+        YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+        
+        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
+        if len(corp_code) == 6 and corp_code.isdigit():
+            # 종목코드를 기업번호로 변환
+            from apps.dart.client import DartClient
+            dart_client = DartClient()
+            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
+            if not converted_corp_code:
+                return Response(
+                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            corp_code = converted_corp_code
+        
+        # Company 확인
+        try:
+            company = CompanyModel.objects.get(corp_code=corp_code)
+        except CompanyModel.DoesNotExist:
+            return Response(
+                {'error': f'기업을 찾을 수 없습니다. (corp_code: {corp_code})'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # YearlyFinancialData 확인
+        year = request.data.get('year')
+        if not year:
+            return Response(
+                {'error': 'year 필드가 필요합니다.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            yearly_data_db = YearlyFinancialDataModel.objects.get(company=company, year=year)
+        except YearlyFinancialDataModel.DoesNotExist:
+            return Response(
+                {'error': f'{year}년도 데이터를 찾을 수 없습니다. 먼저 재무 데이터를 수집해주세요.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 입력 데이터로 YearlyFinancialDataObject 생성
+        yearly_data_obj = YearlyFinancialDataObject(year=year, corp_code=corp_code)
+        yearly_data_obj.cfo = request.data.get('cfo', 0) or 0
+        yearly_data_obj.tangible_asset_acquisition = request.data.get('tangible_asset_acquisition', 0) or 0
+        yearly_data_obj.intangible_asset_acquisition = request.data.get('intangible_asset_acquisition', 0) or 0
+        yearly_data_obj.operating_income = request.data.get('operating_income', 0) or 0
+        yearly_data_obj.equity = request.data.get('equity', 0) or 0
+        yearly_data_obj.short_term_borrowings = request.data.get('short_term_borrowings', 0) or 0
+        yearly_data_obj.current_portion_of_long_term_borrowings = request.data.get('current_portion_of_long_term_borrowings', 0) or 0
+        yearly_data_obj.long_term_borrowings = request.data.get('long_term_borrowings', 0) or 0
+        yearly_data_obj.bonds = request.data.get('bonds', 0) or 0
+        yearly_data_obj.lease_liabilities = request.data.get('lease_liabilities', 0) or 0
+        yearly_data_obj.convertible_bonds = request.data.get('convertible_bonds', 0) or 0
+        yearly_data_obj.cash_and_cash_equivalents = request.data.get('cash_and_cash_equivalents', 0) or 0
+        yearly_data_obj.interest_expense = request.data.get('interest_expense', 0) or 0
+        
+        # 계산 수행
+        tax_rate = request.data.get('tax_rate', 25.0) / 100.0 if request.data.get('tax_rate') else 0.25
+        bond_yield = request.data.get('bond_yield', 3.5)
+        equity_risk_premium = request.data.get('equity_risk_premium', 5.0)
+        
+        fcf = IndicatorCalculator.calculate_fcf(yearly_data_obj)
+        roic = IndicatorCalculator.calculate_roic(yearly_data_obj, tax_rate)
+        wacc = IndicatorCalculator.calculate_wacc(yearly_data_obj, bond_yield, tax_rate, equity_risk_premium)
+        
+        # DB 업데이트
+        yearly_data_db.fcf = fcf
+        yearly_data_db.roic = roic
+        yearly_data_db.wacc = wacc
+        yearly_data_db.save()
+        
+        return Response({
+            'corp_code': corp_code,
+            'year': year,
+            'fcf': fcf,
+            'roic': roic,
+            'wacc': wacc
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 @api_view(['GET'])
 def get_annual_report_link(request, corp_code):
     """
@@ -231,10 +468,24 @@ def get_annual_report_link(request, corp_code):
     GET /api/companies/{corp_code}/annual-report-link/
     
     가장 최근 년도의 사업보고서 접수번호를 조회하여 DART 링크 생성
+    
+    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
     """
     try:
         from apps.dart.client import DartClient
         from datetime import datetime
+        
+        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
+        if len(corp_code) == 6 and corp_code.isdigit():
+            # 종목코드를 기업번호로 변환
+            dart_client = DartClient()
+            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
+            if not converted_corp_code:
+                return Response(
+                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            corp_code = converted_corp_code
         
         client = DartClient()
         

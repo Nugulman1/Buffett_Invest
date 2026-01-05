@@ -17,6 +17,7 @@ class Company(models.Model):
     filter_net_income = models.BooleanField(default=False, verbose_name='당기순이익필터')
     filter_revenue_cagr = models.BooleanField(default=False, verbose_name='매출액CAGR필터')
     filter_total_assets_operating_income_ratio = models.BooleanField(default=False, verbose_name='총자산영업이익률필터')
+    memo = models.TextField(blank=True, null=True, verbose_name='메모')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
     
@@ -83,6 +84,9 @@ class YearlyFinancialData(models.Model):
     selling_admin_expense_ratio = models.FloatField(default=0.0, verbose_name='판관비율')  # 사용 안 함 (API 호출 제거)
     total_assets_operating_income_ratio = models.FloatField(default=0.0, verbose_name='총자산영업이익률')  # 계산 방식 (영업이익/자산총계)
     roe = models.FloatField(default=0.0, verbose_name='ROE')  # 계산 방식 (당기순이익/자본총계)
+    fcf = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자유현금흐름')
+    roic = models.FloatField(default=0.0, null=True, blank=True, verbose_name='투하자본수익률')
+    wacc = models.FloatField(default=0.0, null=True, blank=True, verbose_name='가중평균자본비용')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
     
@@ -192,7 +196,6 @@ class YearlyFinancialDataObject:
         self.roe: float = 0.0  # ROE (%) - 계산 방식 (당기순이익/자본총계)
         
         # === 계산에 사용하는 기본 지표 ===
-        self.finance_costs: int = 0  # 금융비용 (WACC 계산에 사용)
         self.tangible_asset_acquisition: int = 0  # 유형자산 취득
         self.intangible_asset_acquisition: int = 0  # 무형자산 취득
         self.cfo: int = 0  # 영업활동현금흐름
@@ -203,12 +206,13 @@ class YearlyFinancialDataObject:
         self.long_term_borrowings: int = 0  # 장기차입금
         self.bonds: int = 0  # 사채
         self.lease_liabilities: int = 0  # 리스부채
+        self.convertible_bonds: int = 0  # 전환부채
         
         # === 현재 계산에 사용하지 않는 지표 ===
         # (향후 계산 공식 변경 시 사용 가능, 데이터 수집은 계속 진행)
         self.current_liabilities: int = 0  # 유동부채
         self.interest_bearing_current_liabilities: int = 0  # 이자부유동부채
-        self.interest_expense: int = 0  # 이자비용 (사용 안 함, 금융비용으로 대체됨)
+        self.interest_expense: int = 0  # 이자비용 (WACC 계산에 사용)
         self.beta: float = 1.0  # 베타 (고정)
         self.mrp: float = 5.0  # MRP (고정)
         
