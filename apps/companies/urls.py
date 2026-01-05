@@ -9,5 +9,6 @@ urlpatterns = [
     path('', views.company_list, name='company_list'),
     path('calculator/', views.calculator, name='calculator'),
     path('<str:corp_code>/', views.company_detail, name='company_detail'),
+    path('<str:corp_code>/add-indicators/', views.add_indicators, name='add_indicators'),
 ]
 

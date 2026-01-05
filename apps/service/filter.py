@@ -68,7 +68,7 @@ class CompanyFilter:
     @staticmethod
     def filter_revenue_cagr(company_data: CompanyFinancialObject) -> bool:
         """
-        매출액 CAGR 필터: 매출액 CAGR ≥ 0%
+        매출액 CAGR 필터: 매출액 CAGR ≥ 3%
         (5년 데이터가 없어도 수집된 데이터로 계산, 최소 2년 데이터 필요)
         
         단, 금융업인 경우 자동으로 True 반환 (금융업은 매출액 개념이 다름)
@@ -103,13 +103,13 @@ class CompanyFilter:
         # CAGR 계산
         cagr = IndicatorCalculator.calculate_cagr(start_value, end_value, years_span)
         
-        # CAGR ≥ 0% 인지 확인
-        return cagr >= 0.0
+        # CAGR ≥ 3% 인지 확인
+        return cagr >= 0.03
     
     @staticmethod
     def filter_total_assets_operating_income_ratio(company_data: CompanyFinancialObject) -> bool:
         """
-        총자산영업이익률 필터: 총자산영업이익률 평균 > 0
+        총자산영업이익률 필터: 총자산영업이익률 평균 ≥ 3%
         (5년 데이터가 없어도 수집된 데이터로 계산)
         
         Args:
@@ -131,8 +131,8 @@ class CompanyFilter:
         ratios = [data.total_assets_operating_income_ratio for data in data_to_check]
         average_ratio = sum(ratios) / len(ratios) if ratios else 0.0
         
-        # 평균이 0보다 큰지 확인
-        return average_ratio > 0.0
+        # 평균이 3% 이상인지 확인
+        return average_ratio >= 0.03
     
     @classmethod
     def apply_all_filters(cls, company_data: CompanyFinancialObject) -> None:

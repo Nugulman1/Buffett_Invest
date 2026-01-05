@@ -247,7 +247,7 @@ def main(limit: int = None, max_workers: int = None):
     for result in results:
         if result['status'] == 'success' and 'company_data' in result:
             try:
-                orchestrator._save_to_db(result['company_data'])
+                save_company_to_db(result['company_data'])
                 db_save_success += 1
             except Exception as e:
                 db_save_fail += 1

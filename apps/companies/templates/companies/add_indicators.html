@@ -1,0 +1,276 @@
+{% extends 'base.html' %}
+
+{% block title %}지표 추가 - {{ company_name }}{% endblock %}
+
+{% block content %}
+<div x-data="addIndicators('{{ corp_code }}')" class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h2 class="card-title mb-2">{{ company_name|default:"기업" }}</h2>
+                        <p class="text-muted mb-0">
+                            <code>{{ corp_code }}</code>
+                        </p>
+                    </div>
+                    <a href="/companies/{{ corp_code }}/" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left me-2"></i>뒤로가기
+                    </a>
+                </div>
+
+                <div class="mb-4">
+                    <button type="button" class="btn btn-success" @click="addYearForm()">
+                        <i class="bi bi-plus-circle me-2"></i>년도 추가
+                    </button>
+                    <button type="button" class="btn btn-primary" @click="saveAll()" :disabled="saving">
+                        <span x-show="!saving">
+                            <i class="bi bi-save me-2"></i>모두 저장
+                        </span>
+                        <span x-show="saving">
+                            <span class="spinner-border spinner-border-sm me-2"></span>저장 중...
+                        </span>
+                    </button>
+                </div>
+
+                <div x-show="saveMessage" class="mb-3">
+                    <div :class="saveMessageType === 'success' ? 'alert alert-success' : 'alert alert-danger'">
+                        <span x-text="saveMessage"></span>
+                    </div>
+                </div>
+
+                <!-- 년도별 입력 폼 -->
+                <div class="row g-4">
+                    <template x-for="(form, index) in yearForms" :key="index">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-calendar me-2"></i>
+                                        <span x-text="form.year || '새 년도'"></span>년
+                                    </h5>
+                                    <button type="button" class="btn btn-sm btn-danger" @click="removeYearForm(index)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">년도 <span class="text-danger">*</span></label>
+                                            <input type="number" x-model.number="form.year" class="form-control"
+                                                placeholder="예: 2023" min="2000" max="2100" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">매출액 <span class="text-danger">*</span></label>
+                                            <input type="text" x-model="form.revenue"
+                                                @input="formatNumberInput($event, `yearForms[${index}].revenue`)"
+                                                class="form-control" placeholder="0" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">영업이익 <span class="text-danger">*</span></label>
+                                            <input type="text" x-model="form.operating_income"
+                                                @input="formatNumberInput($event, `yearForms[${index}].operating_income`)"
+                                                class="form-control" placeholder="0" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">당기순이익 <span class="text-danger">*</span></label>
+                                            <input type="text" x-model="form.net_income"
+                                                @input="formatNumberInput($event, `yearForms[${index}].net_income`)"
+                                                class="form-control" placeholder="0" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">총자산 <span class="text-danger">*</span></label>
+                                            <input type="text" x-model="form.total_assets"
+                                                @input="formatNumberInput($event, `yearForms[${index}].total_assets`)"
+                                                class="form-control" placeholder="0" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">자기자본 <span class="text-danger">*</span></label>
+                                            <input type="text" x-model="form.total_equity"
+                                                @input="formatNumberInput($event, `yearForms[${index}].total_equity`)"
+                                                class="form-control" placeholder="0" required>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <div x-show="yearForms.length === 0" class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+                    <p>년도를 추가하여 지표를 입력하세요.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function addIndicators(corpCode) {
+        return {
+            corpCode: corpCode,
+            yearForms: [],
+            saving: false,
+            saveMessage: null,
+            saveMessageType: null,
+
+            init() {
+                // 기본으로 년도 하나 추가
+                this.addYearForm();
+            },
+
+            addYearForm() {
+                this.yearForms.push({
+                    year: null,
+                    revenue: '',
+                    operating_income: '',
+                    net_income: '',
+                    total_assets: '',
+                    total_equity: ''
+                });
+            },
+
+            removeYearForm(index) {
+                this.yearForms.splice(index, 1);
+            },
+
+            // 숫자 입력 포맷팅 (천 단위 구분자 추가)
+            formatNumberInput(event, dataPath) {
+                let value = event.target.value;
+                const numericValue = value.replace(/,/g, '');
+
+                if (numericValue === '' || numericValue === '-') {
+                    this.setNestedValue(dataPath, numericValue);
+                    return;
+                }
+
+                const num = parseFloat(numericValue);
+                if (isNaN(num)) {
+                    return;
+                }
+
+                const formatted = num.toLocaleString('ko-KR');
+                this.setNestedValue(dataPath, formatted);
+            },
+
+            // 중첩된 객체 속성 설정 헬퍼
+            setNestedValue(path, value) {
+                // yearForms[index].field 형식 처리
+                const match = path.match(/yearForms\[(\d+)\]\.(\w+)/);
+                if (match) {
+                    const index = parseInt(match[1]);
+                    const field = match[2];
+                    this.yearForms[index][field] = value;
+                }
+            },
+
+            // 문자열에서 숫자 추출 (쉼표 제거)
+            parseNumber(value) {
+                if (value === null || value === undefined || value === '') {
+                    return null;
+                }
+                const numericStr = String(value).replace(/,/g, '');
+                const num = parseFloat(numericStr);
+                return isNaN(num) ? null : num;
+            },
+
+            // 모든 년도 데이터 저장 (병렬 처리)
+            async saveAll() {
+                // 검증
+                const invalidForms = this.yearForms.filter(form =>
+                    !form.year ||
+                    !this.parseNumber(form.revenue) ||
+                    !this.parseNumber(form.operating_income) ||
+                    !this.parseNumber(form.net_income) ||
+                    !this.parseNumber(form.total_assets) ||
+                    !this.parseNumber(form.total_equity)
+                );
+
+                if (invalidForms.length > 0) {
+                    this.saveMessage = '모든 필드를 입력해주세요.';
+                    this.saveMessageType = 'error';
+                    setTimeout(() => { this.saveMessage = null; }, 5000);
+                    return;
+                }
+
+                if (this.yearForms.length === 0) {
+                    this.saveMessage = '저장할 데이터가 없습니다.';
+                    this.saveMessageType = 'error';
+                    setTimeout(() => { this.saveMessage = null; }, 5000);
+                    return;
+                }
+
+                this.saving = true;
+                this.saveMessage = null;
+
+                try {
+                    // 모든 년도 데이터를 병렬로 저장
+                    const savePromises = this.yearForms.map(form => {
+                        const requestData = {
+                            year: form.year,
+                            revenue: this.parseNumber(form.revenue),
+                            operating_income: this.parseNumber(form.operating_income),
+                            net_income: this.parseNumber(form.net_income),
+                            total_assets: this.parseNumber(form.total_assets),
+                            total_equity: this.parseNumber(form.total_equity)
+                        };
+
+                        return fetch(`/api/companies/${this.corpCode}/manual-financial-data/`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': this.getCsrfToken()
+                            },
+                            body: JSON.stringify(requestData)
+                        });
+                    });
+
+                    const responses = await Promise.all(savePromises);
+                    const results = await Promise.all(responses.map(r => r.json()));
+
+                    const successCount = responses.filter(r => r.ok).length;
+                    const failCount = responses.length - successCount;
+
+                    if (failCount === 0) {
+                        this.saveMessage = `모든 데이터(${successCount}개)가 저장되었습니다.`;
+                        this.saveMessageType = 'success';
+                        // 성공 시 폼 초기화
+                        setTimeout(() => {
+                            this.yearForms = [];
+                            this.addYearForm();
+                            // 2초 후 상세 페이지로 이동
+                            setTimeout(() => {
+                                window.location.href = `/companies/${this.corpCode}/`;
+                            }, 2000);
+                        }, 1000);
+                    } else {
+                        this.saveMessage = `${successCount}개 성공, ${failCount}개 실패했습니다.`;
+                        this.saveMessageType = 'error';
+                    }
+                } catch (error) {
+                    this.saveMessage = '저장 중 오류가 발생했습니다: ' + error.message;
+                    this.saveMessageType = 'error';
+                } finally {
+                    this.saving = false;
+                    if (this.saveMessageType === 'error') {
+                        setTimeout(() => { this.saveMessage = null; }, 5000);
+                    }
+                }
+            },
+
+            // CSRF 토큰 가져오기
+            getCsrfToken() {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === 'csrftoken') {
+                        return value;
+                    }
+                }
+                return '';
+            }
+        }
+    }
+</script>
+{% endblock %}

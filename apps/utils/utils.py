@@ -3,7 +3,7 @@
 """
 from datetime import datetime, date
 from django.apps import apps as django_apps
-from apps.models import CompanyFinancialObject
+from apps.models import CompanyFinancialObject, YearlyFinancialDataObject
 
 
 def is_financial_industry(induty_code: str) -> bool:
@@ -231,4 +231,117 @@ def should_collect_company(corp_code: str) -> bool:
     except CompanyModel.DoesNotExist:
         # DB에 없으면 수집
         return True
+
+
+def load_company_from_db(corp_code: str) -> CompanyFinancialObject | None:
+    """
+    DB에서 Company 및 YearlyFinancialData 모델을 조회하여 CompanyFinancialObject로 변환
+    
+    Args:
+        corp_code: 고유번호 (8자리)
+    
+    Returns:
+        CompanyFinancialObject 객체 (데이터가 없으면 None)
+    """
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+    
+    try:
+        # Company 모델 조회 (prefetch_related로 N+1 쿼리 방지)
+        company = CompanyModel.objects.prefetch_related('yearly_data').get(corp_code=corp_code)
+        yearly_data_list = list(company.yearly_data.all().order_by('year'))
+        
+        # CompanyFinancialObject 생성
+        company_data = CompanyFinancialObject()
+        company_data.corp_code = company.corp_code
+        company_data.company_name = company.company_name or ""
+        company_data.business_type_code = company.business_type_code or ""
+        company_data.business_type_name = company.business_type_name or ""
+        company_data.bond_yield_5y = company.bond_yield_5y or 0.0
+        company_data.passed_all_filters = company.passed_all_filters
+        company_data.filter_operating_income = company.filter_operating_income
+        company_data.filter_net_income = company.filter_net_income
+        company_data.filter_revenue_cagr = company.filter_revenue_cagr
+        company_data.filter_total_assets_operating_income_ratio = company.filter_total_assets_operating_income_ratio
+        
+        # YearlyFinancialDataObject 리스트 생성
+        for yearly_data_db in yearly_data_list:
+            yearly_data_obj = YearlyFinancialDataObject(year=yearly_data_db.year, corp_code=corp_code)
+            yearly_data_obj.revenue = yearly_data_db.revenue or 0
+            yearly_data_obj.operating_income = yearly_data_db.operating_income or 0
+            yearly_data_obj.net_income = yearly_data_db.net_income or 0
+            yearly_data_obj.total_assets = yearly_data_db.total_assets or 0
+            yearly_data_obj.total_equity = yearly_data_db.total_equity or 0
+            yearly_data_obj.gross_profit_margin = yearly_data_db.gross_profit_margin or 0.0
+            yearly_data_obj.selling_admin_expense_ratio = yearly_data_db.selling_admin_expense_ratio or 0.0
+            yearly_data_obj.total_assets_operating_income_ratio = yearly_data_db.total_assets_operating_income_ratio or 0.0
+            yearly_data_obj.roe = yearly_data_db.roe or 0.0
+            yearly_data_obj.fcf = yearly_data_db.fcf
+            yearly_data_obj.roic = yearly_data_db.roic
+            yearly_data_obj.wacc = yearly_data_db.wacc
+            
+            company_data.yearly_data.append(yearly_data_obj)
+        
+        return company_data
+        
+    except CompanyModel.DoesNotExist:
+        return None
+
+
+def save_company_to_db(company_data: CompanyFinancialObject) -> None:
+    """
+    CompanyFinancialObject를 Django 모델로 변환하여 DB에 저장
+    
+    트랜잭션으로 원자성 보장: Company와 YearlyFinancialData 저장이 모두 성공하거나 모두 실패
+    
+    Args:
+        company_data: CompanyFinancialObject 객체
+    """
+    from django.db import transaction
+    from django.utils import timezone
+    
+    # Django 모델 가져오기
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+    
+    # 현재 시간 (수집 일시)
+    now = timezone.now()
+    
+    with transaction.atomic():
+        # Company 모델 저장 또는 업데이트
+        company, _ = CompanyModel.objects.update_or_create(
+            corp_code=company_data.corp_code,
+            defaults={
+                'company_name': company_data.company_name,
+                'business_type_code': company_data.business_type_code,
+                'business_type_name': company_data.business_type_name,
+                'bond_yield_5y': company_data.bond_yield_5y,
+                'last_collected_at': now,
+                'passed_all_filters': company_data.passed_all_filters,
+                'filter_operating_income': company_data.filter_operating_income,
+                'filter_net_income': company_data.filter_net_income,
+                'filter_revenue_cagr': company_data.filter_revenue_cagr,
+                'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
+            }
+        )
+        
+        # YearlyFinancialData 모델 저장 또는 업데이트
+        for yearly_data in company_data.yearly_data:
+            YearlyFinancialDataModel.objects.update_or_create(
+                company=company,
+                year=yearly_data.year,
+                defaults={
+                    'revenue': yearly_data.revenue,
+                    'operating_income': yearly_data.operating_income,
+                    'net_income': yearly_data.net_income,
+                    'total_assets': yearly_data.total_assets,
+                    'total_equity': yearly_data.total_equity,
+                    # gross_profit_margin, selling_admin_expense_ratio는 수집하지 않음 (0.0으로 저장됨)
+                    'gross_profit_margin': yearly_data.gross_profit_margin,
+                    'selling_admin_expense_ratio': yearly_data.selling_admin_expense_ratio,
+                    # total_assets_operating_income_ratio, roe는 계산 방식으로 채워짐
+                    'total_assets_operating_income_ratio': yearly_data.total_assets_operating_income_ratio,
+                    'roe': yearly_data.roe,
+                }
+            )
 

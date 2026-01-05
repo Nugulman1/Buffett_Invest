@@ -1,14 +1,13 @@
 """
 데이터 수집 오케스트레이터
 """
-from django.db import transaction
 from apps.service.dart import DartDataService
 from apps.service.ecos import EcosDataService
 from apps.service.calculator import IndicatorCalculator
 from apps.service.filter import CompanyFilter
 from apps.models import CompanyFinancialObject, YearlyFinancialDataObject
 from apps.dart.client import DartClient
-from apps.utils.utils import is_financial_industry
+from apps.utils.utils import is_financial_industry, save_company_to_db
 
 
 class DataOrchestrator:
@@ -121,72 +120,11 @@ class DataOrchestrator:
         # DB 저장 로직 (save_to_db가 True일 때만 실행)
         if save_to_db:
             try:
-                self._save_to_db(company_data)
+                save_company_to_db(company_data)
             except Exception as e:
                 print(f"경고: DB 저장 실패: {e}")
                 # DB 저장 실패 시에도 수집된 데이터는 반환
         
         return company_data
-    
-    @transaction.atomic
-    def _save_to_db(self, company_data: CompanyFinancialObject) -> None:
-        """
-        CompanyFinancialObject를 Django 모델로 변환하여 DB에 저장
-        
-        트랜잭션으로 원자성 보장: Company와 YearlyFinancialData 저장이 모두 성공하거나 모두 실패
-        
-        Args:
-            company_data: CompanyFinancialObject 객체
-        """
-        # Django 모델 import (Python 클래스와 이름 충돌 방지)
-        # Django 모델은 models.Model을 상속받으므로 isinstance로 확인 가능
-        # 하지만 더 안전하게 모듈에서 직접 접근
-        import django.apps
-        from django.apps import apps as django_apps
-        from django.utils import timezone
-        
-        # Django 모델 가져오기
-        CompanyModel = django_apps.get_model('apps', 'Company')
-        YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
-        
-        # 현재 시간 (수집 일시)
-        now = timezone.now()
-        
-        # Company 모델 저장 또는 업데이트
-        company, _ = CompanyModel.objects.update_or_create(
-            corp_code=company_data.corp_code,
-            defaults={
-                'company_name': company_data.company_name,
-                'business_type_code': company_data.business_type_code,
-                'business_type_name': company_data.business_type_name,
-                'bond_yield_5y': company_data.bond_yield_5y,
-                'last_collected_at': now,
-                'passed_all_filters': company_data.passed_all_filters,
-                'filter_operating_income': company_data.filter_operating_income,
-                'filter_net_income': company_data.filter_net_income,
-                'filter_revenue_cagr': company_data.filter_revenue_cagr,
-                'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
-            }
-        )
-        
-        # YearlyFinancialData 모델 저장 또는 업데이트
-        for yearly_data in company_data.yearly_data:
-            YearlyFinancialDataModel.objects.update_or_create(
-                company=company,
-                year=yearly_data.year,
-                defaults={
-                    'revenue': yearly_data.revenue,
-                    'operating_income': yearly_data.operating_income,
-                    'net_income': yearly_data.net_income,
-                    'total_assets': yearly_data.total_assets,
-                    'total_equity': yearly_data.total_equity,
-                    # gross_profit_margin, selling_admin_expense_ratio는 수집하지 않음 (0.0으로 저장됨)
-                    'gross_profit_margin': yearly_data.gross_profit_margin,
-                    'selling_admin_expense_ratio': yearly_data.selling_admin_expense_ratio,
-                    # total_assets_operating_income_ratio, roe는 계산 방식으로 채워짐
-                    'total_assets_operating_income_ratio': yearly_data.total_assets_operating_income_ratio,
-                    'roe': yearly_data.roe,
-                }
-            )
 
 
