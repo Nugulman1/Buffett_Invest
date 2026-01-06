@@ -30,6 +30,24 @@
                                 <input type="number" id="year" x-model.number="formData.year" class="form-control"
                                     placeholder="예: 2023" min="2000" max="2100">
                             </div>
+                            <div class="col-12">
+                                <button type="button" class="btn btn-outline-primary" @click="loadFromDB()"
+                                    :disabled="loadingFromDB || !formData.corp_code || !formData.year">
+                                    <span x-show="!loadingFromDB">
+                                        <i class="bi bi-database me-2"></i>DB에서 가져오기
+                                    </span>
+                                    <span x-show="loadingFromDB">
+                                        <span class="spinner-border spinner-border-sm me-2"></span>로딩 중...
+                                    </span>
+                                </button>
+                                <small class="text-muted ms-2">자기자본, 국채수익률, 영업이익을 DB에서 자동으로 채웁니다.</small>
+                            </div>
+                            <div x-show="loadMessage" class="col-12">
+                                <div
+                                    :class="loadMessageType === 'success' ? 'alert alert-success' : 'alert alert-danger'">
+                                    <span x-text="loadMessage"></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -277,6 +295,9 @@
             saving: false,
             saveMessage: null,
             saveMessageType: null,
+            loadingFromDB: false,
+            loadMessage: null,
+            loadMessageType: null,
 
             // 숫자 입력 포맷팅 (천 단위 구분자 추가)
             formatNumberInput(event, dataPath) {
@@ -411,6 +432,56 @@
                 this.waccResult = ((equityWeight * costOfEquity) + (debtWeight * costOfDebt * (1 - taxRateDecimal))) * 100;
             },
 
+            // DB에서 데이터 가져오기
+            async loadFromDB() {
+                if (!this.formData.corp_code || !this.formData.year) {
+                    this.loadMessage = '기업코드와 년도를 입력해주세요.';
+                    this.loadMessageType = 'error';
+                    setTimeout(() => { this.loadMessage = null; }, 5000);
+                    return;
+                }
+
+                this.loadingFromDB = true;
+                this.loadMessage = null;
+
+                try {
+                    const response = await fetch(`/api/companies/${this.formData.corp_code}/calculator-data/?year=${this.formData.year}`);
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        // 자기자본 (천 단위 구분자 포맷팅)
+                        if (data.total_equity !== null && data.total_equity !== undefined) {
+                            this.formData.equity = data.total_equity.toLocaleString('ko-KR');
+                        }
+
+                        // 영업이익 (천 단위 구분자 포맷팅)
+                        if (data.operating_income !== null && data.operating_income !== undefined) {
+                            this.formData.operating_income = data.operating_income.toLocaleString('ko-KR');
+                        }
+
+                        // 국채수익률 (% 단위로 변환, 소수점 2자리)
+                        if (data.bond_yield_5y !== null && data.bond_yield_5y !== undefined) {
+                            this.formData.bond_yield = (data.bond_yield_5y * 100).toFixed(2);
+                        }
+
+                        this.loadMessage = 'DB에서 데이터를 성공적으로 가져왔습니다.';
+                        this.loadMessageType = 'success';
+
+                        // 계산 결과 업데이트
+                        this.calculateAll();
+                    } else {
+                        this.loadMessage = data.error || '데이터를 가져오는데 실패했습니다.';
+                        this.loadMessageType = 'error';
+                    }
+                } catch (error) {
+                    this.loadMessage = '데이터를 가져오는 중 오류가 발생했습니다: ' + error.message;
+                    this.loadMessageType = 'error';
+                } finally {
+                    this.loadingFromDB = false;
+                    setTimeout(() => { this.loadMessage = null; }, 5000);
+                }
+            },
+
             // DB에 저장
             async saveToDB() {
                 if (!this.formData.corp_code || !this.formData.year) {
@@ -424,14 +495,14 @@
                 this.saveMessage = null;
 
                 try {
-                    // 요청 데이터 준비
+                    // 요청 데이터 준비 (숫자로 변환)
                     const requestData = {
                         year: this.formData.year,
                         cfo: this.parseNumber(this.formData.cfo) || 0,
                         tangible_asset_acquisition: this.parseNumber(this.formData.tangible_asset_acquisition) || 0,
                         intangible_asset_acquisition: this.parseNumber(this.formData.intangible_asset_acquisition) || 0,
                         operating_income: this.parseNumber(this.formData.operating_income) || 0,
-                        tax_rate: this.formData.tax_rate || 25,
+                        tax_rate: parseFloat(this.formData.tax_rate) || 25,
                         equity: this.parseNumber(this.formData.equity) || 0,
                         short_term_borrowings: this.parseNumber(this.formData.short_term_borrowings) || 0,
                         current_portion_of_long_term_borrowings: this.parseNumber(this.formData.current_portion_of_long_term_borrowings) || 0,
@@ -441,8 +512,8 @@
                         convertible_bonds: this.parseNumber(this.formData.convertible_bonds) || 0,
                         cash_and_cash_equivalents: this.parseNumber(this.formData.cash_and_cash_equivalents) || 0,
                         interest_expense: this.parseNumber(this.formData.interest_expense) || 0,
-                        bond_yield: this.formData.bond_yield || 0,
-                        equity_risk_premium: this.formData.equity_risk_premium || 5.0
+                        bond_yield: parseFloat(this.formData.bond_yield) || 0,
+                        equity_risk_premium: parseFloat(this.formData.equity_risk_premium) || 5.0
                     };
 
                     const response = await fetch(`/api/companies/${this.formData.corp_code}/calculated-indicators/`, {

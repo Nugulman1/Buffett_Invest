@@ -75,6 +75,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 30,  # SQLite 잠금 타임아웃 (초, 기본값 5초에서 30초로 증가)
+        },
     }
 }
 

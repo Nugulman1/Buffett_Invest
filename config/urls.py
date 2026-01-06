@@ -14,6 +14,7 @@ urlpatterns = [
     path('companies/', include('apps.companies.urls')),
     path('api/companies/', include([
         path('<str:corp_code>/financial-data/', companies_views.get_financial_data, name='get_financial_data'),
+        path('<str:corp_code>/calculator-data/', companies_views.get_calculator_data, name='get_calculator_data'),
         path('batch/', companies_views.batch_get_financial_data, name='batch_get_financial_data'),
         path('<str:corp_code>/annual-report-link/', companies_views.get_annual_report_link, name='get_annual_report_link'),
         path('<str:corp_code>/memo/', companies_views.save_memo, name='save_memo'),

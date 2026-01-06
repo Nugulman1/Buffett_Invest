@@ -241,6 +241,87 @@ def get_financial_data(request, corp_code):
         )
 
 
+@api_view(['GET'])
+def get_calculator_data(request, corp_code):
+    """
+    계산기용 데이터 조회 API
+    GET /api/companies/{corp_code}/calculator-data/?year=2023
+    
+    특정 년도의 자기자본, 영업이익, 국채수익률을 반환합니다.
+    
+    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
+    """
+    try:
+        from django.apps import apps as django_apps
+        CompanyModel = django_apps.get_model('apps', 'Company')
+        YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+        
+        # 년도 파라미터 확인
+        year = request.query_params.get('year')
+        if not year:
+            return Response(
+                {'error': 'year 파라미터가 필요합니다.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            year = int(year)
+        except ValueError:
+            return Response(
+                {'error': 'year는 정수여야 합니다.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
+        if len(corp_code) == 6 and corp_code.isdigit():
+            # 종목코드를 기업번호로 변환
+            from apps.dart.client import DartClient
+            dart_client = DartClient()
+            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
+            if not converted_corp_code:
+                return Response(
+                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            corp_code = converted_corp_code
+        
+        # Company 모델 조회 (국채수익률)
+        try:
+            company = CompanyModel.objects.get(corp_code=corp_code)
+            bond_yield_5y = company.bond_yield_5y or 0.0
+        except CompanyModel.DoesNotExist:
+            return Response(
+                {'error': f'기업코드 {corp_code}에 해당하는 데이터를 찾을 수 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # YearlyFinancialData 모델 조회 (해당 년도)
+        try:
+            yearly_data = YearlyFinancialDataModel.objects.get(company=company, year=year)
+            total_equity = yearly_data.total_equity or 0
+            operating_income = yearly_data.operating_income or 0
+        except YearlyFinancialDataModel.DoesNotExist:
+            return Response(
+                {'error': f'{year}년 데이터를 찾을 수 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 응답 데이터 반환
+        return Response({
+            'corp_code': corp_code,
+            'year': year,
+            'total_equity': total_equity,
+            'operating_income': operating_income,
+            'bond_yield_5y': bond_yield_5y
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 @api_view(['POST'])
 def batch_get_financial_data(request):
     """
@@ -470,10 +551,10 @@ def save_calculated_indicators(request, corp_code):
         yearly_data_obj.cash_and_cash_equivalents = request.data.get('cash_and_cash_equivalents', 0) or 0
         yearly_data_obj.interest_expense = request.data.get('interest_expense', 0) or 0
         
-        # 계산 수행
-        tax_rate = request.data.get('tax_rate', 25.0) / 100.0 if request.data.get('tax_rate') else 0.25
-        bond_yield = request.data.get('bond_yield', 3.5)
-        equity_risk_premium = request.data.get('equity_risk_premium', 5.0)
+        # 계산 수행 (문자열을 숫자로 변환)
+        tax_rate = float(request.data.get('tax_rate', 25.0)) / 100.0
+        bond_yield = float(request.data.get('bond_yield', 3.5))
+        equity_risk_premium = float(request.data.get('equity_risk_premium', 5.0))
         
         fcf = IndicatorCalculator.calculate_fcf(yearly_data_obj)
         roic = IndicatorCalculator.calculate_roic(yearly_data_obj, tax_rate)
@@ -542,13 +623,12 @@ def save_manual_financial_data(request, corp_code):
                 )
             corp_code = converted_corp_code
         
-        # 입력 데이터 검증
+        # 입력 데이터 검증 및 타입 변환
         year = request.data.get('year')
-        revenue = request.data.get('revenue', 0) or 0
-        operating_income = request.data.get('operating_income', 0) or 0
-        net_income = request.data.get('net_income', 0) or 0
-        total_assets = request.data.get('total_assets', 0) or 0
-        total_equity = request.data.get('total_equity', 0) or 0
+        try:
+            year = int(year) if year else None
+        except (ValueError, TypeError):
+            year = None
         
         if not year:
             return Response(
@@ -556,48 +636,112 @@ def save_manual_financial_data(request, corp_code):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        with transaction.atomic():
-            # Company 모델 확인 또는 생성
-            company, _ = CompanyModel.objects.get_or_create(
-                corp_code=corp_code,
-                defaults={
-                    'company_name': '',
-                    'business_type_code': '',
-                    'business_type_name': '',
-                }
-            )
-            
-            # YearlyFinancialDataObject 생성 (계산용)
-            yearly_data_obj = YearlyFinancialDataObject(year=year, corp_code=corp_code)
-            yearly_data_obj.revenue = revenue
-            yearly_data_obj.operating_income = operating_income
-            yearly_data_obj.net_income = net_income
-            yearly_data_obj.total_assets = total_assets
-            yearly_data_obj.total_equity = total_equity
-            
-            # 총자산영업이익률 계산
-            total_assets_operating_income_ratio = IndicatorCalculator.calculate_total_assets_operating_income_ratio(yearly_data_obj)
-            
-            # ROE 계산
-            roe = IndicatorCalculator.calculate_roe(yearly_data_obj)
-            
-            # YearlyFinancialData 모델 저장 또는 업데이트
-            yearly_data_db, _ = YearlyFinancialDataModel.objects.update_or_create(
-                company=company,
-                year=year,
-                defaults={
-                    'revenue': revenue,
-                    'operating_income': operating_income,
-                    'net_income': net_income,
-                    'total_assets': total_assets,
-                    'total_equity': total_equity,
-                    'total_assets_operating_income_ratio': total_assets_operating_income_ratio,
-                    'roe': roe,
-                }
-            )
+        # 숫자 필드들을 정수로 변환 (문자열도 처리)
+        def to_int(value, default=0):
+            try:
+                if value is None or value == '':
+                    return default
+                return int(float(value))  # 문자열 숫자도 처리
+            except (ValueError, TypeError):
+                return default
         
-        # DB에서 CompanyFinancialObject 로드
-        company_data = load_company_from_db(corp_code)
+        revenue = to_int(request.data.get('revenue'), 0)
+        operating_income = to_int(request.data.get('operating_income'), 0)
+        net_income = to_int(request.data.get('net_income'), 0)
+        total_assets = to_int(request.data.get('total_assets'), 0)
+        total_equity = to_int(request.data.get('total_equity'), 0)
+        
+        # SQLite 잠금 문제 해결을 위한 재시도 로직
+        max_retries = 3
+        retry_delay = 0.1  # 100ms
+        
+        for attempt in range(max_retries):
+            try:
+                with transaction.atomic():
+                    # Company 모델 확인 또는 생성
+                    company, created = CompanyModel.objects.get_or_create(
+                        corp_code=corp_code,
+                        defaults={
+                            'company_name': '',
+                            'business_type_code': '',
+                            'business_type_name': '',
+                        }
+                    )
+                    
+                    # YearlyFinancialDataObject 생성 (계산용)
+                    yearly_data_obj = YearlyFinancialDataObject(year=year, corp_code=corp_code)
+                    yearly_data_obj.revenue = revenue
+                    yearly_data_obj.operating_income = operating_income
+                    yearly_data_obj.net_income = net_income
+                    yearly_data_obj.total_assets = total_assets
+                    yearly_data_obj.total_equity = total_equity
+                    
+                    # 총자산영업이익률 계산
+                    total_assets_operating_income_ratio = IndicatorCalculator.calculate_total_assets_operating_income_ratio(yearly_data_obj)
+                    
+                    # ROE 계산
+                    roe = IndicatorCalculator.calculate_roe(yearly_data_obj)
+                    
+                    # YearlyFinancialData 모델 저장 또는 업데이트
+                    yearly_data_db, created = YearlyFinancialDataModel.objects.update_or_create(
+                        company=company,
+                        year=year,
+                        defaults={
+                            'revenue': revenue,
+                            'operating_income': operating_income,
+                            'net_income': net_income,
+                            'total_assets': total_assets,
+                            'total_equity': total_equity,
+                            'total_assets_operating_income_ratio': total_assets_operating_income_ratio,
+                            'roe': roe,
+                        }
+                    )
+                
+                # 트랜잭션 성공 시 루프 종료
+                break
+                
+            except Exception as e:
+                error_message = str(e)
+                is_db_locked = 'database is locked' in error_message.lower()
+                
+                if is_db_locked and attempt < max_retries - 1:
+                    # SQLite 잠금 오류인 경우 재시도
+                    import time
+                    time.sleep(retry_delay * (attempt + 1))  # 지수 백오프
+                    continue
+                else:
+                    # 다른 오류이거나 재시도 횟수 초과
+                    raise
+        
+        # 트랜잭션 완료 후 연결 명시적으로 닫기 (SQLite 잠금 방지)
+        from django.db import connection
+        connection.close()
+        
+        # DB에서 CompanyFinancialObject 로드 (재시도 로직 포함)
+        company_data = None
+        for attempt in range(max_retries):
+            try:
+                company_data = load_company_from_db(corp_code)
+                # 성공 시 루프 종료
+                break
+            except Exception as e:
+                error_message = str(e)
+                is_db_locked = 'database is locked' in error_message.lower()
+                
+                if is_db_locked and attempt < max_retries - 1:
+                    import time
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+                else:
+                    return Response(
+                        {'error': f'데이터 로드 중 오류 발생: {error_message}'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+        
+        # load_company_from_db 성공 후 연결 닫기
+        from django.db import connection
+        connection.close()
+        
         if not company_data:
             return Response(
                 {'error': '데이터를 로드할 수 없습니다.'},
@@ -605,16 +749,28 @@ def save_manual_financial_data(request, corp_code):
             )
         
         # 필터 재검사
-        CompanyFilter.apply_all_filters(company_data)
+        try:
+            CompanyFilter.apply_all_filters(company_data)
+        except Exception as e:
+            return Response(
+                {'error': f'필터 적용 중 오류 발생: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
         # 필터 결과를 Company 모델에 저장
-        with transaction.atomic():
-            CompanyModel.objects.filter(corp_code=corp_code).update(
-                passed_all_filters=company_data.passed_all_filters,
-                filter_operating_income=company_data.filter_operating_income,
-                filter_net_income=company_data.filter_net_income,
-                filter_revenue_cagr=company_data.filter_revenue_cagr,
-                filter_total_assets_operating_income_ratio=company_data.filter_total_assets_operating_income_ratio,
+        try:
+            with transaction.atomic():
+                CompanyModel.objects.filter(corp_code=corp_code).update(
+                    passed_all_filters=company_data.passed_all_filters,
+                    filter_operating_income=company_data.filter_operating_income,
+                    filter_net_income=company_data.filter_net_income,
+                    filter_revenue_cagr=company_data.filter_revenue_cagr,
+                    filter_total_assets_operating_income_ratio=company_data.filter_total_assets_operating_income_ratio,
+                )
+        except Exception as e:
+            return Response(
+                {'error': f'필터 결과 저장 중 오류 발생: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
         return Response({
@@ -636,7 +792,7 @@ def save_manual_financial_data(request, corp_code):
         
     except Exception as e:
         return Response(
-            {'error': str(e)},
+            {'error': f'서버 오류가 발생했습니다: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
