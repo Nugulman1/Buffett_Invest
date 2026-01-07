@@ -31,6 +31,32 @@ def is_financial_industry(induty_code: str) -> bool:
     return code_prefix in financial_codes
 
 
+def classify_company_size(total_assets: int) -> str:
+    """
+    총자산 기준으로 기업 규모 분류
+    
+    분류 기준:
+    - 중소기업: 총자산 < 5천억원 (5,000,000,000)
+    - 대기업: 총자산 ≥ 10조원 (10,000,000,000,000)
+    - 중견기업: 그 외 (5천억원 이상 10조원 미만)
+    
+    Args:
+        total_assets: 총자산 (정수, 원 단위)
+        
+    Returns:
+        기업 규모 ('small', 'medium', 'large')
+    """
+    SMALL_THRESHOLD = 5_000_000_000  # 5천억원
+    LARGE_THRESHOLD = 10_000_000_000_000  # 10조원
+    
+    if total_assets < SMALL_THRESHOLD:
+        return 'small'  # 중소기업
+    elif total_assets >= LARGE_THRESHOLD:
+        return 'large'  # 대기업
+    else:
+        return 'medium'  # 중견기업
+
+
 def normalize_account_name(account_name: str) -> str:
     """
     계정명 정규화 함수
@@ -263,6 +289,7 @@ def load_company_from_db(corp_code: str) -> CompanyFinancialObject | None:
         company_data.filter_net_income = company.filter_net_income
         company_data.filter_revenue_cagr = company.filter_revenue_cagr
         company_data.filter_total_assets_operating_income_ratio = company.filter_total_assets_operating_income_ratio
+        company_data.filter_roe = company.filter_roe
         
         # YearlyFinancialDataObject 리스트 생성
         for yearly_data_db in yearly_data_list:
@@ -322,6 +349,7 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                 'filter_net_income': company_data.filter_net_income,
                 'filter_revenue_cagr': company_data.filter_revenue_cagr,
                 'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
+                'filter_roe': company_data.filter_roe,
             }
         )
         

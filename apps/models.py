@@ -17,6 +17,7 @@ class Company(models.Model):
     filter_net_income = models.BooleanField(default=False, verbose_name='당기순이익필터')
     filter_revenue_cagr = models.BooleanField(default=False, verbose_name='매출액CAGR필터')
     filter_total_assets_operating_income_ratio = models.BooleanField(default=False, verbose_name='총자산영업이익률필터')
+    filter_roe = models.BooleanField(default=False, verbose_name='ROE필터')
     memo = models.TextField(blank=True, null=True, verbose_name='메모')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
@@ -243,3 +244,4 @@ class CompanyFinancialObject:
         self.filter_net_income: bool = True  # 당기순이익 필터 통과 여부
         self.filter_revenue_cagr: bool = True  # 매출액 CAGR 필터 통과 여부
         self.filter_total_assets_operating_income_ratio: bool = True  # 총자산영업이익률 필터 통과 여부
+        self.filter_roe: bool = True  # ROE 필터 통과 여부

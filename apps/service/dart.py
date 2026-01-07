@@ -58,7 +58,7 @@ class DartDataService:
         Returns:
             FinancialStatementData 객체 (단일, 실패 시 None)
         """
-        # 연결재무제표 우선 시도, 없으면 별도재무제표
+        # 먼저 직접 사업연도로 조회 시도
         for fs_div in ['CFS', 'OFS']:
             try:
                 raw_data = self.client.get_financial_statement(
@@ -77,9 +77,38 @@ class DartDataService:
                     )
             except Exception as e:
                 if fs_div == 'CFS':
-                    continue
-                else:
-                    return None
+                    continue  # OFS도 시도
+                # OFS도 실패했으므로 폴백 로직 실행
+        
+        # 직접 조회 실패 시, 사업보고서 접수번호를 찾아서 시도
+        try:
+            rcept_no = self.client.get_annual_report_rcept_no(corp_code, year)
+            if rcept_no:
+                # 접수번호에서 사업연도 추출 (접수번호 연도 - 1)
+                rcept_year = int(rcept_no[:4])
+                actual_bsns_year = str(rcept_year - 1)
+                
+                # 추출한 사업연도로 다시 조회 시도
+                for fs_div_fallback in ['CFS', 'OFS']:
+                    try:
+                        raw_data = self.client.get_financial_statement(
+                            corp_code=corp_code,
+                            bsns_year=actual_bsns_year,
+                            reprt_code='11011',
+                            fs_div=fs_div_fallback
+                        )
+                        
+                        if raw_data:
+                            return FinancialStatementData(
+                                year=year,  # 원래 요청한 연도 유지
+                                reprt_code='11011',
+                                fs_div=fs_div_fallback,
+                                raw_data=raw_data
+                            )
+                    except:
+                        continue
+        except:
+            pass
         
         return None
     

@@ -81,6 +81,14 @@
                                         x-text="companyData?.filter_total_assets_operating_income_ratio ? '통과' : '미통과'"></span>
                                 </div>
                             </div>
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center">
+                                    <span class="me-2">ROE 필터:</span>
+                                    <span class="badge"
+                                        :class="companyData?.filter_roe ? 'bg-success' : 'bg-danger'"
+                                        x-text="companyData?.filter_roe ? '통과' : '미통과'"></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -130,6 +130,7 @@ def get_financial_data(request, corp_code):
                 'filter_net_income': company_data.filter_net_income,
                 'filter_revenue_cagr': company_data.filter_revenue_cagr,
                 'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
+                'filter_roe': company_data.filter_roe,
                 'memo': memo,
                 'yearly_data': [
                     {
@@ -178,6 +179,7 @@ def get_financial_data(request, corp_code):
                 'filter_net_income': company_data_from_db.filter_net_income,
                 'filter_revenue_cagr': company_data_from_db.filter_revenue_cagr,
                 'filter_total_assets_operating_income_ratio': company_data_from_db.filter_total_assets_operating_income_ratio,
+                'filter_roe': company_data_from_db.filter_roe,
                 'memo': memo,
                 'yearly_data': [
                     {
@@ -211,6 +213,7 @@ def get_financial_data(request, corp_code):
                 'filter_net_income': company_data.filter_net_income,
                 'filter_revenue_cagr': company_data.filter_revenue_cagr,
                 'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
+                'filter_roe': company_data.filter_roe,
                 'memo': None,
                 'yearly_data': [
                     {
@@ -766,6 +769,7 @@ def save_manual_financial_data(request, corp_code):
                     filter_net_income=company_data.filter_net_income,
                     filter_revenue_cagr=company_data.filter_revenue_cagr,
                     filter_total_assets_operating_income_ratio=company_data.filter_total_assets_operating_income_ratio,
+                    filter_roe=company_data.filter_roe,
                 )
         except Exception as e:
             return Response(
@@ -788,6 +792,7 @@ def save_manual_financial_data(request, corp_code):
             'filter_net_income': company_data.filter_net_income,
             'filter_revenue_cagr': company_data.filter_revenue_cagr,
             'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
+            'filter_roe': company_data.filter_roe,
         }, status=status.HTTP_200_OK)
         
     except Exception as e:

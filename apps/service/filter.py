@@ -9,8 +9,9 @@ logger = logging.getLogger(__name__)
 
 # 최근 5년 중 영업이익 ≤ 0 인 연도 ≤ 1회
 # 최근 5년 중 당기순이익 합계 > 0
-# 매출액 CAGR ≥ 3%
+# 매출액 CAGR ≥ 5%
 # 총자산영업이익률 평균 ≥ 3%
+# ROE 평균 (규모별): 대기업 ≥ 8%, 중견기업 ≥ 10%, 중소기업 ≥ 12%
 
 class CompanyFilter:
     """장기 투자 필터링 서비스"""
@@ -72,7 +73,7 @@ class CompanyFilter:
     @staticmethod
     def filter_revenue_cagr(company_data: CompanyFinancialObject) -> bool:
         """
-        매출액 CAGR 필터: 매출액 CAGR ≥ 3%
+        매출액 CAGR 필터: 매출액 CAGR ≥ 5%
         (5년 데이터가 없어도 수집된 데이터로 계산, 최소 2년 데이터 필요)
         
         단, 금융업인 경우 자동으로 True 반환 (금융업은 매출액 개념이 다름)
@@ -107,8 +108,8 @@ class CompanyFilter:
         # CAGR 계산
         cagr = IndicatorCalculator.calculate_cagr(start_value, end_value, years_span)
         
-        # CAGR ≥ 3% 인지 확인
-        return cagr >= 0.03
+        # CAGR ≥ 5% 인지 확인
+        return cagr >= 0.05
     
     @staticmethod
     def filter_total_assets_operating_income_ratio(company_data: CompanyFinancialObject) -> bool:
@@ -138,6 +139,64 @@ class CompanyFilter:
         # 평균이 3% 이상인지 확인
         return average_ratio >= 0.03
     
+    @staticmethod
+    def filter_roe(company_data: CompanyFinancialObject) -> bool:
+        """
+        ROE 필터: 기업 규모별 ROE 평균 임계값 적용
+        - 대기업 (총자산 ≥ 10조): 평균 ROE ≥ 8%
+        - 중견기업 (5천억 ≤ 총자산 < 10조): 평균 ROE ≥ 10%
+        - 중소기업 (총자산 < 5천억): 평균 ROE ≥ 12%
+        
+        (5년 데이터가 없어도 수집된 데이터로 계산)
+        
+        주의:
+        - 총자산은 최신 연도(year가 가장 큰 값) 데이터 사용
+        - 자본총계가 0 이하인 연도는 ROE 계산에서 제외
+        - 모든 연도가 자본잠식이면 필터 실패 처리
+        
+        Args:
+            company_data: CompanyFinancialObject 객체
+        
+        Returns:
+            필터 통과 여부 (bool)
+        """
+        if not company_data.yearly_data:
+            return False
+        
+        # 최신 연도 총자산으로 기업 규모 분류
+        from apps.utils.utils import classify_company_size
+        sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
+        latest_total_assets = sorted_data[-1].total_assets
+        company_size = classify_company_size(latest_total_assets)
+        
+        # 규모별 ROE 임계값 (소수 형태: 0.08 = 8%)
+        roe_thresholds = {
+            'large': 0.08,   # 대기업: 8%
+            'medium': 0.10,  # 중견기업: 10%
+            'small': 0.12    # 중소기업: 12%
+        }
+        threshold = roe_thresholds[company_size]
+        
+        # 데이터 정렬 (오름차순)
+        # 최근 5년 또는 모든 데이터 사용 (5년 미만인 경우)
+        data_to_check = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
+        
+        # 자본총계가 양수인 연도만 ROE 계산
+        roe_values = []
+        for data in data_to_check:
+            if data.total_equity > 0:
+                roe_values.append(data.roe)
+        
+        # 계산 가능한 ROE가 없으면 필터 실패
+        if not roe_values:
+            return False
+        
+        # ROE 평균 계산
+        average_roe = sum(roe_values) / len(roe_values)
+        
+        # 평균이 임계값 이상인지 확인
+        return average_roe >= threshold
+    
     @classmethod
     def apply_all_filters(cls, company_data: CompanyFinancialObject) -> None:
         """
@@ -153,12 +212,14 @@ class CompanyFilter:
         company_data.filter_net_income = cls.filter_net_income(company_data)
         company_data.filter_revenue_cagr = cls.filter_revenue_cagr(company_data)
         company_data.filter_total_assets_operating_income_ratio = cls.filter_total_assets_operating_income_ratio(company_data)
+        company_data.filter_roe = cls.filter_roe(company_data)
         
         # 전체 필터 통과 여부: 모든 필터가 True여야 함
         company_data.passed_all_filters = (
             company_data.filter_operating_income and
             company_data.filter_net_income and
             company_data.filter_revenue_cagr and
-            company_data.filter_total_assets_operating_income_ratio
+            company_data.filter_total_assets_operating_income_ratio and
+            company_data.filter_roe
         )
 
