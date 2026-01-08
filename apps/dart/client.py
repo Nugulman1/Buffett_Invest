@@ -362,10 +362,17 @@ class DartClient:
         
         # 응답 검증
         if isinstance(result, dict) and result.get('status') != '000':
-            raise Exception(f"재무제표 조회 실패: {result.get('message', '알 수 없는 오류')}")
+            # "조회된 데이타가 없습니다" 메시지도 빈 리스트로 처리 (예외 대신)
+            message = result.get('message', '알 수 없는 오류')
+            if '조회된 데이타가 없습니다' in message or '데이터가 없습니다' in message:
+                return []
+            raise Exception(f"재무제표 조회 실패: {message}")
         
         # list 필드에서 재무제표 데이터 반환
-        return result.get('list', [])
+        financial_list = result.get('list', [])
+        
+        # 빈 리스트인 경우도 정상 반환 (호출자가 처리)
+        return financial_list if isinstance(financial_list, list) else []
     
     def get_report_list(self, corp_code, bgn_de, end_de, last_reprt_at='N', page_no=1, page_count=1000):
         """

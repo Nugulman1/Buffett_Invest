@@ -111,12 +111,14 @@ def get_financial_data(request, corp_code):
         # DB에서 먼저 조회
         company_data = load_company_from_db(corp_code)
         if company_data and company_data.yearly_data and not should_collect_company(corp_code):
-            # memo는 별도로 조회
+            # memo와 memo_updated_at은 별도로 조회
             try:
                 company = CompanyModel.objects.get(corp_code=corp_code)
                 memo = company.memo
+                memo_updated_at = company.memo_updated_at.isoformat() if company.memo_updated_at else None
             except CompanyModel.DoesNotExist:
                 memo = None
+                memo_updated_at = None
             
             # CompanyFinancialObject를 딕셔너리로 변환
             data = {
@@ -132,6 +134,7 @@ def get_financial_data(request, corp_code):
                 'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
                 'filter_roe': company_data.filter_roe,
                 'memo': memo,
+                'memo_updated_at': memo_updated_at,
                 'yearly_data': [
                     {
                         'year': yd.year,
@@ -160,12 +163,14 @@ def get_financial_data(request, corp_code):
         # 수집 후 DB에서 다시 조회 (새로 추가된 필드 포함)
         company_data_from_db = load_company_from_db(corp_code)
         if company_data_from_db:
-            # memo는 별도로 조회
+            # memo와 memo_updated_at은 별도로 조회
             try:
                 company = CompanyModel.objects.get(corp_code=corp_code)
                 memo = company.memo
+                memo_updated_at = company.memo_updated_at.isoformat() if company.memo_updated_at else None
             except CompanyModel.DoesNotExist:
                 memo = None
+                memo_updated_at = None
             
             # CompanyFinancialObject를 딕셔너리로 변환
             data = {
@@ -181,6 +186,7 @@ def get_financial_data(request, corp_code):
                 'filter_total_assets_operating_income_ratio': company_data_from_db.filter_total_assets_operating_income_ratio,
                 'filter_roe': company_data_from_db.filter_roe,
                 'memo': memo,
+                'memo_updated_at': memo_updated_at,
                 'yearly_data': [
                     {
                         'year': yd.year,
@@ -201,7 +207,15 @@ def get_financial_data(request, corp_code):
                 ]
             }
         else:
-            # 수집 실패 시 빈 데이터 반환
+            # 수집 실패 시 빈 데이터 반환 (메모는 DB에서 조회)
+            try:
+                company = CompanyModel.objects.get(corp_code=corp_code)
+                memo = company.memo
+                memo_updated_at = company.memo_updated_at.isoformat() if company.memo_updated_at else None
+            except CompanyModel.DoesNotExist:
+                memo = None
+                memo_updated_at = None
+            
             data = {
                 'corp_code': company_data.corp_code,
                 'company_name': company_data.company_name,
@@ -214,7 +228,8 @@ def get_financial_data(request, corp_code):
                 'filter_revenue_cagr': company_data.filter_revenue_cagr,
                 'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
                 'filter_roe': company_data.filter_roe,
-                'memo': None,
+                'memo': memo,
+                'memo_updated_at': memo_updated_at,
                 'yearly_data': [
                     {
                         'year': yd.year,
@@ -444,17 +459,26 @@ def save_memo(request, corp_code):
                 )
             corp_code = converted_corp_code
         
+        from django.utils import timezone
+        
         memo = request.data.get('memo', '')
+        
+        # 메모 저장 시 현재 시간 기록
+        now = timezone.now()
         
         # Company 모델 업데이트 또는 생성
         company, created = CompanyModel.objects.update_or_create(
             corp_code=corp_code,
-            defaults={'memo': memo}
+            defaults={
+                'memo': memo,
+                'memo_updated_at': now if memo else None  # 메모가 있으면 날짜 기록, 없으면 None
+            }
         )
         
         return Response({
             'corp_code': company.corp_code,
             'memo': company.memo,
+            'memo_updated_at': company.memo_updated_at.isoformat() if company.memo_updated_at else None,
             'created': created
         }, status=status.HTTP_200_OK)
         
@@ -465,13 +489,87 @@ def save_memo(request, corp_code):
         )
 
 
+def _process_single_year_indicators(year_data, corp_code, company):
+    """
+    단일 년도 지표 계산 및 저장
+    
+    Args:
+        year_data: 년도별 재무 데이터 딕셔너리
+        corp_code: 기업번호
+        company: Company 모델 인스턴스
+    
+    Returns:
+        dict: 계산 결과 (corp_code, year, fcf, roic, wacc)
+    
+    Raises:
+        ValueError: 필수 필드 누락
+        YearlyFinancialDataModel.DoesNotExist: 년도 데이터 없음
+        Exception: 기타 오류
+    """
+    from django.apps import apps as django_apps
+    from apps.service.calculator import IndicatorCalculator
+    from apps.models import YearlyFinancialDataObject
+    
+    YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+    
+    # YearlyFinancialData 확인
+    year = year_data.get('year')
+    if not year:
+        raise ValueError('year 필드가 필요합니다.')
+    
+    try:
+        yearly_data_db = YearlyFinancialDataModel.objects.get(company=company, year=year)
+    except YearlyFinancialDataModel.DoesNotExist:
+        raise YearlyFinancialDataModel.DoesNotExist(f'{year}년도 데이터를 찾을 수 없습니다. 먼저 재무 데이터를 수집해주세요.')
+    
+    # 입력 데이터로 YearlyFinancialDataObject 생성
+    yearly_data_obj = YearlyFinancialDataObject(year=year, corp_code=corp_code)
+    yearly_data_obj.cfo = year_data.get('cfo', 0) or 0
+    yearly_data_obj.tangible_asset_acquisition = year_data.get('tangible_asset_acquisition', 0) or 0
+    yearly_data_obj.intangible_asset_acquisition = year_data.get('intangible_asset_acquisition', 0) or 0
+    yearly_data_obj.operating_income = year_data.get('operating_income', 0) or 0
+    yearly_data_obj.equity = year_data.get('equity', 0) or 0
+    yearly_data_obj.short_term_borrowings = year_data.get('short_term_borrowings', 0) or 0
+    yearly_data_obj.current_portion_of_long_term_borrowings = year_data.get('current_portion_of_long_term_borrowings', 0) or 0
+    yearly_data_obj.long_term_borrowings = year_data.get('long_term_borrowings', 0) or 0
+    yearly_data_obj.bonds = year_data.get('bonds', 0) or 0
+    yearly_data_obj.lease_liabilities = year_data.get('lease_liabilities', 0) or 0
+    yearly_data_obj.convertible_bonds = year_data.get('convertible_bonds', 0) or 0
+    yearly_data_obj.cash_and_cash_equivalents = year_data.get('cash_and_cash_equivalents', 0) or 0
+    yearly_data_obj.interest_expense = year_data.get('interest_expense', 0) or 0
+    
+    # 계산 수행 (문자열을 숫자로 변환)
+    tax_rate = float(year_data.get('tax_rate', 25.0)) / 100.0
+    bond_yield = float(year_data.get('bond_yield', 3.5))
+    equity_risk_premium = float(year_data.get('equity_risk_premium', 5.0))
+    
+    fcf = IndicatorCalculator.calculate_fcf(yearly_data_obj)
+    roic = IndicatorCalculator.calculate_roic(yearly_data_obj, tax_rate)
+    wacc = IndicatorCalculator.calculate_wacc(yearly_data_obj, bond_yield, tax_rate, equity_risk_premium)
+    
+    # DB 업데이트
+    yearly_data_db.fcf = fcf
+    yearly_data_db.roic = roic
+    yearly_data_db.wacc = wacc
+    yearly_data_db.save()
+    
+    return {
+        'corp_code': corp_code,
+        'year': year,
+        'fcf': fcf,
+        'roic': roic,
+        'wacc': wacc
+    }
+
+
 @api_view(['POST'])
 def save_calculated_indicators(request, corp_code):
     """
     계산 지표 저장 API
     POST /api/companies/{corp_code}/calculated-indicators/
     
-    Body: {
+    Body: 단일 객체 또는 배열
+    {
         "year": 2023,
         "cfo": 1000000000,
         "tangible_asset_acquisition": 500000000,
@@ -490,12 +588,17 @@ def save_calculated_indicators(request, corp_code):
         "equity_risk_premium": 5.0
     }
     
+    또는
+    
+    [
+        { "year": 2023, ... },
+        { "year": 2024, ... }
+    ]
+    
     corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
     """
     try:
         from django.apps import apps as django_apps
-        from apps.service.calculator import IndicatorCalculator
-        from apps.models import YearlyFinancialDataObject
         
         CompanyModel = django_apps.get_model('apps', 'Company')
         YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
@@ -522,60 +625,51 @@ def save_calculated_indicators(request, corp_code):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # YearlyFinancialData 확인
-        year = request.data.get('year')
-        if not year:
-            return Response(
-                {'error': 'year 필드가 필요합니다.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # 항상 배열로 정규화
+        data_list = request.data if isinstance(request.data, list) else [request.data]
         
-        try:
-            yearly_data_db = YearlyFinancialDataModel.objects.get(company=company, year=year)
-        except YearlyFinancialDataModel.DoesNotExist:
-            return Response(
-                {'error': f'{year}년도 데이터를 찾을 수 없습니다. 먼저 재무 데이터를 수집해주세요.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        # 각 년도별 처리
+        results = []
+        errors = []
         
-        # 입력 데이터로 YearlyFinancialDataObject 생성
-        yearly_data_obj = YearlyFinancialDataObject(year=year, corp_code=corp_code)
-        yearly_data_obj.cfo = request.data.get('cfo', 0) or 0
-        yearly_data_obj.tangible_asset_acquisition = request.data.get('tangible_asset_acquisition', 0) or 0
-        yearly_data_obj.intangible_asset_acquisition = request.data.get('intangible_asset_acquisition', 0) or 0
-        yearly_data_obj.operating_income = request.data.get('operating_income', 0) or 0
-        yearly_data_obj.equity = request.data.get('equity', 0) or 0
-        yearly_data_obj.short_term_borrowings = request.data.get('short_term_borrowings', 0) or 0
-        yearly_data_obj.current_portion_of_long_term_borrowings = request.data.get('current_portion_of_long_term_borrowings', 0) or 0
-        yearly_data_obj.long_term_borrowings = request.data.get('long_term_borrowings', 0) or 0
-        yearly_data_obj.bonds = request.data.get('bonds', 0) or 0
-        yearly_data_obj.lease_liabilities = request.data.get('lease_liabilities', 0) or 0
-        yearly_data_obj.convertible_bonds = request.data.get('convertible_bonds', 0) or 0
-        yearly_data_obj.cash_and_cash_equivalents = request.data.get('cash_and_cash_equivalents', 0) or 0
-        yearly_data_obj.interest_expense = request.data.get('interest_expense', 0) or 0
+        for idx, year_data in enumerate(data_list):
+            try:
+                result = _process_single_year_indicators(year_data, corp_code, company)
+                results.append(result)
+            except YearlyFinancialDataModel.DoesNotExist as e:
+                errors.append({
+                    'index': idx,
+                    'year': year_data.get('year'),
+                    'error': str(e)
+                })
+            except ValueError as e:
+                errors.append({
+                    'index': idx,
+                    'year': year_data.get('year'),
+                    'error': str(e)
+                })
+            except Exception as e:
+                errors.append({
+                    'index': idx,
+                    'year': year_data.get('year'),
+                    'error': str(e)
+                })
         
-        # 계산 수행 (문자열을 숫자로 변환)
-        tax_rate = float(request.data.get('tax_rate', 25.0)) / 100.0
-        bond_yield = float(request.data.get('bond_yield', 3.5))
-        equity_risk_premium = float(request.data.get('equity_risk_premium', 5.0))
+        # 응답 생성
+        response_data = {
+            'results': results,
+            'success_count': len(results),
+            'total_count': len(data_list)
+        }
         
-        fcf = IndicatorCalculator.calculate_fcf(yearly_data_obj)
-        roic = IndicatorCalculator.calculate_roic(yearly_data_obj, tax_rate)
-        wacc = IndicatorCalculator.calculate_wacc(yearly_data_obj, bond_yield, tax_rate, equity_risk_premium)
+        if errors:
+            response_data['errors'] = errors
         
-        # DB 업데이트
-        yearly_data_db.fcf = fcf
-        yearly_data_db.roic = roic
-        yearly_data_db.wacc = wacc
-        yearly_data_db.save()
+        # 모든 년도가 실패한 경우
+        if not results:
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
         
-        return Response({
-            'corp_code': corp_code,
-            'year': year,
-            'fcf': fcf,
-            'roic': roic,
-            'wacc': wacc
-        }, status=status.HTTP_200_OK)
+        return Response(response_data, status=status.HTTP_200_OK)
         
     except Exception as e:
         return Response(

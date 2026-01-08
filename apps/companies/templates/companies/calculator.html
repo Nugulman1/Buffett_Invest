@@ -22,31 +22,8 @@
                             <div class="col-md-6">
                                 <label for="corp_code" class="form-label">기업코드 <span
                                         class="text-danger">*</span></label>
-                                <input type="text" id="corp_code" x-model="formData.corp_code" class="form-control"
+                                <input type="text" id="corp_code" x-model="corpCode" class="form-control"
                                     placeholder="예: 00126380">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="year" class="form-label">년도 <span class="text-danger">*</span></label>
-                                <input type="number" id="year" x-model.number="formData.year" class="form-control"
-                                    placeholder="예: 2023" min="2000" max="2100">
-                            </div>
-                            <div class="col-12">
-                                <button type="button" class="btn btn-outline-primary" @click="loadFromDB()"
-                                    :disabled="loadingFromDB || !formData.corp_code || !formData.year">
-                                    <span x-show="!loadingFromDB">
-                                        <i class="bi bi-database me-2"></i>DB에서 가져오기
-                                    </span>
-                                    <span x-show="loadingFromDB">
-                                        <span class="spinner-border spinner-border-sm me-2"></span>로딩 중...
-                                    </span>
-                                </button>
-                                <small class="text-muted ms-2">자기자본, 국채수익률, 영업이익을 DB에서 자동으로 채웁니다.</small>
-                            </div>
-                            <div x-show="loadMessage" class="col-12">
-                                <div
-                                    :class="loadMessageType === 'success' ? 'alert alert-success' : 'alert alert-danger'">
-                                    <span x-text="loadMessage"></span>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -55,34 +32,28 @@
                 <!-- 공통 필드 섹션 -->
                 <div class="card mb-4">
                     <div class="card-body p-4">
-                        <h4 class="card-title mb-4">공통 필드</h4>
+                        <h4 class="card-title mb-4">공통 필드 (모든 년도에 적용)</h4>
                         <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="equity" class="form-label">자기자본 <span class="text-muted">(원)</span></label>
-                                <input type="text" id="equity" x-model="formData.equity"
-                                    @input="formatNumberInput($event, 'formData.equity'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <label for="tax_rate" class="form-label">법인세율 <span
                                         class="text-muted">(%)</span></label>
-                                <input type="number" id="tax_rate" x-model.number="formData.tax_rate"
-                                    @input="calculateAll()" class="form-control" placeholder="25" step="0.1" min="0"
-                                    max="100">
+                                <input type="number" id="tax_rate" x-model.number="commonFields.tax_rate"
+                                    @input="calculateAllForAllYears()" class="form-control" placeholder="25" step="0.1"
+                                    min="0" max="100">
                                 <div class="form-text">기본값: 25%</div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <label for="bond_yield" class="form-label">국채수익률 <span
                                         class="text-muted">(%)</span></label>
-                                <input type="number" id="bond_yield" x-model.number="formData.bond_yield"
-                                    @input="calculateAll()" class="form-control" placeholder="3.5" step="0.1" min="0"
-                                    max="100">
+                                <input type="number" id="bond_yield" x-model.number="commonFields.bond_yield"
+                                    @input="calculateAllForAllYears()" class="form-control" placeholder="3.5" step="0.1"
+                                    min="0" max="100">
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <label for="equity_risk_premium" class="form-label">주주기대수익률 <span
                                         class="text-muted">(%)</span></label>
                                 <input type="number" id="equity_risk_premium"
-                                    x-model.number="formData.equity_risk_premium" @input="calculateAll()"
+                                    x-model.number="commonFields.equity_risk_premium" @input="calculateAllForAllYears()"
                                     class="form-control" placeholder="5.0" step="0.1" min="0" max="100">
                                 <div class="form-text">기본값: 5%</div>
                             </div>
@@ -90,176 +61,203 @@
                     </div>
                 </div>
 
-                <!-- 이자부채 섹션 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <h4 class="card-title mb-4">이자부채</h4>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="short_term_borrowings" class="form-label">단기차입금 <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="short_term_borrowings" x-model="formData.short_term_borrowings"
-                                    @input="formatNumberInput($event, 'formData.short_term_borrowings'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="current_portion" class="form-label">유동성장기차입금 <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="current_portion"
-                                    x-model="formData.current_portion_of_long_term_borrowings"
-                                    @input="formatNumberInput($event, 'formData.current_portion_of_long_term_borrowings'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="long_term_borrowings" class="form-label">장기차입금 <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="long_term_borrowings" x-model="formData.long_term_borrowings"
-                                    @input="formatNumberInput($event, 'formData.long_term_borrowings'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="bonds" class="form-label">사채 <span class="text-muted">(원)</span></label>
-                                <input type="text" id="bonds" x-model="formData.bonds"
-                                    @input="formatNumberInput($event, 'formData.bonds'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="lease_liabilities" class="form-label">리스부채 <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="lease_liabilities" x-model="formData.lease_liabilities"
-                                    @input="formatNumberInput($event, 'formData.lease_liabilities'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="convertible_bonds" class="form-label">전환부채 <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="convertible_bonds" x-model="formData.convertible_bonds"
-                                    @input="formatNumberInput($event, 'formData.convertible_bonds'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                        </div>
+                <!-- 년도 추가 버튼 -->
+                <div class="mb-4">
+                    <button type="button" class="btn btn-success" @click="addYearForm()">
+                        <i class="bi bi-plus-circle me-2"></i>년도 추가
+                    </button>
+                    <button type="button" class="btn btn-primary" @click="saveAll()" :disabled="saving">
+                        <span x-show="!saving">
+                            <i class="bi bi-save me-2"></i>모두 저장
+                        </span>
+                        <span x-show="saving">
+                            <span class="spinner-border spinner-border-sm me-2"></span>저장 중...
+                        </span>
+                    </button>
+                </div>
+
+                <div x-show="saveMessage" class="mb-3">
+                    <div :class="saveMessageType === 'success' ? 'alert alert-success' : 'alert alert-danger'">
+                        <span x-text="saveMessage"></span>
                     </div>
                 </div>
 
-                <!-- FCF 전용 필드 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <h4 class="card-title mb-4">FCF 계산용 필드</h4>
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <label for="cfo" class="form-label">CFO (영업활동현금흐름) <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="cfo" x-model="formData.cfo"
-                                    @input="formatNumberInput($event, 'formData.cfo'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="tangible" class="form-label">유형자산 취득 <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="tangible" x-model="formData.tangible_asset_acquisition"
-                                    @input="formatNumberInput($event, 'formData.tangible_asset_acquisition'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="intangible" class="form-label">무형자산 취득 <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="intangible" x-model="formData.intangible_asset_acquisition"
-                                    @input="formatNumberInput($event, 'formData.intangible_asset_acquisition'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <!-- 년도별 입력 폼 -->
+                <div class="row g-4">
+                    <template x-for="(form, index) in yearForms" :key="index">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-calendar me-2"></i>
+                                        <span x-text="form.year || '새 년도'"></span>년
+                                    </h5>
+                                    <div>
+                                        <button type="button" class="btn btn-sm btn-outline-primary me-2"
+                                            @click="loadFromDB(index)"
+                                            :disabled="loadingFromDB[index] || !corpCode || !form.year">
+                                            <span x-show="!loadingFromDB[index]">
+                                                <i class="bi bi-database me-2"></i>DB에서 가져오기
+                                            </span>
+                                            <span x-show="loadingFromDB[index]">
+                                                <span class="spinner-border spinner-border-sm me-2"></span>로딩 중...
+                                            </span>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-danger"
+                                            @click="removeYearForm(index)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <!-- 기본 필드 -->
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">년도 <span class="text-danger">*</span></label>
+                                            <input type="number" x-model.number="form.year" class="form-control"
+                                                placeholder="예: 2023" min="2000" max="2100" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">자기자본 <span class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.equity"
+                                                @input="formatNumberInput($event, `yearForms[${index}].equity`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                    </div>
 
-                <!-- ROIC 전용 필드 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <h4 class="card-title mb-4">ROIC 계산용 필드</h4>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="operating_income" class="form-label">영업이익 <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="operating_income" x-model="formData.operating_income"
-                                    @input="formatNumberInput($event, 'formData.operating_income'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="cash" class="form-label">현금및현금성자산 <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="cash" x-model="formData.cash_and_cash_equivalents"
-                                    @input="formatNumberInput($event, 'formData.cash_and_cash_equivalents'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                                    <!-- 이자부채 -->
+                                    <h6 class="mt-4 mb-3">이자부채</h6>
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">단기차입금 <span class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.short_term_borrowings"
+                                                @input="formatNumberInput($event, `yearForms[${index}].short_term_borrowings`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">유동성장기차입금 <span
+                                                    class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.current_portion_of_long_term_borrowings"
+                                                @input="formatNumberInput($event, `yearForms[${index}].current_portion_of_long_term_borrowings`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">장기차입금 <span class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.long_term_borrowings"
+                                                @input="formatNumberInput($event, `yearForms[${index}].long_term_borrowings`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">사채 <span class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.bonds"
+                                                @input="formatNumberInput($event, `yearForms[${index}].bonds`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">리스부채 <span class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.lease_liabilities"
+                                                @input="formatNumberInput($event, `yearForms[${index}].lease_liabilities`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">전환부채 <span class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.convertible_bonds"
+                                                @input="formatNumberInput($event, `yearForms[${index}].convertible_bonds`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                    </div>
 
-                <!-- WACC 전용 필드 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <h4 class="card-title mb-4">WACC 계산용 필드</h4>
-                        <div class="row g-3">
-                            <div class="col-md-12">
-                                <label for="interest_expense" class="form-label">이자비용 <span
-                                        class="text-muted">(원)</span></label>
-                                <input type="text" id="interest_expense" x-model="formData.interest_expense"
-                                    @input="formatNumberInput($event, 'formData.interest_expense'); calculateAll()"
-                                    class="form-control" placeholder="0">
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                                    <!-- FCF 계산용 필드 -->
+                                    <h6 class="mt-4 mb-3">FCF 계산용 필드</h6>
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label">CFO (영업활동현금흐름) <span
+                                                    class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.cfo"
+                                                @input="formatNumberInput($event, `yearForms[${index}].cfo`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">유형자산 취득 <span
+                                                    class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.tangible_asset_acquisition"
+                                                @input="formatNumberInput($event, `yearForms[${index}].tangible_asset_acquisition`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">무형자산 취득 <span
+                                                    class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.intangible_asset_acquisition"
+                                                @input="formatNumberInput($event, `yearForms[${index}].intangible_asset_acquisition`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                    </div>
 
-                <!-- 계산 결과 섹션 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <h4 class="card-title mb-4">계산 결과</h4>
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <div class="p-3 bg-light rounded">
-                                    <h6 class="text-muted mb-2">FCF (자유현금흐름)</h6>
-                                    <div class="fs-4 fw-bold text-primary" x-text="formatAmount(fcfResult)"></div>
+                                    <!-- ROIC 계산용 필드 -->
+                                    <h6 class="mt-4 mb-3">ROIC 계산용 필드</h6>
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">영업이익 <span class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.operating_income"
+                                                @input="formatNumberInput($event, `yearForms[${index}].operating_income`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">현금및현금성자산 <span
+                                                    class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.cash_and_cash_equivalents"
+                                                @input="formatNumberInput($event, `yearForms[${index}].cash_and_cash_equivalents`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                    </div>
+
+                                    <!-- WACC 계산용 필드 -->
+                                    <h6 class="mt-4 mb-3">WACC 계산용 필드</h6>
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-12">
+                                            <label class="form-label">이자비용 <span class="text-muted">(원)</span></label>
+                                            <input type="text" x-model="form.interest_expense"
+                                                @input="formatNumberInput($event, `yearForms[${index}].interest_expense`); calculateForYear(index)"
+                                                class="form-control" placeholder="0">
+                                        </div>
+                                    </div>
+
+                                    <!-- 계산 결과 -->
+                                    <div class="mt-4 pt-3 border-top">
+                                        <h6 class="mb-3">계산 결과</h6>
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <div class="p-3 bg-light rounded">
+                                                    <h6 class="text-muted mb-2">FCF (자유현금흐름)</h6>
+                                                    <div class="fs-5 fw-bold text-primary"
+                                                        x-text="formatAmount(form.fcfResult)"></div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="p-3 bg-light rounded">
+                                                    <h6 class="text-muted mb-2">ROIC (투하자본수익률)</h6>
+                                                    <div class="fs-5 fw-bold text-primary"
+                                                        x-text="formatPercent(form.roicResult)"></div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="p-3 bg-light rounded">
+                                                    <h6 class="text-muted mb-2">WACC (가중평균자본비용)</h6>
+                                                    <div class="fs-5 fw-bold text-primary"
+                                                        x-text="formatPercent(form.waccResult)"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-md-4">
-                                <div class="p-3 bg-light rounded">
-                                    <h6 class="text-muted mb-2">ROIC (투하자본수익률)</h6>
-                                    <div class="fs-4 fw-bold text-primary" x-text="formatPercent(roicResult)"></div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="p-3 bg-light rounded">
-                                    <h6 class="text-muted mb-2">WACC (가중평균자본비용)</h6>
-                                    <div class="fs-4 fw-bold text-primary" x-text="formatPercent(waccResult)"></div>
-                                </div>
-                            </div>
                         </div>
-                    </div>
+                    </template>
                 </div>
 
-                <!-- 저장 버튼 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h5 class="mb-0">DB에 저장</h5>
-                                <small class="text-muted">계산 결과를 데이터베이스에 저장합니다.</small>
-                            </div>
-                            <button type="button" class="btn btn-primary btn-lg" @click="saveToDB()" :disabled="saving">
-                                <span x-show="!saving">
-                                    <i class="bi bi-save me-2"></i>저장
-                                </span>
-                                <span x-show="saving">
-                                    <span class="spinner-border spinner-border-sm me-2"></span>저장 중...
-                                </span>
-                            </button>
-                        </div>
-                        <div x-show="saveMessage" class="mt-3">
-                            <div :class="saveMessageType === 'success' ? 'alert alert-success' : 'alert alert-danger'">
-                                <span x-text="saveMessage"></span>
-                            </div>
-                        </div>
-                    </div>
+                <div x-show="yearForms.length === 0" class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+                    <p>년도를 추가하여 재무 지표를 입력하세요.</p>
                 </div>
             </div>
         </div>
@@ -269,35 +267,55 @@
 <script>
     function financialCalculator() {
         return {
-            formData: {
-                corp_code: '',
-                year: null,
-                equity: null,
+            corpCode: '',
+            yearForms: [],
+            commonFields: {
                 tax_rate: 25,
                 bond_yield: null,
-                equity_risk_premium: 5.0,
-                short_term_borrowings: null,
-                current_portion_of_long_term_borrowings: null,
-                long_term_borrowings: null,
-                bonds: null,
-                lease_liabilities: null,
-                convertible_bonds: null,
-                cfo: null,
-                tangible_asset_acquisition: null,
-                intangible_asset_acquisition: null,
-                operating_income: null,
-                cash_and_cash_equivalents: null,
-                interest_expense: null
+                equity_risk_premium: 5.0
             },
-            fcfResult: null,
-            roicResult: null,
-            waccResult: null,
             saving: false,
             saveMessage: null,
             saveMessageType: null,
-            loadingFromDB: false,
-            loadMessage: null,
-            loadMessageType: null,
+            loadingFromDB: {},
+
+            init() {
+                // 기본으로 년도 하나 추가
+                this.addYearForm();
+            },
+
+            addYearForm() {
+                this.yearForms.push({
+                    year: null,
+                    equity: null,
+                    short_term_borrowings: null,
+                    current_portion_of_long_term_borrowings: null,
+                    long_term_borrowings: null,
+                    bonds: null,
+                    lease_liabilities: null,
+                    convertible_bonds: null,
+                    cfo: null,
+                    tangible_asset_acquisition: null,
+                    intangible_asset_acquisition: null,
+                    operating_income: null,
+                    cash_and_cash_equivalents: null,
+                    interest_expense: null,
+                    fcfResult: null,
+                    roicResult: null,
+                    waccResult: null
+                });
+                this.loadingFromDB[this.yearForms.length - 1] = false;
+            },
+
+            removeYearForm(index) {
+                this.yearForms.splice(index, 1);
+                // loadingFromDB 인덱스 재구성
+                const newLoadingFromDB = {};
+                this.yearForms.forEach((_, idx) => {
+                    newLoadingFromDB[idx] = false;
+                });
+                this.loadingFromDB = newLoadingFromDB;
+            },
 
             // 숫자 입력 포맷팅 (천 단위 구분자 추가)
             formatNumberInput(event, dataPath) {
@@ -320,9 +338,12 @@
 
             // 중첩된 객체 속성 설정 헬퍼
             setNestedValue(path, value) {
-                const parts = path.split('.');
-                if (parts.length === 2) {
-                    this[parts[0]][parts[1]] = value;
+                // yearForms[index].field 형식 처리
+                const match = path.match(/yearForms\[(\d+)\]\.(\w+)/);
+                if (match) {
+                    const index = parseInt(match[1]);
+                    const field = match[2];
+                    this.yearForms[index][field] = value;
                 }
             },
 
@@ -336,91 +357,102 @@
                 return isNaN(num) ? null : num;
             },
 
-            // 모든 계산 수행
-            calculateAll() {
-                this.calculateFCF();
-                this.calculateROIC();
-                this.calculateWACC();
+            // 특정 년도 계산
+            calculateForYear(index) {
+                const form = this.yearForms[index];
+                this.calculateFCFForYear(index);
+                this.calculateROICForYear(index);
+                this.calculateWACCForYear(index);
+            },
+
+            // 모든 년도 계산
+            calculateAllForAllYears() {
+                this.yearForms.forEach((_, index) => {
+                    this.calculateForYear(index);
+                });
             },
 
             // FCF 계산
-            calculateFCF() {
-                const cfo = this.parseNumber(this.formData.cfo);
-                const tangible = this.parseNumber(this.formData.tangible_asset_acquisition);
-                const intangible = this.parseNumber(this.formData.intangible_asset_acquisition);
+            calculateFCFForYear(index) {
+                const form = this.yearForms[index];
+                const cfo = this.parseNumber(form.cfo);
+                const tangible = this.parseNumber(form.tangible_asset_acquisition);
+                const intangible = this.parseNumber(form.intangible_asset_acquisition);
 
                 if (cfo === null || tangible === null || intangible === null) {
-                    this.fcfResult = null;
+                    form.fcfResult = null;
                     return;
                 }
 
                 const capex = tangible + intangible;
-                this.fcfResult = cfo - Math.abs(capex);
+                form.fcfResult = cfo - Math.abs(capex);
             },
 
             // ROIC 계산
-            calculateROIC() {
-                const operatingIncome = this.parseNumber(this.formData.operating_income);
-                const taxRate = this.formData.tax_rate;
-                const equity = this.parseNumber(this.formData.equity);
-                const cash = this.parseNumber(this.formData.cash_and_cash_equivalents);
+            calculateROICForYear(index) {
+                const form = this.yearForms[index];
+                const operatingIncome = this.parseNumber(form.operating_income);
+                const taxRate = this.commonFields.tax_rate;
+                const equity = this.parseNumber(form.equity);
+                const cash = this.parseNumber(form.cash_and_cash_equivalents);
 
                 if (operatingIncome === null || taxRate === null || equity === null || cash === null) {
-                    this.roicResult = null;
+                    form.roicResult = null;
                     return;
                 }
 
                 const interestBearingDebt = (
-                    (this.parseNumber(this.formData.short_term_borrowings) || 0) +
-                    (this.parseNumber(this.formData.current_portion_of_long_term_borrowings) || 0) +
-                    (this.parseNumber(this.formData.long_term_borrowings) || 0) +
-                    (this.parseNumber(this.formData.bonds) || 0) +
-                    (this.parseNumber(this.formData.lease_liabilities) || 0) +
-                    (this.parseNumber(this.formData.convertible_bonds) || 0)
+                    (this.parseNumber(form.short_term_borrowings) || 0) +
+                    (this.parseNumber(form.current_portion_of_long_term_borrowings) || 0) +
+                    (this.parseNumber(form.long_term_borrowings) || 0) +
+                    (this.parseNumber(form.bonds) || 0) +
+                    (this.parseNumber(form.lease_liabilities) || 0) +
+                    (this.parseNumber(form.convertible_bonds) || 0)
                 );
 
                 const denominator = equity + interestBearingDebt - cash;
 
                 if (denominator === 0) {
-                    this.roicResult = null;
+                    form.roicResult = null;
                     return;
                 }
 
                 const taxRateDecimal = taxRate / 100;
                 const numerator = operatingIncome * (1 - taxRateDecimal);
-                this.roicResult = (numerator / denominator) * 100;
+                form.roicResult = (numerator / denominator) * 100;
             },
 
             // WACC 계산
-            calculateWACC() {
-                const equity = this.parseNumber(this.formData.equity);
-                const bondYield = this.formData.bond_yield;
-                const equityRiskPremium = this.formData.equity_risk_premium;
-                const taxRate = this.formData.tax_rate;
+            calculateWACCForYear(index) {
+                const form = this.yearForms[index];
+                const equity = this.parseNumber(form.equity);
+                const bondYield = this.commonFields.bond_yield;
+                const equityRiskPremium = this.commonFields.equity_risk_premium;
+                const taxRate = this.commonFields.tax_rate;
 
                 if (equity === null || bondYield === null || equityRiskPremium === null || taxRate === null) {
-                    this.waccResult = null;
+                    form.waccResult = null;
                     return;
                 }
 
                 const interestBearingDebt = (
-                    (this.parseNumber(this.formData.short_term_borrowings) || 0) +
-                    (this.parseNumber(this.formData.current_portion_of_long_term_borrowings) || 0) +
-                    (this.parseNumber(this.formData.long_term_borrowings) || 0) +
-                    (this.parseNumber(this.formData.bonds) || 0) +
-                    (this.parseNumber(this.formData.lease_liabilities) || 0) +
-                    (this.parseNumber(this.formData.convertible_bonds) || 0)
+                    (this.parseNumber(form.short_term_borrowings) || 0) +
+                    (this.parseNumber(form.current_portion_of_long_term_borrowings) || 0) +
+                    (this.parseNumber(form.long_term_borrowings) || 0) +
+                    (this.parseNumber(form.bonds) || 0) +
+                    (this.parseNumber(form.lease_liabilities) || 0) +
+                    (this.parseNumber(form.convertible_bonds) || 0)
                 );
 
                 const totalCapital = equity + interestBearingDebt;
                 if (totalCapital === 0) {
-                    this.waccResult = null;
+                    form.waccResult = null;
                     return;
                 }
 
                 const costOfEquity = (bondYield + equityRiskPremium) / 100.0;
                 let costOfDebt = 0.0;
-                const interestExpense = this.parseNumber(this.formData.interest_expense);
+                const interestExpense = this.parseNumber(form.interest_expense);
                 if (interestBearingDebt !== 0 && interestExpense !== null) {
                     costOfDebt = interestExpense / interestBearingDebt;
                 }
@@ -429,63 +461,68 @@
                 const debtWeight = interestBearingDebt / totalCapital;
                 const taxRateDecimal = taxRate / 100;
 
-                this.waccResult = ((equityWeight * costOfEquity) + (debtWeight * costOfDebt * (1 - taxRateDecimal))) * 100;
+                form.waccResult = ((equityWeight * costOfEquity) + (debtWeight * costOfDebt * (1 - taxRateDecimal))) * 100;
             },
 
-            // DB에서 데이터 가져오기
-            async loadFromDB() {
-                if (!this.formData.corp_code || !this.formData.year) {
-                    this.loadMessage = '기업코드와 년도를 입력해주세요.';
-                    this.loadMessageType = 'error';
-                    setTimeout(() => { this.loadMessage = null; }, 5000);
+            // DB에서 데이터 가져오기 (특정 년도)
+            async loadFromDB(index) {
+                const form = this.yearForms[index];
+                if (!this.corpCode || !form.year) {
                     return;
                 }
 
-                this.loadingFromDB = true;
-                this.loadMessage = null;
+                this.loadingFromDB[index] = true;
 
                 try {
-                    const response = await fetch(`/api/companies/${this.formData.corp_code}/calculator-data/?year=${this.formData.year}`);
+                    const response = await fetch(`/api/companies/${this.corpCode}/calculator-data/?year=${form.year}`);
                     const data = await response.json();
 
                     if (response.ok) {
                         // 자기자본 (천 단위 구분자 포맷팅)
                         if (data.total_equity !== null && data.total_equity !== undefined) {
-                            this.formData.equity = data.total_equity.toLocaleString('ko-KR');
+                            form.equity = data.total_equity.toLocaleString('ko-KR');
                         }
 
                         // 영업이익 (천 단위 구분자 포맷팅)
                         if (data.operating_income !== null && data.operating_income !== undefined) {
-                            this.formData.operating_income = data.operating_income.toLocaleString('ko-KR');
+                            form.operating_income = data.operating_income.toLocaleString('ko-KR');
                         }
 
                         // 국채수익률 (% 단위로 변환, 소수점 2자리)
                         if (data.bond_yield_5y !== null && data.bond_yield_5y !== undefined) {
-                            this.formData.bond_yield = (data.bond_yield_5y * 100).toFixed(2);
+                            this.commonFields.bond_yield = (data.bond_yield_5y * 100).toFixed(2);
                         }
 
-                        this.loadMessage = 'DB에서 데이터를 성공적으로 가져왔습니다.';
-                        this.loadMessageType = 'success';
-
                         // 계산 결과 업데이트
-                        this.calculateAll();
-                    } else {
-                        this.loadMessage = data.error || '데이터를 가져오는데 실패했습니다.';
-                        this.loadMessageType = 'error';
+                        this.calculateForYear(index);
                     }
                 } catch (error) {
-                    this.loadMessage = '데이터를 가져오는 중 오류가 발생했습니다: ' + error.message;
-                    this.loadMessageType = 'error';
+                    console.error('데이터를 가져오는 중 오류가 발생했습니다:', error);
                 } finally {
-                    this.loadingFromDB = false;
-                    setTimeout(() => { this.loadMessage = null; }, 5000);
+                    this.loadingFromDB[index] = false;
                 }
             },
 
-            // DB에 저장
-            async saveToDB() {
-                if (!this.formData.corp_code || !this.formData.year) {
-                    this.saveMessage = '기업코드와 년도를 입력해주세요.';
+            // DB에 저장 (모든 년도)
+            async saveAll() {
+                if (!this.corpCode) {
+                    this.saveMessage = '기업코드를 입력해주세요.';
+                    this.saveMessageType = 'error';
+                    setTimeout(() => { this.saveMessage = null; }, 5000);
+                    return;
+                }
+
+                if (this.yearForms.length === 0) {
+                    this.saveMessage = '저장할 데이터가 없습니다. 년도를 추가해주세요.';
+                    this.saveMessageType = 'error';
+                    setTimeout(() => { this.saveMessage = null; }, 5000);
+                    return;
+                }
+
+                // 검증
+                const invalidForms = this.yearForms.filter(form => !form.year);
+                if (invalidForms.length > 0) {
+                    this.saveMessage = '모든 년도를 입력해주세요.';
                     this.saveMessageType = 'error';
                     setTimeout(() => { this.saveMessage = null; }, 5000);
                     return;
@@ -495,28 +532,28 @@
                 this.saveMessage = null;
 
                 try {
-                    // 요청 데이터 준비 (숫자로 변환)
-                    const requestData = {
-                        year: this.formData.year,
-                        cfo: this.parseNumber(this.formData.cfo) || 0,
-                        tangible_asset_acquisition: this.parseNumber(this.formData.tangible_asset_acquisition) || 0,
-                        intangible_asset_acquisition: this.parseNumber(this.formData.intangible_asset_acquisition) || 0,
-                        operating_income: this.parseNumber(this.formData.operating_income) || 0,
-                        tax_rate: parseFloat(this.formData.tax_rate) || 25,
-                        equity: this.parseNumber(this.formData.equity) || 0,
-                        short_term_borrowings: this.parseNumber(this.formData.short_term_borrowings) || 0,
-                        current_portion_of_long_term_borrowings: this.parseNumber(this.formData.current_portion_of_long_term_borrowings) || 0,
-                        long_term_borrowings: this.parseNumber(this.formData.long_term_borrowings) || 0,
-                        bonds: this.parseNumber(this.formData.bonds) || 0,
-                        lease_liabilities: this.parseNumber(this.formData.lease_liabilities) || 0,
-                        convertible_bonds: this.parseNumber(this.formData.convertible_bonds) || 0,
-                        cash_and_cash_equivalents: this.parseNumber(this.formData.cash_and_cash_equivalents) || 0,
-                        interest_expense: this.parseNumber(this.formData.interest_expense) || 0,
-                        bond_yield: parseFloat(this.formData.bond_yield) || 0,
-                        equity_risk_premium: parseFloat(this.formData.equity_risk_premium) || 5.0
-                    };
+                    // 모든 년도 데이터를 배열로 만들기 (공통 필드 포함)
+                    const requestData = this.yearForms.map(form => ({
+                        year: form.year,
+                        cfo: this.parseNumber(form.cfo) || 0,
+                        tangible_asset_acquisition: this.parseNumber(form.tangible_asset_acquisition) || 0,
+                        intangible_asset_acquisition: this.parseNumber(form.intangible_asset_acquisition) || 0,
+                        operating_income: this.parseNumber(form.operating_income) || 0,
+                        tax_rate: parseFloat(this.commonFields.tax_rate) || 25,
+                        equity: this.parseNumber(form.equity) || 0,
+                        short_term_borrowings: this.parseNumber(form.short_term_borrowings) || 0,
+                        current_portion_of_long_term_borrowings: this.parseNumber(form.current_portion_of_long_term_borrowings) || 0,
+                        long_term_borrowings: this.parseNumber(form.long_term_borrowings) || 0,
+                        bonds: this.parseNumber(form.bonds) || 0,
+                        lease_liabilities: this.parseNumber(form.lease_liabilities) || 0,
+                        convertible_bonds: this.parseNumber(form.convertible_bonds) || 0,
+                        cash_and_cash_equivalents: this.parseNumber(form.cash_and_cash_equivalents) || 0,
+                        interest_expense: this.parseNumber(form.interest_expense) || 0,
+                        bond_yield: parseFloat(this.commonFields.bond_yield) || 0,
+                        equity_risk_premium: parseFloat(this.commonFields.equity_risk_premium) || 5.0
+                    }));
 
-                    const response = await fetch(`/api/companies/${this.formData.corp_code}/calculated-indicators/`, {
+                    const response = await fetch(`/api/companies/${this.corpCode}/calculated-indicators/`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -528,8 +565,17 @@
                     const data = await response.json();
 
                     if (response.ok) {
-                        this.saveMessage = '저장되었습니다.';
-                        this.saveMessageType = 'success';
+                        const successCount = data.success_count || 0;
+                        const totalCount = data.total_count || 0;
+                        const errorCount = totalCount - successCount;
+
+                        if (errorCount === 0) {
+                            this.saveMessage = `모든 데이터(${successCount}개)가 저장되었습니다.`;
+                            this.saveMessageType = 'success';
+                        } else {
+                            this.saveMessage = `${successCount}개 성공, ${errorCount}개 실패했습니다.`;
+                            this.saveMessageType = 'error';
+                        }
                     } else {
                         this.saveMessage = data.error || '저장에 실패했습니다.';
                         this.saveMessageType = 'error';

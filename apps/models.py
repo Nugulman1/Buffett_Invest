@@ -19,6 +19,7 @@ class Company(models.Model):
     filter_total_assets_operating_income_ratio = models.BooleanField(default=False, verbose_name='총자산영업이익률필터')
     filter_roe = models.BooleanField(default=False, verbose_name='ROE필터')
     memo = models.TextField(blank=True, null=True, verbose_name='메모')
+    memo_updated_at = models.DateTimeField(null=True, blank=True, verbose_name='메모수정일시')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
     
