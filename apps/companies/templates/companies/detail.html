@@ -307,8 +307,9 @@
 
                 // 억 단위로 변환
                 const eok = value / 100000000;
-                if (eok >= 1000) {
-                    return (eok / 1000).toFixed(2) + '조';
+                // 1조 이상일 때만 조 단위로 표시 (10000억 이상)
+                if (eok >= 10000) {
+                    return (eok / 10000).toFixed(2) + '조';
                 } else {
                     return eok.toFixed(2) + '억';
                 }

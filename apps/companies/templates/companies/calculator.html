@@ -616,11 +616,12 @@
                     return '0원';
                 }
 
-                const jo = numValue / 1000000000000;
-                if (jo >= 1) {
-                    return jo.toFixed(2) + '조';
+                // 억 단위로 변환
+                const eok = numValue / 100000000;
+                // 1조 이상일 때만 조 단위로 표시 (10000억 이상)
+                if (eok >= 10000) {
+                    return (eok / 10000).toFixed(2) + '조';
                 } else {
-                    const eok = numValue / 100000000;
                     return eok.toFixed(2) + '억';
                 }
             },
