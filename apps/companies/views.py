@@ -985,24 +985,23 @@ def get_favorites(request):
         # 모든 그룹 조회
         groups = FavoriteGroupModel.objects.all().order_by('name')
         
-        # 그룹별로 즐겨찾기 목록 구성
+        # 그룹별로 즐겨찾기 목록 구성 (빈 그룹도 포함)
         result = []
         for group in groups:
             favorites = FavoriteModel.objects.filter(group=group).select_related('company').order_by('company__company_name')
-            if favorites.exists():
-                result.append({
-                    'group_id': group.id,
-                    'group_name': group.name,
-                    'favorites': [
-                        {
-                            'id': fav.id,
-                            'corp_code': fav.company.corp_code,
-                            'company_name': fav.company.company_name or '',
-                            'created_at': fav.created_at.isoformat() if fav.created_at else None
-                        }
-                        for fav in favorites
-                    ]
-                })
+            result.append({
+                'group_id': group.id,
+                'group_name': group.name,
+                'favorites': [
+                    {
+                        'id': fav.id,
+                        'corp_code': fav.company.corp_code,
+                        'company_name': fav.company.company_name or '',
+                        'created_at': fav.created_at.isoformat() if fav.created_at else None
+                    }
+                    for fav in favorites
+                ]
+            })
         
         return Response({
             'groups': result
@@ -1112,6 +1111,55 @@ def favorite(request, corp_code):
                 'corp_code': corp_code,
                 'deleted_count': deleted_count
             }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['DELETE'])
+def favorite_detail(request, favorite_id):
+    """
+    즐겨찾기 삭제 API (특정 그룹에서만)
+    DELETE /api/companies/favorites/<favorite_id>/
+    """
+    try:
+        from django.apps import apps as django_apps
+        FavoriteModel = django_apps.get_model('apps', 'Favorite')
+        
+        # favorite_id 유효성 검사
+        try:
+            favorite_id = int(favorite_id)
+        except (ValueError, TypeError):
+            return Response(
+                {'error': f'유효하지 않은 즐겨찾기 ID입니다: {favorite_id}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 즐겨찾기 확인
+        try:
+            favorite = FavoriteModel.objects.get(id=favorite_id)
+        except FavoriteModel.DoesNotExist:
+            return Response(
+                {'error': f'즐겨찾기 ID {favorite_id}를 찾을 수 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 특정 즐겨찾기만 삭제 (해당 그룹에서만)
+        corp_code = favorite.company.corp_code
+        company_name = favorite.company.company_name or ''
+        group_name = favorite.group.name
+        favorite.delete()
+        
+        return Response({
+            'id': favorite_id,
+            'corp_code': corp_code,
+            'company_name': company_name,
+            'group_name': group_name,
+            'message': '즐겨찾기에서 삭제되었습니다.'
+        }, status=status.HTTP_200_OK)
         
     except Exception as e:
         return Response(

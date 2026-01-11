@@ -39,8 +39,14 @@
 
                 <template x-for="group in favoritesGroups" :key="group.group_id">
                     <div class="mb-3">
-                        <h5 class="mb-2" x-text="group.group_name"></h5>
-                        <div class="list-group">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="mb-0" x-text="group.group_name"></h5>
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                @click="deleteGroup(group.group_id, group.group_name)" title="그룹 삭제">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                        <div class="list-group" x-show="group.favorites && group.favorites.length > 0">
                             <template x-for="fav in group.favorites" :key="fav.id">
                                 <a :href="`/companies/${fav.corp_code}/`"
                                     class="list-group-item list-group-item-action">
@@ -51,12 +57,15 @@
                                             <small class="text-muted" x-text="fav.corp_code"></small>
                                         </div>
                                         <button type="button" class="btn btn-sm btn-outline-danger"
-                                            @click.stop="deleteFavorite(fav.corp_code, fav.id)">
+                                            @click.stop="deleteFavorite(fav.corp_code, fav.id)" title="이 그룹에서 삭제">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
                                 </a>
                             </template>
+                        </div>
+                        <div x-show="!group.favorites || group.favorites.length === 0" class="text-muted small py-2">
+                            이 그룹에 즐겨찾기가 없습니다.
                         </div>
                     </div>
                 </template>
@@ -216,12 +225,26 @@
             },
 
             async deleteFavorite(corpCode, favoriteId) {
-                if (!confirm('즐겨찾기에서 삭제하시겠습니까?')) {
+                // favoriteId 유효성 검사
+                if (!favoriteId || favoriteId === 'undefined' || favoriteId === 'null') {
+                    alert('즐겨찾기 ID가 유효하지 않습니다.');
+                    console.error('Invalid favoriteId:', favoriteId);
+                    return;
+                }
+
+                // favoriteId가 숫자인지 확인
+                if (isNaN(parseInt(favoriteId))) {
+                    alert('즐겨찾기 ID가 유효하지 않습니다.');
+                    console.error('Invalid favoriteId (not a number):', favoriteId);
+                    return;
+                }
+
+                if (!confirm('이 그룹에서 즐겨찾기를 삭제하시겠습니까?')) {
                     return;
                 }
 
                 try {
-                    const response = await fetch(`/api/companies/${corpCode}/favorites/`, {
+                    const response = await fetch(`/api/companies/favorites/${favoriteId}/`, {
                         method: 'DELETE',
                         headers: {
                             'X-CSRFToken': this.getCsrfToken()
@@ -237,6 +260,32 @@
                     }
                 } catch (error) {
                     alert('즐겨찾기 삭제 중 오류가 발생했습니다: ' + error.message);
+                }
+            },
+
+            async deleteGroup(groupId, groupName) {
+                if (!confirm(`"${groupName}" 그룹을 삭제하시겠습니까? 그룹에 속한 모든 즐겨찾기도 함께 삭제됩니다.`)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/companies/favorite-groups/${groupId}/`, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRFToken': this.getCsrfToken()
+                        }
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        await this.loadFavoriteGroups();
+                        await this.loadFavorites();
+                        alert('그룹이 삭제되었습니다.');
+                    } else {
+                        alert(data.error || '그룹 삭제에 실패했습니다.');
+                    }
+                } catch (error) {
+                    alert('그룹 삭제 중 오류가 발생했습니다: ' + error.message);
                 }
             },
 
