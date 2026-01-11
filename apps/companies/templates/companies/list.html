@@ -5,6 +5,65 @@
 {% block content %}
 <div x-data="companyList()" class="row">
     <div class="col-12">
+        <!-- 즐겨찾기 섹션 -->
+        <div class="card mb-4">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2 class="card-title mb-0">
+                        <i class="bi bi-star-fill me-2"></i>즐겨찾기
+                    </h2>
+                    <button type="button" class="btn btn-sm btn-outline-primary" @click="showGroupModal = true">
+                        <i class="bi bi-plus-circle me-1"></i>그룹 추가
+                    </button>
+                </div>
+
+                <!-- 그룹 필터 -->
+                <div class="mb-3">
+                    <select class="form-select" x-model="selectedGroupId" @change="loadFavorites()">
+                        <option value="">전체 그룹</option>
+                        <template x-for="group in favoriteGroups" :key="group.id">
+                            <option :value="group.id" x-text="group.name"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <!-- 즐겨찾기 목록 -->
+                <div x-show="loadingFavorites" class="text-center py-3">
+                    <div class="loading-spinner mx-auto mb-2"></div>
+                    <p class="text-muted">로딩 중...</p>
+                </div>
+
+                <div x-show="!loadingFavorites && favoritesGroups.length === 0" class="text-center py-3 text-muted">
+                    즐겨찾기가 없습니다.
+                </div>
+
+                <template x-for="group in favoritesGroups" :key="group.group_id">
+                    <div class="mb-3">
+                        <h5 class="mb-2" x-text="group.group_name"></h5>
+                        <div class="list-group">
+                            <template x-for="fav in group.favorites" :key="fav.id">
+                                <a :href="`/companies/${fav.corp_code}/`"
+                                    class="list-group-item list-group-item-action">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong x-text="fav.company_name || '-'"></strong>
+                                            <br>
+                                            <small class="text-muted" x-text="fav.corp_code"></small>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                            @click.stop="deleteFavorite(fav.corp_code, fav.id)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </a>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- 기업 조회 섹션 -->
         <div class="card mb-4">
             <div class="card-body p-4">
                 <h2 class="card-title mb-4">
@@ -16,10 +75,8 @@
 
                 <div class="mb-3">
                     <label for="corpCodeInput" class="form-label">기업번호 또는 종목코드</label>
-                    <input type="text" id="corpCodeInput" x-model="corpCode" 
-                        @keyup.enter="goToCompanyDetail()"
-                        class="form-control" placeholder="예: 00126380 또는 005930"
-                        style="font-family: monospace;">
+                    <input type="text" id="corpCodeInput" x-model="corpCode" @keyup.enter="goToCompanyDetail()"
+                        class="form-control" placeholder="예: 00126380 또는 005930" style="font-family: monospace;">
                     <div class="form-text">
                         <i class="bi bi-info-circle me-1"></i>
                         엔터키를 누르거나 조회 버튼을 클릭하면 상세 페이지로 이동합니다.
@@ -37,6 +94,42 @@
             </div>
         </div>
     </div>
+
+    <!-- 그룹 추가 모달 -->
+    <div x-show="showGroupModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050;"
+        x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+        <div class="modal fade show"
+            style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">그룹 추가</h5>
+                        <button type="button" class="btn-close" @click="showGroupModal = false"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">그룹명</label>
+                            <input type="text" class="form-control" x-model="newGroupName" @keyup.enter="createGroup()"
+                                placeholder="예: 관심기업">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @click="showGroupModal = false">취소</button>
+                        <button type="button" class="btn btn-primary" @click="createGroup()"
+                            :disabled="!newGroupName || creatingGroup">
+                            <span x-show="!creatingGroup">추가</span>
+                            <span x-show="creatingGroup">추가 중...</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop fade show"
+            style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1040; background-color: rgba(0,0,0,0.5);">
+        </div>
+    </div>
 </div>
 
 <script>
@@ -44,10 +137,123 @@
         return {
             corpCode: '',
             loading: false,
+            loadingFavorites: false,
+            favoriteGroups: [],
+            favoritesGroups: [],
+            selectedGroupId: '',
+            showGroupModal: false,
+            newGroupName: '',
+            creatingGroup: false,
+
+            async init() {
+                await this.loadFavoriteGroups();
+                await this.loadFavorites();
+            },
+
+            async loadFavoriteGroups() {
+                try {
+                    const response = await fetch('/api/companies/favorite-groups/');
+                    const data = await response.json();
+                    if (response.ok) {
+                        this.favoriteGroups = data.groups || [];
+                    }
+                } catch (error) {
+                    console.error('그룹 목록 로드 실패:', error);
+                }
+            },
+
+            async loadFavorites() {
+                this.loadingFavorites = true;
+                try {
+                    const response = await fetch('/api/companies/favorites/');
+                    const data = await response.json();
+                    if (response.ok) {
+                        let groups = data.groups || [];
+                        // 그룹 필터 적용
+                        if (this.selectedGroupId) {
+                            groups = groups.filter(g => g.group_id == this.selectedGroupId);
+                        }
+                        this.favoritesGroups = groups;
+                    }
+                } catch (error) {
+                    console.error('즐겨찾기 목록 로드 실패:', error);
+                } finally {
+                    this.loadingFavorites = false;
+                }
+            },
+
+            async createGroup() {
+                if (!this.newGroupName.trim()) {
+                    alert('그룹명을 입력해주세요.');
+                    return;
+                }
+
+                this.creatingGroup = true;
+                try {
+                    const response = await fetch('/api/companies/favorite-groups/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCsrfToken()
+                        },
+                        body: JSON.stringify({ name: this.newGroupName.trim() })
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        await this.loadFavoriteGroups();
+                        this.newGroupName = '';
+                        this.showGroupModal = false;
+                        alert('그룹이 추가되었습니다.');
+                    } else {
+                        alert(data.error || '그룹 추가에 실패했습니다.');
+                    }
+                } catch (error) {
+                    alert('그룹 추가 중 오류가 발생했습니다: ' + error.message);
+                } finally {
+                    this.creatingGroup = false;
+                }
+            },
+
+            async deleteFavorite(corpCode, favoriteId) {
+                if (!confirm('즐겨찾기에서 삭제하시겠습니까?')) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/companies/${corpCode}/favorites/`, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRFToken': this.getCsrfToken()
+                        }
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        await this.loadFavorites();
+                        alert('즐겨찾기에서 삭제되었습니다.');
+                    } else {
+                        alert(data.error || '즐겨찾기 삭제에 실패했습니다.');
+                    }
+                } catch (error) {
+                    alert('즐겨찾기 삭제 중 오류가 발생했습니다: ' + error.message);
+                }
+            },
+
+            getCsrfToken() {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === 'csrftoken') {
+                        return value;
+                    }
+                }
+                return '';
+            },
 
             goToCompanyDetail() {
                 const code = this.corpCode.trim();
-                
+
                 if (!code) {
                     alert('기업번호 또는 종목코드를 입력해주세요.');
                     return;

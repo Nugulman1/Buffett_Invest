@@ -20,6 +20,12 @@ urlpatterns = [
         path('<str:corp_code>/memo/', companies_views.save_memo, name='save_memo'),
         path('<str:corp_code>/calculated-indicators/', companies_views.save_calculated_indicators, name='save_calculated_indicators'),
         path('<str:corp_code>/manual-financial-data/', companies_views.save_manual_financial_data, name='save_manual_financial_data'),
+        # 즐겨찾기 관련 API
+        path('favorites/', companies_views.get_favorites, name='get_favorites'),
+        path('favorite-groups/', companies_views.favorite_groups, name='favorite_groups'),
+        path('favorite-groups/<int:group_id>/', companies_views.favorite_group_detail, name='favorite_group_detail'),
+        path('<str:corp_code>/favorites/', companies_views.favorite, name='favorite'),
+        path('favorites/<int:favorite_id>/group/', companies_views.change_favorite_group, name='change_favorite_group'),
     ])),
 ]
 

@@ -106,6 +106,44 @@ class YearlyFinancialData(models.Model):
         return f"{self.company.company_name} - {self.year}년"
 
 
+class FavoriteGroup(models.Model):
+    """즐겨찾기 그룹 모델"""
+    name = models.CharField(max_length=100, verbose_name='그룹명')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
+    
+    class Meta:
+        db_table = 'favorite_group'
+        verbose_name = '즐겨찾기그룹'
+        verbose_name_plural = '즐겨찾기그룹들'
+        indexes = [
+            models.Index(fields=['name']),
+        ]
+    
+    def __str__(self):
+        return self.name
+
+
+class Favorite(models.Model):
+    """즐겨찾기 모델"""
+    group = models.ForeignKey(FavoriteGroup, on_delete=models.CASCADE, related_name='favorites', verbose_name='그룹')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='favorites', verbose_name='회사')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='추가일시')
+    
+    class Meta:
+        db_table = 'favorite'
+        verbose_name = '즐겨찾기'
+        verbose_name_plural = '즐겨찾기들'
+        unique_together = [['group', 'company']]
+        indexes = [
+            models.Index(fields=['group', 'company']),
+            models.Index(fields=['company']),
+        ]
+    
+    def __str__(self):
+        return f"{self.group.name} - {self.company.company_name}"
+
+
 # 기존 Python 클래스들 (하위 호환성 유지)
 
 

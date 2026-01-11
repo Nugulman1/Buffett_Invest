@@ -968,3 +968,354 @@ def get_annual_report_link(request, corp_code):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+@api_view(['GET'])
+def get_favorites(request):
+    """
+    즐겨찾기 목록 조회 API
+    GET /api/companies/favorites/
+    
+    그룹별로 그룹화된 즐겨찾기 목록을 반환합니다.
+    """
+    try:
+        from django.apps import apps as django_apps
+        FavoriteGroupModel = django_apps.get_model('apps', 'FavoriteGroup')
+        FavoriteModel = django_apps.get_model('apps', 'Favorite')
+        
+        # 모든 그룹 조회
+        groups = FavoriteGroupModel.objects.all().order_by('name')
+        
+        # 그룹별로 즐겨찾기 목록 구성
+        result = []
+        for group in groups:
+            favorites = FavoriteModel.objects.filter(group=group).select_related('company').order_by('company__company_name')
+            if favorites.exists():
+                result.append({
+                    'group_id': group.id,
+                    'group_name': group.name,
+                    'favorites': [
+                        {
+                            'id': fav.id,
+                            'corp_code': fav.company.corp_code,
+                            'company_name': fav.company.company_name or '',
+                            'created_at': fav.created_at.isoformat() if fav.created_at else None
+                        }
+                        for fav in favorites
+                    ]
+                })
+        
+        return Response({
+            'groups': result
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST', 'DELETE'])
+def favorite(request, corp_code):
+    """
+    즐겨찾기 추가 및 삭제 API
+    POST /api/companies/<corp_code>/favorites/ - 즐겨찾기 추가
+    DELETE /api/companies/<corp_code>/favorites/ - 즐겨찾기 삭제
+    
+    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
+    """
+    try:
+        from django.apps import apps as django_apps
+        CompanyModel = django_apps.get_model('apps', 'Company')
+        FavoriteGroupModel = django_apps.get_model('apps', 'FavoriteGroup')
+        FavoriteModel = django_apps.get_model('apps', 'Favorite')
+        
+        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
+        if len(corp_code) == 6 and corp_code.isdigit():
+            # 종목코드를 기업번호로 변환
+            from apps.dart.client import DartClient
+            dart_client = DartClient()
+            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
+            if not converted_corp_code:
+                return Response(
+                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            corp_code = converted_corp_code
+        
+        # 기업 확인
+        try:
+            company = CompanyModel.objects.get(corp_code=corp_code)
+        except CompanyModel.DoesNotExist:
+            return Response(
+                {'error': f'기업코드 {corp_code}에 해당하는 기업을 찾을 수 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if request.method == 'POST':
+            # 그룹 ID 확인
+            group_id = request.data.get('group_id')
+            if not group_id:
+                return Response(
+                    {'error': 'group_id가 필요합니다.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                group_id = int(group_id)
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': 'group_id는 정수여야 합니다.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 그룹 확인
+            try:
+                group = FavoriteGroupModel.objects.get(id=group_id)
+            except FavoriteGroupModel.DoesNotExist:
+                return Response(
+                    {'error': f'그룹 ID {group_id}를 찾을 수 없습니다.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            # 즐겨찾기 추가 (이미 있으면 에러)
+            favorite, created = FavoriteModel.objects.get_or_create(
+                group=group,
+                company=company,
+                defaults={}
+            )
+            
+            if not created:
+                return Response(
+                    {'error': '이미 즐겨찾기에 추가된 기업입니다.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            return Response({
+                'id': favorite.id,
+                'corp_code': company.corp_code,
+                'company_name': company.company_name or '',
+                'group_id': group.id,
+                'group_name': group.name,
+                'created_at': favorite.created_at.isoformat() if favorite.created_at else None
+            }, status=status.HTTP_201_CREATED)
+        elif request.method == 'DELETE':
+            # 즐겨찾기 삭제 (모든 그룹에서)
+            deleted_count, _ = FavoriteModel.objects.filter(company=company).delete()
+            
+            if deleted_count == 0:
+                return Response(
+                    {'error': '즐겨찾기에 없는 기업입니다.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            return Response({
+                'corp_code': corp_code,
+                'deleted_count': deleted_count
+            }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['PUT'])
+def change_favorite_group(request, favorite_id):
+    """
+    즐겨찾기 그룹 변경 API
+    PUT /api/companies/favorites/<favorite_id>/group/
+    
+    Body: {"group_id": 2}
+    """
+    try:
+        from django.apps import apps as django_apps
+        FavoriteGroupModel = django_apps.get_model('apps', 'FavoriteGroup')
+        FavoriteModel = django_apps.get_model('apps', 'Favorite')
+        
+        # 즐겨찾기 확인
+        try:
+            favorite = FavoriteModel.objects.get(id=favorite_id)
+        except FavoriteModel.DoesNotExist:
+            return Response(
+                {'error': f'즐겨찾기 ID {favorite_id}를 찾을 수 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 그룹 ID 확인
+        group_id = request.data.get('group_id')
+        if not group_id:
+            return Response(
+                {'error': 'group_id가 필요합니다.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            group_id = int(group_id)
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'group_id는 정수여야 합니다.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 그룹 확인
+        try:
+            group = FavoriteGroupModel.objects.get(id=group_id)
+        except FavoriteGroupModel.DoesNotExist:
+            return Response(
+                {'error': f'그룹 ID {group_id}를 찾을 수 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 같은 그룹이면 변경 불필요
+        if favorite.group.id == group_id:
+            return Response({
+                'id': favorite.id,
+                'corp_code': favorite.company.corp_code,
+                'company_name': favorite.company.company_name or '',
+                'group_id': group.id,
+                'group_name': group.name
+            }, status=status.HTTP_200_OK)
+        
+        # 같은 그룹에 같은 기업이 이미 있는지 확인
+        if FavoriteModel.objects.filter(group=group, company=favorite.company).exists():
+            return Response(
+                {'error': '해당 그룹에 이미 같은 기업이 있습니다.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 그룹 변경
+        favorite.group = group
+        favorite.save()
+        
+        return Response({
+            'id': favorite.id,
+            'corp_code': favorite.company.corp_code,
+            'company_name': favorite.company.company_name or '',
+            'group_id': group.id,
+            'group_name': group.name
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'POST'])
+def favorite_groups(request):
+    """
+    즐겨찾기 그룹 목록 조회 및 생성 API
+    GET /api/companies/favorite-groups/ - 그룹 목록 조회
+    POST /api/companies/favorite-groups/ - 그룹 생성
+    """
+    try:
+        from django.apps import apps as django_apps
+        FavoriteGroupModel = django_apps.get_model('apps', 'FavoriteGroup')
+        
+        if request.method == 'GET':
+            groups = FavoriteGroupModel.objects.all().order_by('name')
+            return Response({
+                'groups': [
+                    {
+                        'id': group.id,
+                        'name': group.name,
+                        'created_at': group.created_at.isoformat() if group.created_at else None
+                    }
+                    for group in groups
+                ]
+            }, status=status.HTTP_200_OK)
+        elif request.method == 'POST':
+            name = request.data.get('name', '').strip()
+            if not name:
+                return Response(
+                    {'error': '그룹명이 필요합니다.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 중복 확인
+            if FavoriteGroupModel.objects.filter(name=name).exists():
+                return Response(
+                    {'error': '이미 같은 이름의 그룹이 있습니다.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 그룹 생성
+            group = FavoriteGroupModel.objects.create(name=name)
+            
+            return Response({
+                'id': group.id,
+                'name': group.name,
+                'created_at': group.created_at.isoformat() if group.created_at else None
+            }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['PUT', 'DELETE'])
+def favorite_group_detail(request, group_id):
+    """
+    즐겨찾기 그룹 수정 및 삭제 API
+    PUT /api/companies/favorite-groups/<group_id>/ - 그룹 수정
+    DELETE /api/companies/favorite-groups/<group_id>/ - 그룹 삭제
+    """
+    try:
+        from django.apps import apps as django_apps
+        FavoriteGroupModel = django_apps.get_model('apps', 'FavoriteGroup')
+        
+        # 그룹 확인
+        try:
+            group = FavoriteGroupModel.objects.get(id=group_id)
+        except FavoriteGroupModel.DoesNotExist:
+            return Response(
+                {'error': f'그룹 ID {group_id}를 찾을 수 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if request.method == 'PUT':
+            name = request.data.get('name', '').strip()
+            if not name:
+                return Response(
+                    {'error': '그룹명이 필요합니다.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 중복 확인 (자기 자신 제외)
+            if FavoriteGroupModel.objects.filter(name=name).exclude(id=group_id).exists():
+                return Response(
+                    {'error': '이미 같은 이름의 그룹이 있습니다.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 그룹명 수정
+            group.name = name
+            group.save()
+            
+            return Response({
+                'id': group.id,
+                'name': group.name,
+                'created_at': group.created_at.isoformat() if group.created_at else None,
+                'updated_at': group.updated_at.isoformat() if group.updated_at else None
+            }, status=status.HTTP_200_OK)
+        elif request.method == 'DELETE':
+            # 그룹 삭제 (CASCADE로 즐겨찾기도 함께 삭제됨)
+            group_name = group.name
+            group.delete()
+            
+            return Response({
+                'id': group_id,
+                'name': group_name,
+                'message': '그룹이 삭제되었습니다.'
+            }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+

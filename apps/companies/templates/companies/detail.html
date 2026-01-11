@@ -3,236 +3,6 @@
 {% block title %}기업 상세 정보 - 장기 투자 분석{% endblock %}
 
 {% block content %}
-<div x-data="companyDetail('{{ corp_code }}')" class="row">
-    <div class="col-12">
-        <!-- 로딩 상태 -->
-        <div x-show="loading" class="text-center py-5">
-            <div class="loading-spinner mx-auto mb-3"></div>
-            <p class="text-muted">데이터를 불러오는 중...</p>
-        </div>
-
-        <!-- 에러 상태 -->
-        <div x-show="error && !loading" class="alert alert-danger">
-            <h5 class="alert-heading">
-                <i class="bi bi-exclamation-triangle me-2"></i>오류 발생
-            </h5>
-            <p class="mb-0" x-text="error"></p>
-        </div>
-
-        <!-- 데이터 표시 -->
-        <template x-if="!loading && !error && companyData">
-            <div>
-                <!-- 헤더 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                <h2 class="card-title mb-2" x-text="companyData?.company_name || '-'"></h2>
-                                <p class="text-muted mb-2" x-text="companyData?.business_type_name || '-'"></p>
-                                <p class="text-muted-small mb-0">
-                                    <code x-text="companyData?.corp_code || '-'"></code>
-                                </p>
-                            </div>
-                            <div>
-                                <span class="badge fs-6 px-3 py-2"
-                                    :class="companyData?.passed_all_filters ? 'bg-success' : 'bg-danger'"
-                                    x-text="companyData?.passed_all_filters ? '필터 통과' : '필터 미통과'"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 필터 결과 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <h4 class="card-title mb-3">
-                            <i class="bi bi-funnel me-2"></i>필터 결과
-                        </h4>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <div class="d-flex align-items-center">
-                                    <span class="me-2">영업이익 필터:</span>
-                                    <span class="badge"
-                                        :class="companyData?.filter_operating_income ? 'bg-success' : 'bg-danger'"
-                                        x-text="companyData?.filter_operating_income ? '통과' : '미통과'"></span>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="d-flex align-items-center">
-                                    <span class="me-2">당기순이익 필터:</span>
-                                    <span class="badge"
-                                        :class="companyData?.filter_net_income ? 'bg-success' : 'bg-danger'"
-                                        x-text="companyData?.filter_net_income ? '통과' : '미통과'"></span>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="d-flex align-items-center">
-                                    <span class="me-2">매출액 CAGR 필터:</span>
-                                    <span class="badge"
-                                        :class="companyData?.filter_revenue_cagr ? 'bg-success' : 'bg-danger'"
-                                        x-text="companyData?.filter_revenue_cagr ? '통과' : '미통과'"></span>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="d-flex align-items-center">
-                                    <span class="me-2">총자산 영업이익률 필터:</span>
-                                    <span class="badge"
-                                        :class="companyData?.filter_total_assets_operating_income_ratio ? 'bg-success' : 'bg-danger'"
-                                        x-text="companyData?.filter_total_assets_operating_income_ratio ? '통과' : '미통과'"></span>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="d-flex align-items-center">
-                                    <span class="me-2">ROE 필터:</span>
-                                    <span class="badge"
-                                        :class="companyData?.filter_roe ? 'bg-success' : 'bg-danger'"
-                                        x-text="companyData?.filter_roe ? '통과' : '미통과'"></span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 기본 정보 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <h4 class="card-title mb-3">
-                            <i class="bi bi-info-circle me-2"></i>기본 정보
-                        </h4>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <strong>업종 코드:</strong>
-                                <span x-text="companyData?.business_type_code || '-'"></span>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <strong>5년 만기 국채 수익률:</strong>
-                                <span
-                                    x-text="companyData?.bond_yield_5y ? (companyData.bond_yield_5y * 100).toFixed(2) + '%' : '-'"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 재무 지표 테이블 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h4 class="card-title mb-0">
-                                <i class="bi bi-table me-2"></i>최근 5년 재무 지표
-                            </h4>
-                            <a :href="`/companies/${corpCode}/add-indicators/`" class="btn btn-primary">
-                                <i class="bi bi-plus-circle me-2"></i>지표 추가
-                            </a>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>연도</th>
-                                        <th class="text-end">매출액</th>
-                                        <th class="text-end">영업이익</th>
-                                        <th class="text-end">당기순이익</th>
-                                        <th class="text-end">총자산</th>
-                                        <th class="text-end">자기자본</th>
-                                        <!-- 매출총이익률과 판관비율은 현재 사용하지 않으므로 주석 처리 -->
-                                        <!-- <th class="text-end">매출총이익률</th> -->
-                                        <!-- <th class="text-end">판관비율</th> -->
-                                        <th class="text-end">총자산 영업이익률</th>
-                                        <th class="text-end">ROE</th>
-                                        <th class="text-end">FCF</th>
-                                        <th class="text-end">ROIC</th>
-                                        <th class="text-end">WACC</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <template x-for="yearData in yearlyDataSorted" :key="yearData.year">
-                                        <tr>
-                                            <td><strong x-text="yearData.year"></strong></td>
-                                            <td class="text-end" x-text="formatAmount(yearData.revenue)"></td>
-                                            <td class="text-end" x-text="formatAmount(yearData.operating_income)"></td>
-                                            <td class="text-end" x-text="formatAmount(yearData.net_income)"></td>
-                                            <td class="text-end" x-text="formatAmount(yearData.total_assets)"></td>
-                                            <td class="text-end" x-text="formatAmount(yearData.total_equity)"></td>
-                                            <!-- 매출총이익률과 판관비율은 현재 사용하지 않으므로 주석 처리 -->
-                                            <!-- <td class="text-end" x-text="formatPercent(yearData.gross_profit_margin)">
-                                            </td> -->
-                                            <!-- <td class="text-end"
-                                                x-text="formatPercent(yearData.selling_admin_expense_ratio)"></td> -->
-                                            <td class="text-end"
-                                                x-text="formatPercent(yearData.total_assets_operating_income_ratio)">
-                                            </td>
-                                            <td class="text-end" x-text="formatPercent(yearData.roe)"></td>
-                                            <td class="text-end" x-text="formatAmount(yearData.fcf)"></td>
-                                            <td class="text-end" x-text="formatPercentFromNumber(yearData.roic)"></td>
-                                            <td class="text-end" x-text="formatPercentFromNumber(yearData.wacc)"></td>
-                                        </tr>
-                                    </template>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 메모 섹션 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <h4 class="card-title mb-3">
-                            <i class="bi bi-journal-text me-2"></i>메모
-                        </h4>
-                        <div class="mb-3">
-                            <textarea class="form-control" rows="5" x-model="memoText"
-                                placeholder="기업에 대한 메모를 입력하세요..."></textarea>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <small class="text-muted" x-show="!memoUpdatedAt">메모는 저장하면 즉시 반영됩니다.</small>
-                                <small class="text-muted" x-show="memoUpdatedAt">
-                                    마지막 수정: <span x-text="formatMemoDate(memoUpdatedAt)"></span>
-                                </small>
-                            </div>
-                            <button type="button" class="btn btn-primary" @click="saveMemo()" :disabled="savingMemo">
-                                <span x-show="!savingMemo">
-                                    <i class="bi bi-save me-2"></i>저장
-                                </span>
-                                <span x-show="savingMemo">
-                                    <span class="spinner-border spinner-border-sm me-2"></span>저장 중...
-                                </span>
-                            </button>
-                        </div>
-                        <div x-show="memoMessage" class="mt-3">
-                            <div
-                                :class="memoMessageType === 'success' ? 'alert alert-success alert-sm' : 'alert alert-danger alert-sm'">
-                                <span x-text="memoMessage"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 사업보고서 링크 -->
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <h4 class="card-title mb-3">
-                            <i class="bi bi-file-earmark-text me-2"></i>사업보고서
-                        </h4>
-                        <div x-show="annualReportLink">
-                            <a :href="annualReportLink" target="_blank" class="btn btn-primary">
-                                <i class="bi bi-box-arrow-up-right me-2"></i>
-                                DART 공시시스템에서 사업보고서 보기
-                            </a>
-                        </div>
-                        <div x-show="!annualReportLink && !loadingReportLink" class="text-muted">
-                            사업보고서 링크를 불러올 수 없습니다.
-                        </div>
-                        <div x-show="loadingReportLink" class="text-muted">
-                            <span class="loading-spinner me-2"></span>링크를 불러오는 중...
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </template>
-    </div>
-</div>
-
 <script>
     function companyDetail(corpCode) {
         return {
@@ -247,6 +17,12 @@
             savingMemo: false,
             memoMessage: null,
             memoMessageType: null,
+            loadingFavorites: false,
+            favoritesGroups: [],
+            favoriteGroups: [],
+            showAddFavoriteModal: false,
+            selectedGroupForAdd: '',
+            addingFavorite: false,
 
             get yearlyDataSorted() {
                 if (!this.companyData || !this.companyData.yearly_data) {
@@ -258,6 +34,8 @@
             async init() {
                 await this.fetchCompanyData();
                 await this.fetchAnnualReportLink();
+                await this.loadFavoriteGroups();
+                await this.loadFavorites();
             },
 
             async fetchCompanyData() {
@@ -388,8 +166,366 @@
                     }
                 }
                 return '';
+            },
+
+            // 즐겨찾기 그룹 목록 로드
+            async loadFavoriteGroups() {
+                try {
+                    const response = await fetch('/api/companies/favorite-groups/');
+                    const data = await response.json();
+                    if (response.ok) {
+                        this.favoriteGroups = data.groups || [];
+                    }
+                } catch (error) {
+                    console.error('그룹 목록 로드 실패:', error);
+                }
+            },
+
+            // 즐겨찾기 목록 로드
+            async loadFavorites() {
+                this.loadingFavorites = true;
+                try {
+                    const response = await fetch('/api/companies/favorites/');
+                    const data = await response.json();
+                    if (response.ok) {
+                        this.favoritesGroups = data.groups || [];
+                    }
+                } catch (error) {
+                    console.error('즐겨찾기 목록 로드 실패:', error);
+                } finally {
+                    this.loadingFavorites = false;
+                }
+            },
+
+            // 즐겨찾기 추가
+            async addFavorite() {
+                const code = this.corpCode.trim();
+                if (!code) {
+                    alert('기업코드를 찾을 수 없습니다.');
+                    return;
+                }
+
+                if (!this.selectedGroupForAdd) {
+                    alert('그룹을 선택해주세요.');
+                    return;
+                }
+
+                this.addingFavorite = true;
+                try {
+                    const response = await fetch(`/api/companies/${code}/favorites/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCsrfToken()
+                        },
+                        body: JSON.stringify({ group_id: parseInt(this.selectedGroupForAdd) })
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        await this.loadFavorites();
+                        this.selectedGroupForAdd = '';
+                        this.showAddFavoriteModal = false;
+                        alert('즐겨찾기에 추가되었습니다.');
+                    } else {
+                        alert(data.error || '즐겨찾기 추가에 실패했습니다.');
+                    }
+                } catch (error) {
+                    alert('즐겨찾기 추가 중 오류가 발생했습니다: ' + error.message);
+                } finally {
+                    this.addingFavorite = false;
+                }
             }
         }
     }
 </script>
+<div x-data="companyDetail('{{ corp_code }}')" class="row">
+    <div class="col-12">
+        <!-- 로딩 상태 -->
+        <div x-show="loading" class="text-center py-5">
+            <div class="loading-spinner mx-auto mb-3"></div>
+            <p class="text-muted">데이터를 불러오는 중...</p>
+        </div>
+
+        <!-- 에러 상태 -->
+        <div x-show="error && !loading" class="alert alert-danger">
+            <h5 class="alert-heading">
+                <i class="bi bi-exclamation-triangle me-2"></i>오류 발생
+            </h5>
+            <p class="mb-0" x-text="error"></p>
+        </div>
+
+        <!-- 데이터 표시 -->
+        <template x-if="!loading && !error && companyData">
+            <div class="row g-4">
+                <!-- 첫 번째 행: 기업정보 + 필터 통과 여부 -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body p-4">
+                            <h4 class="card-title mb-3">
+                                <i class="bi bi-building me-2"></i>기업정보
+                            </h4>
+                            <div>
+                                <h5 class="mb-2" x-text="companyData?.company_name || '-'"></h5>
+                                <p class="text-muted mb-2" x-text="companyData?.business_type_name || '-'"></p>
+                                <p class="text-muted-small mb-2">
+                                    <code x-text="companyData?.corp_code || '-'"></code>
+                                </p>
+                                <div class="mb-2">
+                                    <strong>업종 코드:</strong>
+                                    <span x-text="companyData?.business_type_code || '-'" class="ms-2"></span>
+                                </div>
+                                <div class="mb-2">
+                                    <strong>5년 만기 국채 수익률:</strong>
+                                    <span x-text="companyData?.bond_yield_5y ? (companyData.bond_yield_5y * 100).toFixed(2) + '%' : '-'" class="ms-2"></span>
+                                </div>
+                                <div class="mt-3">
+                                    <div x-show="annualReportLink">
+                                        <a :href="annualReportLink" target="_blank" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-box-arrow-up-right me-2"></i>
+                                            사업보고서 보기
+                                        </a>
+                                    </div>
+                                    <div x-show="!annualReportLink && !loadingReportLink" class="text-muted small">
+                                        사업보고서 링크를 불러올 수 없습니다.
+                                    </div>
+                                    <div x-show="loadingReportLink" class="text-muted small">
+                                        <span class="loading-spinner me-2"></span>링크를 불러오는 중...
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body p-4">
+                            <h4 class="card-title mb-3">
+                                <i class="bi bi-funnel me-2"></i>필터 통과 여부
+                            </h4>
+                            <div class="text-center mb-3">
+                                <span class="badge fs-5 px-4 py-3"
+                                    :class="companyData?.passed_all_filters ? 'bg-success' : 'bg-danger'"
+                                    x-text="companyData?.passed_all_filters ? '필터 통과' : '필터 미통과'"></span>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-12">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <span class="small">영업이익 필터:</span>
+                                        <span class="badge"
+                                            :class="companyData?.filter_operating_income ? 'bg-success' : 'bg-danger'"
+                                            x-text="companyData?.filter_operating_income ? '통과' : '미통과'"></span>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <span class="small">당기순이익 필터:</span>
+                                        <span class="badge"
+                                            :class="companyData?.filter_net_income ? 'bg-success' : 'bg-danger'"
+                                            x-text="companyData?.filter_net_income ? '통과' : '미통과'"></span>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <span class="small">매출액 CAGR 필터:</span>
+                                        <span class="badge"
+                                            :class="companyData?.filter_revenue_cagr ? 'bg-success' : 'bg-danger'"
+                                            x-text="companyData?.filter_revenue_cagr ? '통과' : '미통과'"></span>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <span class="small">총자산 영업이익률 필터:</span>
+                                        <span class="badge"
+                                            :class="companyData?.filter_total_assets_operating_income_ratio ? 'bg-success' : 'bg-danger'"
+                                            x-text="companyData?.filter_total_assets_operating_income_ratio ? '통과' : '미통과'"></span>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <span class="small">ROE 필터:</span>
+                                        <span class="badge"
+                                            :class="companyData?.filter_roe ? 'bg-success' : 'bg-danger'"
+                                            x-text="companyData?.filter_roe ? '통과' : '미통과'"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 두 번째 행: 각종 지표 (왼쪽) + 즐겨찾기 (오른쪽) -->
+                <div class="col-md-9">
+                    <div class="card h-100">
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h4 class="card-title mb-0">
+                                    <i class="bi bi-table me-2"></i>각종 지표
+                                </h4>
+                                <a :href="`/companies/${corpCode}/add-indicators/`" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-plus-circle me-1"></i>지표 추가
+                                </a>
+                            </div>
+                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                                <table class="table table-sm table-hover" style="font-size: 0.8rem;">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th>연도</th>
+                                            <th class="text-end">매출액</th>
+                                            <th class="text-end">영업이익</th>
+                                            <th class="text-end">당기순이익</th>
+                                            <th class="text-end">총자산</th>
+                                            <th class="text-end">자기자본</th>
+                                            <th class="text-end">총자산<br>영업이익률</th>
+                                            <th class="text-end">ROE</th>
+                                            <th class="text-end">FCF</th>
+                                            <th class="text-end">ROIC</th>
+                                            <th class="text-end">WACC</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="yearData in yearlyDataSorted" :key="yearData.year">
+                                            <tr>
+                                                <td><strong x-text="yearData.year"></strong></td>
+                                                <td class="text-end" x-text="formatAmount(yearData.revenue)"></td>
+                                                <td class="text-end" x-text="formatAmount(yearData.operating_income)"></td>
+                                                <td class="text-end" x-text="formatAmount(yearData.net_income)"></td>
+                                                <td class="text-end" x-text="formatAmount(yearData.total_assets)"></td>
+                                                <td class="text-end" x-text="formatAmount(yearData.total_equity)"></td>
+                                                <td class="text-end" x-text="formatPercent(yearData.total_assets_operating_income_ratio)"></td>
+                                                <td class="text-end" x-text="formatPercent(yearData.roe)"></td>
+                                                <td class="text-end" x-text="formatAmount(yearData.fcf)"></td>
+                                                <td class="text-end" x-text="formatPercentFromNumber(yearData.roic)"></td>
+                                                <td class="text-end" x-text="formatPercentFromNumber(yearData.wacc)"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card h-100">
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="card-title mb-0">
+                                    <i class="bi bi-star-fill me-2"></i>즐겨찾기
+                                </h5>
+                                <button type="button" class="btn btn-sm btn-success" @click="showAddFavoriteModal = true">
+                                    <i class="bi bi-plus-circle me-1"></i>추가
+                                </button>
+                            </div>
+                            <div x-show="loadingFavorites" class="text-center py-3">
+                                <div class="loading-spinner mx-auto mb-2"></div>
+                                <p class="text-muted small">로딩 중...</p>
+                            </div>
+                            <div x-show="!loadingFavorites && favoritesGroups.length === 0" class="text-center py-3 text-muted small">
+                                즐겨찾기가 없습니다.
+                            </div>
+                            <div x-show="!loadingFavorites && favoritesGroups.length > 0" style="max-height: 500px; overflow-y: auto;">
+                                <template x-for="group in favoritesGroups" :key="group.group_id">
+                                    <div class="mb-3">
+                                        <h6 class="mb-2" x-text="group.group_name"></h6>
+                                        <div class="list-group list-group-flush">
+                                            <template x-for="fav in group.favorites" :key="fav.id">
+                                                <a :href="`/companies/${fav.corp_code}/`" 
+                                                    class="list-group-item list-group-item-action px-0 py-2">
+                                                    <div>
+                                                        <strong class="small" x-text="fav.company_name || '-'"></strong>
+                                                    </div>
+                                                </a>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 세 번째 행: 메모 (전체 너비) -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body p-4">
+                            <h4 class="card-title mb-3">
+                                <i class="bi bi-journal-text me-2"></i>메모
+                            </h4>
+                            <div class="mb-3">
+                                <textarea class="form-control" rows="5" x-model="memoText"
+                                    placeholder="기업에 대한 메모를 입력하세요..."></textarea>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small class="text-muted" x-show="!memoUpdatedAt">메모는 저장하면 즉시 반영됩니다.</small>
+                                    <small class="text-muted" x-show="memoUpdatedAt">
+                                        마지막 수정: <span x-text="formatMemoDate(memoUpdatedAt)"></span>
+                                    </small>
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm" @click="saveMemo()" :disabled="savingMemo">
+                                    <span x-show="!savingMemo">
+                                        <i class="bi bi-save me-1"></i>저장
+                                    </span>
+                                    <span x-show="savingMemo">
+                                        <span class="spinner-border spinner-border-sm me-1"></span>저장 중...
+                                    </span>
+                                </button>
+                            </div>
+                            <div x-show="memoMessage" class="mt-3">
+                                <div :class="memoMessageType === 'success' ? 'alert alert-success alert-sm' : 'alert alert-danger alert-sm'">
+                                    <span x-text="memoMessage"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- 즐겨찾기 추가 모달 -->
+        <div x-show="showAddFavoriteModal"
+             style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050;"
+             x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+            <div class="modal fade show"
+                style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">즐겨찾기 추가</h5>
+                            <button type="button" class="btn-close" @click="showAddFavoriteModal = false"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">기업코드</label>
+                                <input type="text" class="form-control" :value="corpCode" readonly>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">그룹 선택</label>
+                                <select class="form-select" x-model="selectedGroupForAdd">
+                                    <option value="">그룹을 선택하세요</option>
+                                    <template x-for="group in favoriteGroups" :key="group.id">
+                                        <option :value="group.id" x-text="group.name"></option>
+                                    </template>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @click="showAddFavoriteModal = false">취소</button>
+                            <button type="button" class="btn btn-primary" @click="addFavorite()"
+                                :disabled="!selectedGroupForAdd || addingFavorite">
+                                <span x-show="!addingFavorite">추가</span>
+                                <span x-show="addingFavorite">추가 중...</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-backdrop fade show" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1040; background-color: rgba(0,0,0,0.5);"></div>
+        </div>
+    </div>
+</div>
 {% endblock %}
