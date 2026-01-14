@@ -109,7 +109,7 @@ class CompanyFilter:
         cagr = IndicatorCalculator.calculate_cagr(start_value, end_value, years_span)
         
         # CAGR ≥ 5% 인지 확인
-        return cagr >= 0.05
+        return cagr >= 5.0
     
     @staticmethod
     def filter_total_assets_operating_income_ratio(company_data: CompanyFinancialObject) -> bool:
