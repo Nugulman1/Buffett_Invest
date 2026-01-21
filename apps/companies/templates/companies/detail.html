@@ -355,9 +355,10 @@
                     </div>
                 </div>
 
-                <!-- 두 번째 행: 각종 지표 (왼쪽) + 즐겨찾기 (오른쪽) -->
+                <!-- 두 번째 행: 각종 지표 + 메모 (왼쪽) + 즐겨찾기 (오른쪽) -->
                 <div class="col-md-9">
-                    <div class="card h-100">
+                    <!-- 각종 지표 -->
+                    <div class="card mb-4">
                         <div class="card-body p-4">
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <h4 class="card-title mb-0">
@@ -367,7 +368,7 @@
                                     <i class="bi bi-plus-circle me-1"></i>지표 추가
                                 </a>
                             </div>
-                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                 <table class="table table-sm table-hover" style="font-size: 0.8rem;">
                                     <thead class="table-light sticky-top">
                                         <tr>
@@ -402,6 +403,39 @@
                                         </template>
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 메모 -->
+                    <div class="card">
+                        <div class="card-body p-4">
+                            <h4 class="card-title mb-3">
+                                <i class="bi bi-journal-text me-2"></i>메모
+                            </h4>
+                            <div class="mb-3">
+                                <textarea class="form-control" rows="12" x-model="memoText"
+                                    placeholder="기업에 대한 메모를 입력하세요..."></textarea>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small class="text-muted" x-show="!memoUpdatedAt">메모는 저장하면 즉시 반영됩니다.</small>
+                                    <small class="text-muted" x-show="memoUpdatedAt">
+                                        마지막 수정: <span x-text="formatMemoDate(memoUpdatedAt)"></span>
+                                    </small>
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm" @click="saveMemo()" :disabled="savingMemo">
+                                    <span x-show="!savingMemo">
+                                        <i class="bi bi-save me-1"></i>저장
+                                    </span>
+                                    <span x-show="savingMemo">
+                                        <span class="spinner-border spinner-border-sm me-1"></span>저장 중...
+                                    </span>
+                                </button>
+                            </div>
+                            <div x-show="memoMessage" class="mt-3">
+                                <div :class="memoMessageType === 'success' ? 'alert alert-success alert-sm' : 'alert alert-danger alert-sm'">
+                                    <span x-text="memoMessage"></span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -441,42 +475,6 @@
                                         </div>
                                     </div>
                                 </template>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 세 번째 행: 메모 (전체 너비) -->
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-body p-4">
-                            <h4 class="card-title mb-3">
-                                <i class="bi bi-journal-text me-2"></i>메모
-                            </h4>
-                            <div class="mb-3">
-                                <textarea class="form-control" rows="5" x-model="memoText"
-                                    placeholder="기업에 대한 메모를 입력하세요..."></textarea>
-                            </div>
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <small class="text-muted" x-show="!memoUpdatedAt">메모는 저장하면 즉시 반영됩니다.</small>
-                                    <small class="text-muted" x-show="memoUpdatedAt">
-                                        마지막 수정: <span x-text="formatMemoDate(memoUpdatedAt)"></span>
-                                    </small>
-                                </div>
-                                <button type="button" class="btn btn-primary btn-sm" @click="saveMemo()" :disabled="savingMemo">
-                                    <span x-show="!savingMemo">
-                                        <i class="bi bi-save me-1"></i>저장
-                                    </span>
-                                    <span x-show="savingMemo">
-                                        <span class="spinner-border spinner-border-sm me-1"></span>저장 중...
-                                    </span>
-                                </button>
-                            </div>
-                            <div x-show="memoMessage" class="mt-3">
-                                <div :class="memoMessageType === 'success' ? 'alert alert-success alert-sm' : 'alert alert-danger alert-sm'">
-                                    <span x-text="memoMessage"></span>
-                                </div>
                             </div>
                         </div>
                     </div>
