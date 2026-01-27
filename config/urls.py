@@ -27,6 +27,8 @@ urlpatterns = [
         path('favorite-groups/', companies_views.favorite_groups, name='favorite_groups'),
         path('favorite-groups/<int:group_id>/', companies_views.favorite_group_detail, name='favorite_group_detail'),
         path('<str:corp_code>/favorites/', companies_views.favorite, name='favorite'),
+        path('<str:corp_code>/quarterly-reports/collect/', companies_views.collect_quarterly_reports, name='collect_quarterly_reports'),
+        path('<str:corp_code>/quarterly-data/', companies_views.get_quarterly_financial_data, name='get_quarterly_financial_data'),
     ])),
 ]
 

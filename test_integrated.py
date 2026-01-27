@@ -58,8 +58,8 @@ def print_all_years_data(company_data):
         # print(f"    매출총이익률: {yearly_data.gross_profit_margin:.2f}%")  # 수집 안 함
         # print(f"    판관비율: {yearly_data.selling_admin_expense_ratio:.2f}%")  # 수집 안 함
         # 계산 방식으로 변경된 재무지표
-        print(f"    총자산영업이익률 (계산): {yearly_data.total_assets_operating_income_ratio:.2f}%")
-        print(f"    ROE (계산): {yearly_data.roe:.2f}%")
+        print(f"    영업이익률 (계산): {yearly_data.operating_margin * 100:.2f}%")
+        print(f"    ROE (계산): {yearly_data.roe * 100:.2f}%")
         
         # === 계산에 사용하는 기본 지표 (XBRL) ===
         # XBRL 데이터 수집 중단으로 주석처리
@@ -91,17 +91,18 @@ def print_all_years_data(company_data):
     print(f"  영업이익 필터: {'✓ 통과' if company_data.filter_operating_income else '✗ 실패'}")
     print(f"  당기순이익 필터: {'✓ 통과' if company_data.filter_net_income else '✗ 실패'}")
     print(f"  매출액 CAGR 필터: {'✓ 통과' if company_data.filter_revenue_cagr else '✗ 실패'}")
-    print(f"  총자산영업이익률 필터: {'✓ 통과' if company_data.filter_total_assets_operating_income_ratio else '✗ 실패'}")
+    print(f"  영업이익률 필터: {'✓ 통과' if company_data.filter_operating_margin else '✗ 실패'}")
     print("=" * 80)
 
 
-def test_data_collection(stock_code: str = None, corp_code: str = None):
+def test_data_collection(stock_code: str = None, corp_code: str = None, force_recollect: bool = False):
     """
     데이터 수집 테스트
     
     Args:
         stock_code: 종목코드 (6자리, 예: '005930') - stock_code 또는 corp_code 중 하나 필수
         corp_code: 고유번호 (8자리) - stock_code 또는 corp_code 중 하나 필수
+        force_recollect: 강제 재수집 여부 (기존 데이터 삭제 후 재수집)
     """
     print("=" * 80)
     print("통합 데이터 수집 테스트")
@@ -127,6 +128,24 @@ def test_data_collection(stock_code: str = None, corp_code: str = None):
             print(f"  ✓ 고유번호: {corp_code}")
         else:
             raise ValueError("stock_code 또는 corp_code 중 하나는 필수입니다.")
+        
+        # 강제 재수집 옵션: 기존 데이터 삭제
+        if force_recollect:
+            print(f"\n[1.5단계] 강제 재수집 모드: 기존 데이터 초기화...")
+            from django.apps import apps as django_apps
+            CompanyModel = django_apps.get_model('apps', 'Company')
+            YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+            
+            try:
+                company = CompanyModel.objects.get(corp_code=corp_code)
+                # YearlyFinancialData 삭제
+                YearlyFinancialDataModel.objects.filter(company=company).delete()
+                # last_collected_at 초기화
+                company.last_collected_at = None
+                company.save()
+                print(f"  ✓ 기존 데이터 삭제 완료")
+            except CompanyModel.DoesNotExist:
+                print(f"  ✓ 기존 데이터 없음 (신규 수집)")
         
         # 2. 데이터 수집
         print(f"\n[2단계] 재무제표 데이터 수집 중...")
@@ -154,12 +173,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='통합 데이터 수집 테스트')
     parser.add_argument('--stock-code', type=str, help='종목코드 (6자리, 예: 005930)')
     parser.add_argument('--corp-code', type=str, help='고유번호 (8자리)')
+    parser.add_argument('--force-recollect', action='store_true', help='강제 재수집 (기존 데이터 삭제 후 재수집)')
     
     args = parser.parse_args()
     
     if not args.stock_code and not args.corp_code:
         # 기본값: 삼성전자
-        test_data_collection(stock_code='005930')
+        test_data_collection(stock_code='005930', force_recollect=args.force_recollect)
     else:
-        test_data_collection(stock_code=args.stock_code, corp_code=args.corp_code)
+        test_data_collection(stock_code=args.stock_code, corp_code=args.corp_code, force_recollect=args.force_recollect)
 

@@ -16,7 +16,7 @@ class Company(models.Model):
     filter_operating_income = models.BooleanField(default=False, verbose_name='영업이익필터')
     filter_net_income = models.BooleanField(default=False, verbose_name='당기순이익필터')
     filter_revenue_cagr = models.BooleanField(default=False, verbose_name='매출액CAGR필터')
-    filter_total_assets_operating_income_ratio = models.BooleanField(default=False, verbose_name='총자산영업이익률필터')
+    filter_operating_margin = models.BooleanField(default=False, verbose_name='영업이익률필터')
     filter_roe = models.BooleanField(default=False, verbose_name='ROE필터')
     memo = models.TextField(blank=True, null=True, verbose_name='메모')
     memo_updated_at = models.DateTimeField(null=True, blank=True, verbose_name='메모수정일시')
@@ -84,7 +84,7 @@ class YearlyFinancialData(models.Model):
     # API 호출 최적화를 위해 재무지표 API 호출을 제거했으며, 매출총이익률과 판관비율은 수집하지 않음
     gross_profit_margin = models.FloatField(default=0.0, verbose_name='매출총이익률')  # 사용 안 함 (API 호출 제거)
     selling_admin_expense_ratio = models.FloatField(default=0.0, verbose_name='판관비율')  # 사용 안 함 (API 호출 제거)
-    total_assets_operating_income_ratio = models.FloatField(default=0.0, verbose_name='총자산영업이익률')  # 계산 방식 (영업이익/자산총계)
+    operating_margin = models.FloatField(default=0.0, verbose_name='영업이익률')  # 계산 방식 (영업이익/매출액)
     roe = models.FloatField(default=0.0, verbose_name='ROE')  # 계산 방식 (당기순이익/자본총계)
     fcf = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자유현금흐름')
     roic = models.FloatField(default=0.0, null=True, blank=True, verbose_name='투하자본수익률')
@@ -104,6 +104,40 @@ class YearlyFinancialData(models.Model):
     
     def __str__(self):
         return f"{self.company.company_name} - {self.year}년"
+
+
+class QuarterlyFinancialData(models.Model):
+    """분기별 재무 데이터를 저장하는 Django 모델"""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='quarterly_data', verbose_name='회사')
+    year = models.IntegerField(verbose_name='사업연도')
+    quarter = models.IntegerField(verbose_name='분기')  # 1: 1분기, 2: 반기, 3: 3분기
+    reprt_code = models.CharField(max_length=10, verbose_name='보고서코드')  # 11013: 1분기, 11012: 반기, 11014: 3분기
+    rcept_no = models.CharField(max_length=14, blank=True, verbose_name='접수번호')
+    revenue = models.BigIntegerField(default=0, verbose_name='매출액')
+    operating_income = models.BigIntegerField(default=0, verbose_name='영업이익')
+    net_income = models.BigIntegerField(default=0, verbose_name='당기순이익')
+    total_assets = models.BigIntegerField(default=0, verbose_name='자산총계')
+    total_equity = models.BigIntegerField(default=0, verbose_name='자본총계')
+    operating_margin = models.FloatField(default=0.0, verbose_name='영업이익률')  # 계산 방식 (영업이익/매출액)
+    roe = models.FloatField(default=0.0, verbose_name='ROE')  # 계산 방식 (당기순이익/자본총계)
+    collected_at = models.DateTimeField(auto_now_add=True, verbose_name='수집일시')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
+    
+    class Meta:
+        db_table = 'quarterly_financial_data'
+        verbose_name = '분기별재무데이터'
+        verbose_name_plural = '분기별재무데이터들'
+        unique_together = [['company', 'year', 'quarter']]
+        indexes = [
+            models.Index(fields=['company', 'year', 'quarter']),
+            models.Index(fields=['year', 'quarter']),
+        ]
+    
+    def __str__(self):
+        quarter_names = {1: '1분기', 2: '반기', 3: '3분기'}
+        quarter_name = quarter_names.get(self.quarter, f'{self.quarter}분기')
+        return f"{self.company.company_name} - {self.year}년 {quarter_name}"
 
 
 class FavoriteGroup(models.Model):
@@ -232,7 +266,7 @@ class YearlyFinancialDataObject:
         # API 호출 최적화를 위해 재무지표 API 호출을 제거했으며, 매출총이익률과 판관비율은 수집하지 않음
         self.gross_profit_margin: float = 0.0  # 매출총이익률 (%) - 사용 안 함 (API 호출 제거)
         self.selling_admin_expense_ratio: float = 0.0  # 판관비율 (%) - 사용 안 함 (API 호출 제거)
-        self.total_assets_operating_income_ratio: float = 0.0  # 총자산영업이익률 (%) - 계산 방식 (영업이익/자산총계)
+        self.operating_margin: float = 0.0  # 영업이익률 (%) - 계산 방식 (영업이익/매출액)
         self.roe: float = 0.0  # ROE (%) - 계산 방식 (당기순이익/자본총계)
         
         # === 계산에 사용하는 기본 지표 ===
@@ -282,5 +316,5 @@ class CompanyFinancialObject:
         self.filter_operating_income: bool = True  # 영업이익 필터 통과 여부
         self.filter_net_income: bool = True  # 당기순이익 필터 통과 여부
         self.filter_revenue_cagr: bool = True  # 매출액 CAGR 필터 통과 여부
-        self.filter_total_assets_operating_income_ratio: bool = True  # 총자산영업이익률 필터 통과 여부
+        self.filter_operating_margin: bool = True  # 영업이익률 필터 통과 여부
         self.filter_roe: bool = True  # ROE 필터 통과 여부

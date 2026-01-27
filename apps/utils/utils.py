@@ -288,7 +288,7 @@ def load_company_from_db(corp_code: str) -> CompanyFinancialObject | None:
         company_data.filter_operating_income = company.filter_operating_income
         company_data.filter_net_income = company.filter_net_income
         company_data.filter_revenue_cagr = company.filter_revenue_cagr
-        company_data.filter_total_assets_operating_income_ratio = company.filter_total_assets_operating_income_ratio
+        company_data.filter_operating_margin = company.filter_operating_margin
         company_data.filter_roe = company.filter_roe
         
         # YearlyFinancialDataObject 리스트 생성
@@ -301,7 +301,7 @@ def load_company_from_db(corp_code: str) -> CompanyFinancialObject | None:
             yearly_data_obj.total_equity = yearly_data_db.total_equity or 0
             yearly_data_obj.gross_profit_margin = yearly_data_db.gross_profit_margin or 0.0
             yearly_data_obj.selling_admin_expense_ratio = yearly_data_db.selling_admin_expense_ratio or 0.0
-            yearly_data_obj.total_assets_operating_income_ratio = yearly_data_db.total_assets_operating_income_ratio or 0.0
+            yearly_data_obj.operating_margin = yearly_data_db.operating_margin or 0.0
             yearly_data_obj.roe = yearly_data_db.roe or 0.0
             yearly_data_obj.fcf = yearly_data_db.fcf
             yearly_data_obj.roic = yearly_data_db.roic
@@ -335,8 +335,17 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
     now = timezone.now()
     
     with transaction.atomic():
+        # 기존 메모 조회 (보존용)
+        try:
+            existing_company = CompanyModel.objects.get(corp_code=company_data.corp_code)
+            existing_memo = existing_company.memo
+            existing_memo_updated_at = existing_company.memo_updated_at
+        except CompanyModel.DoesNotExist:
+            existing_memo = None
+            existing_memo_updated_at = None
+        
         # Company 모델 저장 또는 업데이트
-        company, _ = CompanyModel.objects.update_or_create(
+        company, created = CompanyModel.objects.update_or_create(
             corp_code=company_data.corp_code,
             defaults={
                 'company_name': company_data.company_name,
@@ -348,10 +357,17 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                 'filter_operating_income': company_data.filter_operating_income,
                 'filter_net_income': company_data.filter_net_income,
                 'filter_revenue_cagr': company_data.filter_revenue_cagr,
-                'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
+                'filter_operating_margin': company_data.filter_operating_margin,
                 'filter_roe': company_data.filter_roe,
+                # memo와 memo_updated_at은 defaults에 포함하지 않음 (자동 보존)
             }
         )
+        
+        # 명시적으로 메모 보존 (기존 메모가 있으면 유지)
+        if existing_memo:
+            company.memo = existing_memo
+            company.memo_updated_at = existing_memo_updated_at
+            company.save(update_fields=['memo', 'memo_updated_at'])
         
         # YearlyFinancialData 모델 저장 또는 업데이트
         for yearly_data in company_data.yearly_data:
@@ -367,9 +383,102 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                     # gross_profit_margin, selling_admin_expense_ratio는 수집하지 않음 (0.0으로 저장됨)
                     'gross_profit_margin': yearly_data.gross_profit_margin,
                     'selling_admin_expense_ratio': yearly_data.selling_admin_expense_ratio,
-                    # total_assets_operating_income_ratio, roe는 계산 방식으로 채워짐
-                    'total_assets_operating_income_ratio': yearly_data.total_assets_operating_income_ratio,
+                    # operating_margin, roe는 계산 방식으로 채워짐
+                    'operating_margin': yearly_data.operating_margin,
                     'roe': yearly_data.roe,
                 }
             )
+
+
+def backup_company_memos(corp_code: str = None) -> dict | list | None:
+    """
+    기업 메모 백업
+    
+    Args:
+        corp_code: 고유번호 (None이면 전체 기업)
+    
+    Returns:
+        단일 기업: {'corp_code': '...', 'memo': '...', 'memo_updated_at': '...'} 또는 None (메모 없음)
+        전체 기업: [{'corp_code': '...', 'memo': '...', 'memo_updated_at': '...'}, ...]
+    """
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    
+    if corp_code:
+        # 단일 기업 메모 백업
+        try:
+            company = CompanyModel.objects.get(corp_code=corp_code)
+            # 메모가 있는 경우만 백업
+            if company.memo:
+                return {
+                    'corp_code': company.corp_code,
+                    'memo': company.memo,
+                    'memo_updated_at': company.memo_updated_at.isoformat() if company.memo_updated_at else None
+                }
+            return None
+        except CompanyModel.DoesNotExist:
+            return None
+    else:
+        # 전체 기업 메모 백업
+        memos = []
+        for company in CompanyModel.objects.exclude(memo__isnull=True).exclude(memo=''):
+            memos.append({
+                'corp_code': company.corp_code,
+                'memo': company.memo,
+                'memo_updated_at': company.memo_updated_at.isoformat() if company.memo_updated_at else None
+            })
+        return memos
+
+
+def restore_company_memos(memo_backup: dict | list) -> int:
+    """
+    기업 메모 복원
+    
+    Args:
+        memo_backup: backup_company_memos()로 백업한 데이터
+        - 단일 기업: {'corp_code': '...', 'memo': '...', 'memo_updated_at': '...'}
+        - 전체 기업: [{'corp_code': '...', 'memo': '...', 'memo_updated_at': '...'}, ...]
+    
+    Returns:
+        복원된 메모 개수
+    """
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    from django.utils import timezone
+    from datetime import datetime
+    
+    restored_count = 0
+    
+    # 단일 기업 또는 전체 기업 처리
+    memos_to_restore = [memo_backup] if isinstance(memo_backup, dict) else memo_backup
+    
+    for memo_data in memos_to_restore:
+        if not memo_data or 'corp_code' not in memo_data:
+            continue
+        
+        corp_code = memo_data['corp_code']
+        memo = memo_data.get('memo', '')
+        memo_updated_at_str = memo_data.get('memo_updated_at')
+        
+        # memo_updated_at 문자열을 datetime으로 변환
+        memo_updated_at = None
+        if memo_updated_at_str:
+            try:
+                memo_updated_at = datetime.fromisoformat(memo_updated_at_str.replace('Z', '+00:00'))
+                if memo_updated_at.tzinfo is None:
+                    memo_updated_at = timezone.make_aware(memo_updated_at)
+            except (ValueError, AttributeError):
+                # 파싱 실패 시 None으로 처리
+                memo_updated_at = None
+        
+        # Company가 존재하는 경우에만 복원
+        try:
+            company = CompanyModel.objects.get(corp_code=corp_code)
+            company.memo = memo
+            company.memo_updated_at = memo_updated_at
+            company.save(update_fields=['memo', 'memo_updated_at'])
+            restored_count += 1
+        except CompanyModel.DoesNotExist:
+            # Company가 없으면 복원 불가 (무시)
+            continue
+    
+    return restored_count
 

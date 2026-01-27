@@ -217,6 +217,129 @@ class DartDataService:
         for year, yearly_data in yearly_data_list:
             company_data.yearly_data.append(yearly_data)
     
+    def _process_single_quarter_basic(self, corp_code: str, rcept_no: str, reprt_code: str, quarter: int, mappings: dict):
+        """
+        단일 분기의 기본 지표 수집
+        
+        Args:
+            corp_code: 고유번호
+            rcept_no: 접수번호
+            reprt_code: 보고서 코드
+            quarter: 분기 (1, 2, 3)
+            mappings: 지표 매핑 테이블
+            
+        Returns:
+            (year, quarter, quarterly_data) 튜플 또는 None (실패 시)
+        """
+        # 접수번호에서 사업연도 추출 (접수번호 형식: YYYYMMDDXXXXXX)
+        if len(rcept_no) < 4:
+            return None
+        
+        rcept_year = int(rcept_no[:4])
+        # 분기보고서는 해당 연도에 제출되므로, 접수연도가 사업연도
+        # 단, 1분기보고서는 다음 해 5월에 제출되므로 예외 처리 필요
+        # 일단 접수연도 - 1을 사업연도로 가정 (정확도 향상 필요시 수정)
+        if quarter == 1:
+            # 1분기보고서는 다음 해 5월에 제출
+            bsns_year = rcept_year - 1
+        else:
+            # 반기, 3분기보고서는 해당 연도에 제출
+            bsns_year = rcept_year
+        
+        year_str = str(bsns_year)
+        
+        # 분기보고서 재무제표 데이터 수집 (CFS 우선)
+        for fs_div in ['CFS', 'OFS']:
+            try:
+                raw_data = self.client.get_financial_statement(
+                    corp_code=corp_code,
+                    bsns_year=year_str,
+                    reprt_code=reprt_code,
+                    fs_div=fs_div
+                )
+                
+                if raw_data:
+                    # FinancialStatementData 객체 생성
+                    fs_data = FinancialStatementData(
+                        year=year_str,
+                        reprt_code=reprt_code,
+                        fs_div=fs_div,
+                        raw_data=raw_data
+                    )
+                    
+                    # YearlyFinancialDataObject 생성 (분기 데이터용)
+                    quarterly_data = YearlyFinancialDataObject(year=bsns_year, corp_code=corp_code)
+                    
+                    # 각 지표에 대해 매핑 및 추출
+                    for indicator_key, mapping_config in mappings.items():
+                        internal_field = mapping_config.get('internal_field')
+                        dart_variants = mapping_config.get('dart_variants', [])
+                        
+                        value = 0
+                        for variant in dart_variants:
+                            normalized_variant = normalize_account_name(variant)
+                            if normalized_variant in fs_data.normalized_account_index:
+                                data = fs_data.normalized_account_index[normalized_variant]
+                                amount = data.get('thstrm_amount', '0')
+                                value = int(amount.replace(',', '')) if amount else 0
+                                break
+                        
+                        if internal_field and hasattr(quarterly_data, internal_field):
+                            current_value = getattr(quarterly_data, internal_field)
+                            if current_value == 0:
+                                setattr(quarterly_data, internal_field, value)
+                    
+                    return (bsns_year, quarter, quarterly_data, rcept_no)
+            except Exception as e:
+                if fs_div == 'CFS':
+                    continue  # OFS도 시도
+                # OFS도 실패
+                pass
+        
+        return None
+    
+    def collect_quarterly_financial_data(self, corp_code: str, quarterly_reports: list) -> list:
+        """
+        분기보고서 재무 데이터 수집
+        
+        Args:
+            corp_code: 고유번호 (8자리)
+            quarterly_reports: 분기보고서 목록 (get_quarterly_reports_after_date 반환값)
+            
+        Returns:
+            수집된 분기 데이터 리스트 [(year, quarter, quarterly_data, rcept_no), ...]
+        """
+        # 매핑표 로드
+        mappings = self._load_indicator_mappings()
+        
+        # 병렬 처리로 각 분기별 데이터 수집
+        quarterly_data_list = []
+        with ThreadPoolExecutor(max_workers=len(quarterly_reports)) as executor:
+            # 모든 분기에 대한 작업 제출
+            future_to_report = {
+                executor.submit(
+                    self._process_single_quarter_basic,
+                    corp_code,
+                    report['rcept_no'],
+                    report['reprt_code'],
+                    report['quarter'],
+                    mappings
+                ): report
+                for report in quarterly_reports
+            }
+            
+            # 완료된 작업 처리
+            for future in as_completed(future_to_report):
+                try:
+                    result = future.result()
+                    if result:
+                        quarterly_data_list.append(result)
+                except Exception as e:
+                    # 보고서가 없어서 실패하는 경우이므로 출력하지 않음
+                    pass
+        
+        return quarterly_data_list
+    
     # XBRL 데이터 수집 중단: 표본이 너무 적어서 데이터화를 못할듯하여 일단 중단
     # def collect_xbrl_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
     #     """
@@ -353,7 +476,7 @@ class DartDataService:
     #
     # 기존 재무지표 API 호출 코드 (주석처리):
     # - 매출총이익률, 판관비율은 기본 지표 API(fnlttSinglAcnt.json)에 해당 계정이 없어서 수집 불가
-    # - 총자산영업이익률, ROE는 기본 지표에서 계산 가능하여 API 호출 제거
+    # - 영업이익률, ROE는 기본 지표에서 계산 가능하여 API 호출 제거
     # - API 호출 50% 감소 효과 (5개 연도 × 1회 = 5회 감소)
 
 

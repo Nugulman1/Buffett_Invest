@@ -12,7 +12,7 @@ class IndicatorCalculator:
     
     # 클래스 상수
     DEFAULT_TAX_RATE = 0.25  # 법인세율 (25%)
-    DEFAULT_EQUITY_RISK_PREMIUM = 5.0  # 주주기대수익률 (5%)
+    DEFAULT_EQUITY_RISK_PREMIUM = 10.0  # 주주기대수익률 (10%)
     
     @staticmethod
     def calculate_cagr(start_value: float, end_value: float, years: int) -> float:
@@ -98,6 +98,7 @@ class IndicatorCalculator:
         
         주의: 이자비용 대신 금융비용을 사용합니다 (간소화 버전).
         금융비용은 이자비용보다 넓은 개념이므로 실제 ICR보다 약간 낮게 나올 수 있습니다.
+        현재 사용하지 않습니다.
         
         Args:
             yearly_data: YearlyFinancialDataObject 객체
@@ -271,23 +272,23 @@ class IndicatorCalculator:
         # # )
     
     @staticmethod
-    def calculate_total_assets_operating_income_ratio(yearly_data: YearlyFinancialDataObject) -> float:
+    def calculate_operating_margin(yearly_data: YearlyFinancialDataObject) -> float:
         """
-        총자산영업이익률 계산
+        영업이익률 계산
         
-        공식: (영업이익 / 자산총계)
+        공식: (영업이익 / 매출액)
         
         주의: 프론트엔드 formatPercent가 value * 100을 하므로 소수 형태로 저장해야 합니다.
-        예: 30.335% -> 0.30335로 저장 (프론트에서 0.30335 * 100 = 30.335%로 표시)
+        예: 10.5% -> 0.105로 저장 (프론트에서 0.105 * 100 = 10.5%로 표시)
         
         Args:
             yearly_data: YearlyFinancialDataObject 객체
         
         Returns:
-            총자산영업이익률 (소수 형태, float, 예: 0.30335 = 30.335%)
+            영업이익률 (소수 형태, float, 예: 0.105 = 10.5%)
         """
-        if yearly_data.total_assets > 0:
-            return yearly_data.operating_income / yearly_data.total_assets
+        if yearly_data.revenue > 0:
+            return yearly_data.operating_income / yearly_data.revenue
         return 0.0
     
     @staticmethod
@@ -313,7 +314,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_basic_financial_ratios(company_data: CompanyFinancialObject) -> None:
         """
-        기본 재무지표 계산 (총자산영업이익률, ROE)
+        기본 재무지표 계산 (영업이익률, ROE)
         
         기본 지표 API(fnlttSinglAcnt.json)에서 수집한 데이터로 계산 가능한 재무지표를 계산합니다.
         API 호출 최적화를 위해 재무지표 API 호출을 제거하고 계산 방식으로 변경되었습니다.
@@ -322,11 +323,27 @@ class IndicatorCalculator:
             company_data: CompanyFinancialObject 객체 (in-place 수정)
         """
         for yearly_data in company_data.yearly_data:
-            # 총자산영업이익률 계산
-            yearly_data.total_assets_operating_income_ratio = (
-                IndicatorCalculator.calculate_total_assets_operating_income_ratio(yearly_data)
+            # 영업이익률 계산
+            yearly_data.operating_margin = (
+                IndicatorCalculator.calculate_operating_margin(yearly_data)
             )
             
             # ROE 계산
             yearly_data.roe = IndicatorCalculator.calculate_roe(yearly_data)
+    
+    @staticmethod
+    def calculate_basic_financial_ratios_for_quarterly(quarterly_data: 'YearlyFinancialDataObject') -> None:
+        """
+        분기보고서용 기본 재무지표 계산 (영업이익률, ROE)
+        
+        YearlyFinancialDataObject를 분기 데이터로도 사용하므로 동일한 계산 함수 사용
+        
+        Args:
+            quarterly_data: YearlyFinancialDataObject 객체 (분기 데이터용, in-place 수정)
+        """
+        # 영업이익률 계산
+        quarterly_data.operating_margin = IndicatorCalculator.calculate_operating_margin(quarterly_data)
+        
+        # ROE 계산
+        quarterly_data.roe = IndicatorCalculator.calculate_roe(quarterly_data)
 

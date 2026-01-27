@@ -131,7 +131,7 @@ def get_financial_data(request, corp_code):
                 'filter_operating_income': company_data.filter_operating_income,
                 'filter_net_income': company_data.filter_net_income,
                 'filter_revenue_cagr': company_data.filter_revenue_cagr,
-                'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
+                'filter_operating_margin': company_data.filter_operating_margin,
                 'filter_roe': company_data.filter_roe,
                 'memo': memo,
                 'memo_updated_at': memo_updated_at,
@@ -145,7 +145,7 @@ def get_financial_data(request, corp_code):
                         'total_equity': yd.total_equity,
                         'gross_profit_margin': yd.gross_profit_margin,
                         'selling_admin_expense_ratio': yd.selling_admin_expense_ratio,
-                        'total_assets_operating_income_ratio': yd.total_assets_operating_income_ratio,
+                        'operating_margin': yd.operating_margin,
                         'roe': yd.roe,
                         'fcf': yd.fcf,
                         'roic': yd.roic,
@@ -183,7 +183,7 @@ def get_financial_data(request, corp_code):
                 'filter_operating_income': company_data_from_db.filter_operating_income,
                 'filter_net_income': company_data_from_db.filter_net_income,
                 'filter_revenue_cagr': company_data_from_db.filter_revenue_cagr,
-                'filter_total_assets_operating_income_ratio': company_data_from_db.filter_total_assets_operating_income_ratio,
+                'filter_operating_margin': company_data_from_db.filter_operating_margin,
                 'filter_roe': company_data_from_db.filter_roe,
                 'memo': memo,
                 'memo_updated_at': memo_updated_at,
@@ -197,7 +197,7 @@ def get_financial_data(request, corp_code):
                         'total_equity': yd.total_equity,
                         'gross_profit_margin': yd.gross_profit_margin,
                         'selling_admin_expense_ratio': yd.selling_admin_expense_ratio,
-                        'total_assets_operating_income_ratio': yd.total_assets_operating_income_ratio,
+                        'operating_margin': yd.operating_margin,
                         'roe': yd.roe,
                         'fcf': yd.fcf,
                         'roic': yd.roic,
@@ -226,7 +226,7 @@ def get_financial_data(request, corp_code):
                 'filter_operating_income': company_data.filter_operating_income,
                 'filter_net_income': company_data.filter_net_income,
                 'filter_revenue_cagr': company_data.filter_revenue_cagr,
-                'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
+                'filter_operating_margin': company_data.filter_operating_margin,
                 'filter_roe': company_data.filter_roe,
                 'memo': memo,
                 'memo_updated_at': memo_updated_at,
@@ -240,7 +240,7 @@ def get_financial_data(request, corp_code):
                         'total_equity': yd.total_equity,
                         'gross_profit_margin': yd.gross_profit_margin,
                         'selling_admin_expense_ratio': yd.selling_admin_expense_ratio,
-                        'total_assets_operating_income_ratio': yd.total_assets_operating_income_ratio,
+                        'operating_margin': yd.operating_margin,
                         'roe': yd.roe,
                         'fcf': None,
                         'roic': None,
@@ -773,8 +773,8 @@ def save_manual_financial_data(request, corp_code):
                     yearly_data_obj.total_assets = total_assets
                     yearly_data_obj.total_equity = total_equity
                     
-                    # 총자산영업이익률 계산
-                    total_assets_operating_income_ratio = IndicatorCalculator.calculate_total_assets_operating_income_ratio(yearly_data_obj)
+                    # 영업이익률 계산
+                    operating_margin = IndicatorCalculator.calculate_operating_margin(yearly_data_obj)
                     
                     # ROE 계산
                     roe = IndicatorCalculator.calculate_roe(yearly_data_obj)
@@ -789,7 +789,7 @@ def save_manual_financial_data(request, corp_code):
                             'net_income': net_income,
                             'total_assets': total_assets,
                             'total_equity': total_equity,
-                            'total_assets_operating_income_ratio': total_assets_operating_income_ratio,
+                            'operating_margin': operating_margin,
                             'roe': roe,
                         }
                     )
@@ -862,7 +862,7 @@ def save_manual_financial_data(request, corp_code):
                     filter_operating_income=company_data.filter_operating_income,
                     filter_net_income=company_data.filter_net_income,
                     filter_revenue_cagr=company_data.filter_revenue_cagr,
-                    filter_total_assets_operating_income_ratio=company_data.filter_total_assets_operating_income_ratio,
+                    filter_operating_margin=company_data.filter_operating_margin,
                     filter_roe=company_data.filter_roe,
                 )
         except Exception as e:
@@ -879,13 +879,13 @@ def save_manual_financial_data(request, corp_code):
             'net_income': net_income,
             'total_assets': total_assets,
             'total_equity': total_equity,
-            'total_assets_operating_income_ratio': total_assets_operating_income_ratio,
+            'operating_margin': operating_margin,
             'roe': roe,
             'passed_all_filters': company_data.passed_all_filters,
             'filter_operating_income': company_data.filter_operating_income,
             'filter_net_income': company_data.filter_net_income,
             'filter_revenue_cagr': company_data.filter_revenue_cagr,
-            'filter_total_assets_operating_income_ratio': company_data.filter_total_assets_operating_income_ratio,
+            'filter_operating_margin': company_data.filter_operating_margin,
             'filter_roe': company_data.filter_roe,
         }, status=status.HTTP_200_OK)
         
@@ -1360,6 +1360,187 @@ def favorite_group_detail(request, group_id):
                 'name': group_name,
                 'message': '그룹이 삭제되었습니다.'
             }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def collect_quarterly_reports(request, corp_code):
+    """
+    최근 분기보고서 수집 API
+    POST /api/companies/{corp_code}/quarterly-reports/collect/
+    
+    가장 최근 사업보고서 이후의 분기보고서를 수집하여 DB에 저장합니다.
+    
+    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
+    """
+    try:
+        from apps.dart.client import DartClient
+        from apps.service.dart import DartDataService
+        from apps.service.calculator import IndicatorCalculator
+        from django.apps import apps as django_apps
+        from django.utils import timezone
+        from django.db import transaction
+        
+        # 종목코드인지 기업번호인지 확인
+        if len(corp_code) == 6 and corp_code.isdigit():
+            dart_client = DartClient()
+            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
+            if not converted_corp_code:
+                return Response(
+                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            corp_code = converted_corp_code
+        
+        CompanyModel = django_apps.get_model('apps', 'Company')
+        QuarterlyFinancialDataModel = django_apps.get_model('apps', 'QuarterlyFinancialData')
+        
+        # 기업 존재 확인
+        try:
+            company = CompanyModel.objects.get(corp_code=corp_code)
+        except CompanyModel.DoesNotExist:
+            return Response(
+                {'error': '기업을 찾을 수 없습니다. 먼저 연도별 데이터를 수집해주세요.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # DART 클라이언트 및 서비스 초기화
+        dart_client = DartClient()
+        dart_service = DartDataService()
+        
+        # 가장 최근 사업보고서 접수일자 조회
+        latest_annual_date = dart_client.get_latest_annual_report_date(corp_code)
+        if not latest_annual_date:
+            return Response(
+                {'error': '최근 사업보고서를 찾을 수 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 해당 날짜 이후의 분기보고서 목록 조회
+        quarterly_reports = dart_client.get_quarterly_reports_after_date(corp_code, latest_annual_date)
+        if not quarterly_reports:
+            return Response(
+                {'message': '최근 사업보고서 이후의 분기보고서가 없습니다.', 'collected_count': 0},
+                status=status.HTTP_200_OK
+            )
+        
+        # 분기보고서 데이터 수집
+        quarterly_data_list = dart_service.collect_quarterly_financial_data(corp_code, quarterly_reports)
+        
+        # DB에 저장
+        collected_count = 0
+        now = timezone.now()
+        
+        with transaction.atomic():
+            for year, quarter, quarterly_data, rcept_no in quarterly_data_list:
+                # 기본 재무지표 계산 (영업이익률, ROE)
+                IndicatorCalculator.calculate_basic_financial_ratios_for_quarterly(quarterly_data)
+                
+                # 해당 분기보고서의 reprt_code 찾기
+                reprt_code = None
+                for report in quarterly_reports:
+                    if report.get('rcept_no') == rcept_no:
+                        reprt_code = report.get('reprt_code', '')
+                        break
+                
+                # DB에 저장
+                QuarterlyFinancialDataModel.objects.update_or_create(
+                    company=company,
+                    year=year,
+                    quarter=quarter,
+                    defaults={
+                        'reprt_code': reprt_code or '',
+                        'rcept_no': rcept_no,
+                        'revenue': quarterly_data.revenue,
+                        'operating_income': quarterly_data.operating_income,
+                        'net_income': quarterly_data.net_income,
+                        'total_assets': quarterly_data.total_assets,
+                        'total_equity': quarterly_data.total_equity,
+                        'operating_margin': quarterly_data.operating_margin,
+                        'roe': quarterly_data.roe,
+                        'collected_at': now,
+                    }
+                )
+                collected_count += 1
+        
+        return Response({
+            'message': f'{collected_count}개의 분기보고서를 수집했습니다.',
+            'collected_count': collected_count,
+            'quarterly_reports': [
+                {
+                    'year': year,
+                    'quarter': quarter,
+                    'rcept_no': rcept_no,
+                }
+                for year, quarter, _, rcept_no in quarterly_data_list
+            ]
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def get_quarterly_financial_data(request, corp_code):
+    """
+    분기보고서 재무 데이터 조회 API
+    GET /api/companies/{corp_code}/quarterly-data/
+    
+    DB에 저장된 분기보고서 데이터를 조회합니다.
+    
+    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
+    """
+    try:
+        from django.apps import apps as django_apps
+        
+        # 종목코드인지 기업번호인지 확인
+        if len(corp_code) == 6 and corp_code.isdigit():
+            from apps.dart.client import DartClient
+            dart_client = DartClient()
+            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
+            if not converted_corp_code:
+                return Response(
+                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            corp_code = converted_corp_code
+        
+        QuarterlyFinancialDataModel = django_apps.get_model('apps', 'QuarterlyFinancialData')
+        
+        # 분기보고서 데이터 조회
+        quarterly_data_list = QuarterlyFinancialDataModel.objects.filter(
+            company__corp_code=corp_code
+        ).order_by('-year', '-quarter')
+        
+        quarterly_data = [
+            {
+                'year': qd.year,
+                'quarter': qd.quarter,
+                'reprt_code': qd.reprt_code,
+                'rcept_no': qd.rcept_no,
+                'revenue': qd.revenue,
+                'operating_income': qd.operating_income,
+                'net_income': qd.net_income,
+                'total_assets': qd.total_assets,
+                'total_equity': qd.total_equity,
+                'operating_margin': qd.operating_margin,
+                'roe': qd.roe,
+                'collected_at': qd.collected_at.isoformat() if qd.collected_at else None,
+            }
+            for qd in quarterly_data_list
+        ]
+        
+        return Response({
+            'quarterly_data': quarterly_data
+        }, status=status.HTTP_200_OK)
         
     except Exception as e:
         return Response(

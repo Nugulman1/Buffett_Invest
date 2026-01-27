@@ -53,7 +53,7 @@ class DataOrchestrator:
         # DART 기본 지표 수집 (한 번의 호출로 모든 연도 처리)
         self.dart_service.fill_basic_indicators(corp_code, years, company_data)
         
-        # 기본 재무지표 계산 (총자산영업이익률, ROE)
+        # 기본 재무지표 계산 (영업이익률, ROE)
         # API 호출 최적화를 위해 재무지표 API 호출을 제거하고 계산 방식으로 변경
         IndicatorCalculator.calculate_basic_financial_ratios(company_data)
         

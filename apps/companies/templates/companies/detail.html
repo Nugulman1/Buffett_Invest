@@ -12,6 +12,9 @@
             error: null,
             companyData: null,
             annualReportLink: null,
+            quarterlyData: [],
+            loadingQuarterly: false,
+            collectingQuarterly: false,
             memoText: '',
             memoUpdatedAt: null,
             savingMemo: false,
@@ -31,9 +34,44 @@
                 return [...this.companyData.yearly_data].sort((a, b) => b.year - a.year);
             },
 
+            get allFinancialDataSorted() {
+                // 연도별 데이터와 분기 데이터를 합쳐서 정렬
+                const yearly = this.yearlyDataSorted.map(yd => ({
+                    ...yd,
+                    isQuarterly: false,
+                    displayYear: yd.year.toString()
+                }));
+                
+                const quarterly = this.quarterlyData.map(qd => {
+                    const quarterNames = {1: 'Q1', 2: '반기', 3: 'Q3'};
+                    return {
+                        ...qd,
+                        isQuarterly: true,
+                        displayYear: `${qd.year}-${quarterNames[qd.quarter] || qd.quarter}`
+                    };
+                });
+                
+                // 연도와 분기 기준으로 정렬 (최신순)
+                const all = [...yearly, ...quarterly];
+                return all.sort((a, b) => {
+                    if (b.year !== a.year) {
+                        return b.year - a.year;
+                    }
+                    // 같은 연도면 분기 데이터가 뒤에 오도록
+                    if (a.isQuarterly && !b.isQuarterly) return 1;
+                    if (!a.isQuarterly && b.isQuarterly) return -1;
+                    // 둘 다 분기면 분기 번호로 정렬
+                    if (a.isQuarterly && b.isQuarterly) {
+                        return b.quarter - a.quarter;
+                    }
+                    return 0;
+                });
+            },
+
             async init() {
                 await this.fetchCompanyData();
                 await this.fetchAnnualReportLink();
+                await this.fetchQuarterlyData();
                 await this.loadFavoriteGroups();
                 await this.loadFavorites();
             },
@@ -75,6 +113,55 @@
                     console.error('사업보고서 링크 조회 실패:', error);
                 } finally {
                     this.loadingReportLink = false;
+                }
+            },
+
+            async fetchQuarterlyData() {
+                this.loadingQuarterly = true;
+
+                try {
+                    const response = await fetch(`/api/companies/${this.corpCode}/quarterly-data/`);
+                    const data = await response.json();
+
+                    if (response.ok && data.quarterly_data) {
+                        this.quarterlyData = data.quarterly_data;
+                    }
+                } catch (error) {
+                    console.error('분기보고서 데이터 조회 실패:', error);
+                } finally {
+                    this.loadingQuarterly = false;
+                }
+            },
+
+            async collectQuarterlyReports() {
+                if (!confirm('최근 분기보고서를 수집하시겠습니까?')) {
+                    return;
+                }
+
+                this.collectingQuarterly = true;
+
+                try {
+                    const response = await fetch(`/api/companies/${this.corpCode}/quarterly-reports/collect/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCsrfToken()
+                        }
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        alert(data.message || `${data.collected_count}개의 분기보고서를 수집했습니다.`);
+                        // 분기보고서 데이터 다시 조회
+                        await this.fetchQuarterlyData();
+                    } else {
+                        alert(data.error || '분기보고서 수집에 실패했습니다.');
+                    }
+                } catch (error) {
+                    alert('분기보고서 수집 중 오류가 발생했습니다: ' + error.message);
+                } finally {
+                    this.collectingQuarterly = false;
                 }
             },
 
@@ -280,16 +367,31 @@
                                     <span x-text="companyData?.bond_yield_5y ? (companyData.bond_yield_5y * 100).toFixed(2) + '%' : '-'" class="ms-2"></span>
                                 </div>
                                 <div class="mt-3">
-                                    <div x-show="annualReportLink">
-                                        <a :href="annualReportLink" target="_blank" class="btn btn-sm btn-primary">
-                                            <i class="bi bi-box-arrow-up-right me-2"></i>
-                                            사업보고서 보기
-                                        </a>
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <div x-show="annualReportLink">
+                                            <a :href="annualReportLink" target="_blank" class="btn btn-sm btn-primary">
+                                                <i class="bi bi-box-arrow-up-right me-2"></i>
+                                                사업보고서 보기
+                                            </a>
+                                        </div>
+                                        <button 
+                                            @click="collectQuarterlyReports()" 
+                                            :disabled="collectingQuarterly"
+                                            class="btn btn-sm btn-success">
+                                            <span x-show="!collectingQuarterly">
+                                                <i class="bi bi-download me-2"></i>
+                                                최근 분기보고서 가져오기
+                                            </span>
+                                            <span x-show="collectingQuarterly">
+                                                <span class="spinner-border spinner-border-sm me-2"></span>
+                                                수집 중...
+                                            </span>
+                                        </button>
                                     </div>
-                                    <div x-show="!annualReportLink && !loadingReportLink" class="text-muted small">
+                                    <div x-show="!annualReportLink && !loadingReportLink" class="text-muted small mt-2">
                                         사업보고서 링크를 불러올 수 없습니다.
                                     </div>
-                                    <div x-show="loadingReportLink" class="text-muted small">
+                                    <div x-show="loadingReportLink" class="text-muted small mt-2">
                                         <span class="loading-spinner me-2"></span>링크를 불러오는 중...
                                     </div>
                                 </div>
@@ -336,10 +438,10 @@
                                 </div>
                                 <div class="col-12">
                                     <div class="d-flex align-items-center justify-content-between">
-                                        <span class="small">총자산 영업이익률 필터:</span>
+                                        <span class="small">영업이익률 필터:</span>
                                         <span class="badge"
-                                            :class="companyData?.filter_total_assets_operating_income_ratio ? 'bg-success' : 'bg-danger'"
-                                            x-text="companyData?.filter_total_assets_operating_income_ratio ? '통과' : '미통과'"></span>
+                                            :class="companyData?.filter_operating_margin ? 'bg-success' : 'bg-danger'"
+                                            x-text="companyData?.filter_operating_margin ? '통과' : '미통과'"></span>
                                     </div>
                                 </div>
                                 <div class="col-12">
@@ -378,7 +480,7 @@
                                             <th class="text-end">당기순이익</th>
                                             <th class="text-end">총자산</th>
                                             <th class="text-end">자기자본</th>
-                                            <th class="text-end">총자산<br>영업이익률</th>
+                                            <th class="text-end">영업이익률</th>
                                             <th class="text-end">ROE</th>
                                             <th class="text-end">FCF</th>
                                             <th class="text-end">ROIC</th>
@@ -386,19 +488,22 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <template x-for="yearData in yearlyDataSorted" :key="yearData.year">
-                                            <tr>
-                                                <td><strong x-text="yearData.year"></strong></td>
-                                                <td class="text-end" x-text="formatAmount(yearData.revenue)"></td>
-                                                <td class="text-end" x-text="formatAmount(yearData.operating_income)"></td>
-                                                <td class="text-end" x-text="formatAmount(yearData.net_income)"></td>
-                                                <td class="text-end" x-text="formatAmount(yearData.total_assets)"></td>
-                                                <td class="text-end" x-text="formatAmount(yearData.total_equity)"></td>
-                                                <td class="text-end" x-text="formatPercent(yearData.total_assets_operating_income_ratio)"></td>
-                                                <td class="text-end" x-text="formatPercent(yearData.roe)"></td>
-                                                <td class="text-end" x-text="formatAmount(yearData.fcf)"></td>
-                                                <td class="text-end" x-text="formatPercentFromNumber(yearData.roic)"></td>
-                                                <td class="text-end" x-text="formatPercentFromNumber(yearData.wacc)"></td>
+                                        <template x-for="data in allFinancialDataSorted" :key="data.isQuarterly ? `${data.year}-${data.quarter}` : data.year">
+                                            <tr :class="data.isQuarterly ? 'table-info' : ''">
+                                                <td>
+                                                    <strong x-text="data.displayYear"></strong>
+                                                    <span x-show="data.isQuarterly" class="badge bg-info ms-1">분기</span>
+                                                </td>
+                                                <td class="text-end" x-text="formatAmount(data.revenue)"></td>
+                                                <td class="text-end" x-text="formatAmount(data.operating_income)"></td>
+                                                <td class="text-end" x-text="formatAmount(data.net_income)"></td>
+                                                <td class="text-end" x-text="formatAmount(data.total_assets)"></td>
+                                                <td class="text-end" x-text="formatAmount(data.total_equity)"></td>
+                                                <td class="text-end" x-text="formatPercent(data.operating_margin)"></td>
+                                                <td class="text-end" x-text="formatPercent(data.roe)"></td>
+                                                <td class="text-end" x-text="formatAmount(data.fcf)"></td>
+                                                <td class="text-end" x-text="formatPercentFromNumber(data.roic)"></td>
+                                                <td class="text-end" x-text="formatPercentFromNumber(data.wacc)"></td>
                                             </tr>
                                         </template>
                                     </tbody>

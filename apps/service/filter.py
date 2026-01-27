@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # 최근 5년 중 영업이익 ≤ 0 인 연도 ≤ 1회
 # 최근 5년 중 당기순이익 합계 > 0
 # 매출액 CAGR ≥ 5%
-# 총자산영업이익률 평균 ≥ 3%
+# 영업이익률 평균 ≥ 10%
 # ROE 평균 (규모별): 대기업 ≥ 8%, 중견기업 ≥ 10%, 중소기업 ≥ 12%
 
 class CompanyFilter:
@@ -112,9 +112,9 @@ class CompanyFilter:
         return cagr >= 5.0
     
     @staticmethod
-    def filter_total_assets_operating_income_ratio(company_data: CompanyFinancialObject) -> bool:
+    def filter_operating_margin(company_data: CompanyFinancialObject) -> bool:
         """
-        총자산영업이익률 필터: 총자산영업이익률 평균 ≥ 3%
+        영업이익률 필터: 영업이익률 평균 ≥ 10%
         (5년 데이터가 없어도 수집된 데이터로 계산)
         
         Args:
@@ -132,12 +132,12 @@ class CompanyFilter:
         # 최근 5년 또는 모든 데이터 사용 (5년 미만인 경우)
         data_to_check = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
         
-        # 총자산영업이익률 평균 계산
-        ratios = [data.total_assets_operating_income_ratio for data in data_to_check]
+        # 영업이익률 평균 계산
+        ratios = [data.operating_margin for data in data_to_check]
         average_ratio = sum(ratios) / len(ratios) if ratios else 0.0
         
-        # 평균이 3% 이상인지 확인
-        return average_ratio >= 0.03
+        # 평균이 10% 이상인지 확인
+        return average_ratio >= 0.10
     
     @staticmethod
     def filter_roe(company_data: CompanyFinancialObject) -> bool:
@@ -211,7 +211,7 @@ class CompanyFilter:
         company_data.filter_operating_income = cls.filter_operating_income(company_data)
         company_data.filter_net_income = cls.filter_net_income(company_data)
         company_data.filter_revenue_cagr = cls.filter_revenue_cagr(company_data)
-        company_data.filter_total_assets_operating_income_ratio = cls.filter_total_assets_operating_income_ratio(company_data)
+        company_data.filter_operating_margin = cls.filter_operating_margin(company_data)
         company_data.filter_roe = cls.filter_roe(company_data)
         
         # 전체 필터 통과 여부: 모든 필터가 True여야 함
@@ -219,7 +219,7 @@ class CompanyFilter:
             company_data.filter_operating_income and
             company_data.filter_net_income and
             company_data.filter_revenue_cagr and
-            company_data.filter_total_assets_operating_income_ratio and
+            company_data.filter_operating_margin and
             company_data.filter_roe
         )
 

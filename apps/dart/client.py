@@ -497,6 +497,108 @@ class DartClient:
             traceback.print_exc()
             return None
     
+    def get_latest_annual_report_date(self, corp_code: str) -> str | None:
+        """
+        가장 최근 사업보고서의 접수일자 조회
+        
+        Args:
+            corp_code: 고유번호 (8자리)
+            
+        Returns:
+            접수일자 (YYYYMMDD 형식) 또는 None
+        """
+        from datetime import datetime
+        
+        # 최근 5년 동안 사업보고서 찾기
+        current_year = datetime.now().year
+        current_month = datetime.now().month
+        
+        # 현재 월이 4월 이후면 작년 사업보고서가 이미 제출됨
+        if current_month >= 4:
+            latest_year = current_year - 1
+        else:
+            latest_year = current_year - 2
+        
+        # 최근 5년 동안 찾기
+        for year_offset in range(5):
+            try_year = latest_year - year_offset
+            rcept_no = self.get_annual_report_rcept_no(corp_code, str(try_year))
+            if rcept_no:
+                # 접수번호에서 접수일자 추출 (접수번호 형식: YYYYMMDDXXXXXX)
+                if len(rcept_no) >= 8:
+                    rcept_date = rcept_no[:8]  # YYYYMMDD
+                    return rcept_date
+        
+        return None
+    
+    def get_quarterly_reports_after_date(self, corp_code: str, after_date: str) -> list:
+        """
+        특정 날짜 이후의 분기보고서 목록 조회
+        
+        Args:
+            corp_code: 고유번호 (8자리)
+            after_date: 기준 날짜 (YYYYMMDD 형식)
+            
+        Returns:
+            분기보고서 목록 (접수일자 기준 내림차순 정렬)
+        """
+        from datetime import datetime, timedelta
+        
+        # 현재 날짜까지 조회
+        end_date = datetime.now().strftime('%Y%m%d')
+        
+        # 분기보고서 코드 매핑
+        quarterly_codes = {
+            '11013': 1,  # 1분기보고서
+            '11012': 2,  # 반기보고서
+            '11014': 3,  # 3분기보고서
+        }
+        
+        try:
+            # 모든 보고서 조회
+            all_reports = []
+            page_no = 1
+            total_page = 1
+            
+            while True:
+                result = self.get_report_list(corp_code, after_date, end_date, last_reprt_at='N', page_no=page_no, page_count=1000)
+                report_list = result.get('list', []) if isinstance(result, dict) else []
+                total_page = result.get('total_page', 1) if isinstance(result, dict) else 1
+                
+                if not report_list:
+                    break
+                all_reports.extend(report_list)
+                if page_no >= total_page:
+                    break
+                page_no += 1
+            
+            # 분기보고서만 필터링
+            quarterly_reports = []
+            for report in all_reports:
+                reprt_code = report.get('reprt_code', '')
+                if reprt_code in quarterly_codes:
+                    # 접수일자 추출
+                    rcept_dt = report.get('rcept_dt', '')
+                    if rcept_dt and len(rcept_dt) >= 8:
+                        rcept_date = rcept_dt[:8]  # YYYYMMDD
+                        if rcept_date > after_date:
+                            quarterly_reports.append({
+                                'rcept_no': report.get('rcept_no', ''),
+                                'rcept_dt': rcept_date,
+                                'reprt_code': reprt_code,
+                                'report_nm': report.get('report_nm', ''),
+                                'quarter': quarterly_codes[reprt_code],
+                            })
+            
+            # 접수일자 기준 내림차순 정렬 (가장 최근 것부터)
+            quarterly_reports.sort(key=lambda x: x['rcept_dt'], reverse=True)
+            
+            return quarterly_reports
+            
+        except Exception as e:
+            print(f"경고: 분기보고서 목록 조회 실패: {e}")
+            return []
+    
     def download_xbrl_and_extract_annual_report(self, rcept_no: str) -> bytes:
         """
         XBRL 파일 다운로드 및 사업보고서 XML 추출
