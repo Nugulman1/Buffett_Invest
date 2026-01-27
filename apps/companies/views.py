@@ -163,6 +163,26 @@ def get_financial_data(request, corp_code):
         # 수집 후 DB에서 다시 조회 (새로 추가된 필드 포함)
         company_data_from_db = load_company_from_db(corp_code)
         if company_data_from_db:
+            # 필터 통과 시 파일에 추가
+            if company_data_from_db.passed_all_filters:
+                from apps.utils.utils import get_stock_code_by_corp_code
+                from django.conf import settings
+                
+                stock_code = get_stock_code_by_corp_code(corp_code)
+                if stock_code:
+                    passed_filters_file = settings.BASE_DIR / 'passed_filters_stock_codes.txt'
+                    
+                    # 기존 파일 로드 (중복 방지)
+                    existing_passed = set()
+                    if passed_filters_file.exists():
+                        with open(passed_filters_file, 'r', encoding='utf-8') as f:
+                            existing_passed = set(line.strip() for line in f if line.strip())
+                    
+                    # 새로 통과한 것만 추가 (중복 제거)
+                    if stock_code not in existing_passed:
+                        with open(passed_filters_file, 'a', encoding='utf-8') as f:
+                            f.write(f"{stock_code}\n")
+            
             # memo와 memo_updated_at은 별도로 조회
             try:
                 company = CompanyModel.objects.get(corp_code=corp_code)
@@ -1440,7 +1460,7 @@ def collect_quarterly_reports(request, corp_code):
         
         with transaction.atomic():
             for year, quarter, quarterly_data, rcept_no in quarterly_data_list:
-                # 기본 재무지표 계산 (영업이익률, ROE)
+                # 기본 재무지표 계산 (영업이익률만, ROE는 계산하지 않음)
                 IndicatorCalculator.calculate_basic_financial_ratios_for_quarterly(quarterly_data)
                 
                 # 해당 분기보고서의 reprt_code 찾기
@@ -1450,7 +1470,7 @@ def collect_quarterly_reports(request, corp_code):
                         reprt_code = report.get('reprt_code', '')
                         break
                 
-                # DB에 저장
+                # DB에 저장 (ROE는 저장하지 않음, 0.0으로 유지)
                 QuarterlyFinancialDataModel.objects.update_or_create(
                     company=company,
                     year=year,
@@ -1464,7 +1484,7 @@ def collect_quarterly_reports(request, corp_code):
                         'total_assets': quarterly_data.total_assets,
                         'total_equity': quarterly_data.total_equity,
                         'operating_margin': quarterly_data.operating_margin,
-                        'roe': quarterly_data.roe,
+                        'roe': 0.0,  # 분기보고서에서는 ROE 계산하지 않음
                         'collected_at': now,
                     }
                 )

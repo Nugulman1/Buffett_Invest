@@ -20,6 +20,8 @@
             savingMemo: false,
             memoMessage: null,
             memoMessageType: null,
+            memoChanged: false,
+            initialMemoText: '',
             loadingFavorites: false,
             favoritesGroups: [],
             favoriteGroups: [],
@@ -74,6 +76,22 @@
                 await this.fetchQuarterlyData();
                 await this.loadFavoriteGroups();
                 await this.loadFavorites();
+                
+                // 메모 변경 추적
+                this.$watch('memoText', (newVal, oldVal) => {
+                    if (newVal !== this.initialMemoText) {
+                        this.memoChanged = true;
+                    } else {
+                        this.memoChanged = false;
+                    }
+                });
+                
+                // 페이지 종료 시 자동 저장
+                window.addEventListener('beforeunload', (e) => {
+                    if (this.memoChanged && this.memoText !== null) {
+                        this.autoSaveMemo();
+                    }
+                });
             },
 
             async fetchCompanyData() {
@@ -87,7 +105,9 @@
                     if (response.ok) {
                         this.companyData = data;
                         this.memoText = data.memo || '';
+                        this.initialMemoText = data.memo || '';
                         this.memoUpdatedAt = data.memo_updated_at || null;
+                        this.memoChanged = false;
                     } else {
                         this.error = data.error || '데이터를 불러올 수 없습니다.';
                     }
@@ -230,6 +250,9 @@
                         this.memoMessageType = 'success';
                         // 저장된 날짜 업데이트
                         this.memoUpdatedAt = data.memo_updated_at || null;
+                        // 변경 플래그 초기화
+                        this.initialMemoText = this.memoText;
+                        this.memoChanged = false;
                     } else {
                         this.memoMessage = data.error || '메모 저장에 실패했습니다.';
                         this.memoMessageType = 'error';
@@ -240,6 +263,28 @@
                 } finally {
                     this.savingMemo = false;
                     setTimeout(() => { this.memoMessage = null; }, 5000);
+                }
+            },
+
+            // 페이지 종료 시 자동 저장 (sendBeacon 사용)
+            autoSaveMemo() {
+                if (!this.memoChanged || !this.memoText) {
+                    return;
+                }
+                
+                // FormData 사용 (sendBeacon은 FormData 또는 Blob만 지원)
+                const formData = new FormData();
+                formData.append('memo', this.memoText);
+                formData.append('csrfmiddlewaretoken', this.getCsrfToken());
+                
+                // sendBeacon으로 저장 (페이지 전환 후에도 전송 보장)
+                const url = `/api/companies/${this.corpCode}/memo/`;
+                const success = navigator.sendBeacon(url, formData);
+                
+                // 성공 여부는 알 수 없지만, 최선을 다해 저장 시도
+                if (success) {
+                    // sendBeacon은 응답을 받을 수 없으므로 플래그만 초기화
+                    this.memoChanged = false;
                 }
             },
 

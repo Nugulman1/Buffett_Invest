@@ -214,6 +214,35 @@ def print_latest_year_indicators(company_data: CompanyFinancialObject):
     print("=" * 80)
 
 
+def get_stock_code_by_corp_code(corp_code: str) -> str | None:
+    """
+    기업번호(corp_code)를 종목코드(stock_code)로 변환
+    
+    DartClient의 _corp_code_mapping_cache를 역방향으로 검색하여 변환합니다.
+    캐시가 비어있으면 먼저 로드합니다.
+    
+    Args:
+        corp_code: 기업번호 (8자리, 예: '00126380')
+        
+    Returns:
+        종목코드 (6자리, 예: '005930') 또는 None (찾을 수 없는 경우)
+    """
+    from apps.dart.client import DartClient
+    
+    dart_client = DartClient()
+    
+    # 캐시가 비어있으면 먼저 로드
+    if not dart_client._corp_code_mapping_cache:
+        dart_client.load_corp_code_xml()
+    
+    # 역방향 검색: {stock_code: corp_code} 형태의 딕셔너리에서 corp_code로 stock_code 찾기
+    for stock_code, cached_corp_code in dart_client._corp_code_mapping_cache.items():
+        if cached_corp_code == corp_code:
+            return stock_code
+    
+    return None
+
+
 def should_collect_company(corp_code: str) -> bool:
     """
     기업 수집 필요 여부 확인 (4월 1일 기준)

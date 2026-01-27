@@ -334,9 +334,10 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_basic_financial_ratios_for_quarterly(quarterly_data: 'YearlyFinancialDataObject') -> None:
         """
-        분기보고서용 기본 재무지표 계산 (영업이익률, ROE)
+        분기보고서용 기본 재무지표 계산 (영업이익률만)
         
         YearlyFinancialDataObject를 분기 데이터로도 사용하므로 동일한 계산 함수 사용
+        분기보고서에서는 ROE를 계산하지 않음
         
         Args:
             quarterly_data: YearlyFinancialDataObject 객체 (분기 데이터용, in-place 수정)
@@ -344,6 +345,5 @@ class IndicatorCalculator:
         # 영업이익률 계산
         quarterly_data.operating_margin = IndicatorCalculator.calculate_operating_margin(quarterly_data)
         
-        # ROE 계산
-        quarterly_data.roe = IndicatorCalculator.calculate_roe(quarterly_data)
+        # ROE는 분기보고서에서 계산하지 않음
 
