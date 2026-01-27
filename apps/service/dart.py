@@ -237,16 +237,19 @@ class DartDataService:
         
         rcept_year = int(rcept_no[:4])
         # 분기보고서는 해당 연도에 제출되므로, 접수연도가 사업연도
-        # 단, 1분기보고서는 다음 해 5월에 제출되므로 예외 처리 필요
-        # 일단 접수연도 - 1을 사업연도로 가정 (정확도 향상 필요시 수정)
-        if quarter == 1:
-            # 1분기보고서는 다음 해 5월에 제출
-            bsns_year = rcept_year - 1
-        else:
-            # 반기, 3분기보고서는 해당 연도에 제출
-            bsns_year = rcept_year
+        # 1분기보고서도 접수연도가 사업연도 (예: 2025년 1분기 보고서는 2025년 5월에 제출)
+        bsns_year = rcept_year
         
         year_str = str(bsns_year)
+        
+        # reprt_code가 비어있으면 분기별 코드로 설정
+        if not reprt_code:
+            quarterly_reprt_codes = {
+                1: '11013',  # 1분기보고서
+                2: '11012',  # 반기보고서
+                3: '11014',  # 3분기보고서
+            }
+            reprt_code = quarterly_reprt_codes.get(quarter, '')
         
         # 분기보고서 재무제표 데이터 수집 (CFS 우선)
         for fs_div in ['CFS', 'OFS']:
@@ -314,6 +317,7 @@ class DartDataService:
         
         # 병렬 처리로 각 분기별 데이터 수집
         quarterly_data_list = []
+        
         with ThreadPoolExecutor(max_workers=len(quarterly_reports)) as executor:
             # 모든 분기에 대한 작업 제출
             future_to_report = {

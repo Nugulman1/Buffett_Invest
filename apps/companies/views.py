@@ -1415,6 +1415,7 @@ def collect_quarterly_reports(request, corp_code):
         
         # 가장 최근 사업보고서 접수일자 조회
         latest_annual_date = dart_client.get_latest_annual_report_date(corp_code)
+        
         if not latest_annual_date:
             return Response(
                 {'error': '최근 사업보고서를 찾을 수 없습니다.'},
@@ -1423,6 +1424,7 @@ def collect_quarterly_reports(request, corp_code):
         
         # 해당 날짜 이후의 분기보고서 목록 조회
         quarterly_reports = dart_client.get_quarterly_reports_after_date(corp_code, latest_annual_date)
+        
         if not quarterly_reports:
             return Response(
                 {'message': '최근 사업보고서 이후의 분기보고서가 없습니다.', 'collected_count': 0},

@@ -6,6 +6,7 @@ import requests
 import zipfile
 import io
 import xml.etree.ElementTree as ET
+import json
 from datetime import date
 from django.conf import settings
 from django.utils import timezone
@@ -523,6 +524,7 @@ class DartClient:
         for year_offset in range(5):
             try_year = latest_year - year_offset
             rcept_no = self.get_annual_report_rcept_no(corp_code, str(try_year))
+            
             if rcept_no:
                 # 접수번호에서 접수일자 추출 (접수번호 형식: YYYYMMDDXXXXXX)
                 if len(rcept_no) >= 8:
@@ -572,22 +574,58 @@ class DartClient:
                     break
                 page_no += 1
             
-            # 분기보고서만 필터링
+            # 분기보고서만 필터링 (report_nm 필드 사용, reprt_code가 비어있을 수 있음)
             quarterly_reports = []
             for report in all_reports:
+                report_nm = report.get('report_nm', '')
                 reprt_code = report.get('reprt_code', '')
-                if reprt_code in quarterly_codes:
+                rcept_dt = report.get('rcept_dt', '')
+                
+                # report_nm으로 분기보고서 판별 (reprt_code가 비어있을 수 있으므로)
+                quarter = None
+                detected_reprt_code = None
+                
+                # "분기보고서 (YYYY.MM)" 형식 처리
+                import re
+                quarterly_match = re.search(r'분기보고서\s*\((\d{4})\.(\d{2})\)', report_nm)
+                if quarterly_match:
+                    year = int(quarterly_match.group(1))
+                    month = int(quarterly_match.group(2))
+                    if month == 3:
+                        quarter = 1  # 1분기
+                        detected_reprt_code = '11013'
+                    elif month == 6:
+                        quarter = 2  # 반기
+                        detected_reprt_code = '11012'
+                    elif month == 9:
+                        quarter = 3  # 3분기
+                        detected_reprt_code = '11014'
+                elif '1분기보고서' in report_nm or '1분기' in report_nm:
+                    quarter = 1
+                    detected_reprt_code = '11013'
+                elif '반기보고서' in report_nm or '반기' in report_nm:
+                    quarter = 2
+                    detected_reprt_code = '11012'
+                elif '3분기보고서' in report_nm or '3분기' in report_nm:
+                    quarter = 3
+                    detected_reprt_code = '11014'
+                elif reprt_code in quarterly_codes:
+                    # reprt_code가 있는 경우도 지원 (하위 호환성)
+                    quarter = quarterly_codes[reprt_code]
+                    detected_reprt_code = reprt_code
+                
+                if quarter is not None:
                     # 접수일자 추출
-                    rcept_dt = report.get('rcept_dt', '')
                     if rcept_dt and len(rcept_dt) >= 8:
                         rcept_date = rcept_dt[:8]  # YYYYMMDD
+                        
                         if rcept_date > after_date:
                             quarterly_reports.append({
                                 'rcept_no': report.get('rcept_no', ''),
                                 'rcept_dt': rcept_date,
-                                'reprt_code': reprt_code,
-                                'report_nm': report.get('report_nm', ''),
-                                'quarter': quarterly_codes[reprt_code],
+                                'reprt_code': detected_reprt_code or '',
+                                'report_nm': report_nm,
+                                'quarter': quarter,
                             })
             
             # 접수일자 기준 내림차순 정렬 (가장 최근 것부터)

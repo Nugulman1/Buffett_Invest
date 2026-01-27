@@ -9,6 +9,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.apps import apps as django_apps
 from django.db import transaction
+from django.conf import settings
 
 
 class Command(BaseCommand):
@@ -126,11 +127,15 @@ class Command(BaseCommand):
                 )
             
             # passed_filters_stock_codes.txt 파일 초기화 (전체 재수집 시)
-            passed_filters_file = Path(__file__).resolve().parent.parent.parent.parent / 'passed_filters_stock_codes.txt'
+            passed_filters_file = settings.BASE_DIR / 'passed_filters_stock_codes.txt'
             if passed_filters_file.exists():
                 passed_filters_file.write_text('', encoding='utf-8')
                 self.stdout.write(
                     self.style.SUCCESS(f'✓ 필터 통과 기업 목록 파일 초기화: {passed_filters_file.name}')
+                )
+            else:
+                self.stdout.write(
+                    self.style.WARNING(f'필터 통과 기업 목록 파일이 없습니다: {passed_filters_file}')
                 )
             
             self.stdout.write(

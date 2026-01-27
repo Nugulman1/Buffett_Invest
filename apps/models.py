@@ -312,9 +312,9 @@ class CompanyFinancialObject:
         self.yearly_data: list[YearlyFinancialDataObject] = []
         
         # === 필터 결과 ===
-        self.passed_all_filters: bool = True  # 전체 필터 통과 여부
-        self.filter_operating_income: bool = True  # 영업이익 필터 통과 여부
-        self.filter_net_income: bool = True  # 당기순이익 필터 통과 여부
-        self.filter_revenue_cagr: bool = True  # 매출액 CAGR 필터 통과 여부
-        self.filter_operating_margin: bool = True  # 영업이익률 필터 통과 여부
-        self.filter_roe: bool = True  # ROE 필터 통과 여부
+        self.passed_all_filters: bool = False  # 전체 필터 통과 여부
+        self.filter_operating_income: bool = False  # 영업이익 필터 통과 여부
+        self.filter_net_income: bool = False  # 당기순이익 필터 통과 여부
+        self.filter_revenue_cagr: bool = False  # 매출액 CAGR 필터 통과 여부
+        self.filter_operating_margin: bool = False  # 영업이익률 필터 통과 여부
+        self.filter_roe: bool = False  # ROE 필터 통과 여부
