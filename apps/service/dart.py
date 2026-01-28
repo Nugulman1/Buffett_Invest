@@ -121,6 +121,7 @@ class DartDataService:
         
         # YearlyFinancialData 객체 생성
         yearly_data = YearlyFinancialDataObject(year=year)
+        yearly_data.rcept_no = (fs_data.rcept_no or '').strip() or None
 
         # 역매핑 생성: "정규화된 계정명" -> "YearlyFinancialDataObject 필드명"
         # (매핑표를 1회만 순회)
@@ -185,6 +186,16 @@ class DartDataService:
         yearly_data_list.sort(key=lambda x: x[0])
         for year, yearly_data in yearly_data_list:
             company_data.yearly_data.append(yearly_data)
+
+        # 정렬된 값에서 가장 최근 연도만 꺼내 Company에 저장.
+        # 사업보고서 링크 API에서 DB 조회만으로 응답하기 위함 (DART 연도별 재조회 방지).
+        if yearly_data_list:
+            latest = yearly_data_list[-1]
+            company_data.latest_annual_rcept_no = latest[1].rcept_no
+            company_data.latest_annual_report_year = latest[0]
+        else:
+            company_data.latest_annual_rcept_no = None
+            company_data.latest_annual_report_year = None
     
     def _process_single_quarter_basic(self, corp_code: str, rcept_no: str, reprt_code: str, quarter: int, mappings: dict):
         """
@@ -287,7 +298,7 @@ class DartDataService:
         # 병렬 처리로 각 분기별 데이터 수집
         quarterly_data_list = []
         
-        with ThreadPoolExecutor(max_workers=len(quarterly_reports)) as executor:
+        with ThreadPoolExecutor(max_workers=min(len(quarterly_reports), 4)) as executor:
             # 모든 분기에 대한 작업 제출
             future_to_report = {
                 executor.submit(

@@ -1,6 +1,7 @@
 """
 DART OpenDART API 클라이언트
 """
+import re
 import time
 import requests
 import zipfile
@@ -551,7 +552,7 @@ class DartClient:
         Returns:
             분기보고서 목록 (접수일자 기준 내림차순 정렬)
         """
-        from datetime import datetime, timedelta
+        from datetime import datetime
         
         # 현재 날짜까지 조회
         end_date = datetime.now().strftime('%Y%m%d')
@@ -593,7 +594,6 @@ class DartClient:
                 detected_reprt_code = None
                 
                 # "분기보고서 (YYYY.MM)" 형식 처리
-                import re
                 quarterly_match = re.search(r'분기보고서\s*\((\d{4})\.(\d{2})\)', report_nm)
                 if quarterly_match:
                     year = int(quarterly_match.group(1))

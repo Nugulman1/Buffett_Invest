@@ -9,8 +9,25 @@ from rest_framework.response import Response
 from rest_framework import status
 from apps.service.orchestrator import DataOrchestrator
 from apps.models import CompanyFinancialObject
-from apps.utils.utils import format_amount_korean, should_collect_company, load_company_from_db, load_passed_companies_json, get_bond_yield_5y
+from apps.utils.utils import (
+    format_amount_korean,
+    should_collect_company,
+    load_company_from_db,
+    load_passed_companies_json,
+    get_bond_yield_5y,
+    resolve_corp_code,
+)
 import json
+
+
+def _get_favorite_models():
+    """즐겨찾기 관련 모델 (FavoriteGroup, Favorite, Company) 반환."""
+    from django.apps import apps as django_apps
+    return (
+        django_apps.get_model('apps', 'FavoriteGroup'),
+        django_apps.get_model('apps', 'Favorite'),
+        django_apps.get_model('apps', 'Company'),
+    )
 
 
 def company_list(request):
@@ -30,20 +47,11 @@ def company_detail(request, corp_code):
     - 종목코드(6자리): 기업명 검색 결과에서 선택한 경우 또는 직접 입력
     - 기업번호(8자리): 기업명 검색 결과에서 선택한 경우 (corp_code로 전달)
     """
-    # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
-    if len(corp_code) == 6 and corp_code.isdigit():
-        # 종목코드를 기업번호로 변환
-        from apps.dart.client import DartClient
-        dart_client = DartClient()
-        converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-        if converted_corp_code:
-            corp_code = converted_corp_code
-        else:
-            # 종목코드 변환 실패
-            from django.http import HttpResponseNotFound
-            return HttpResponseNotFound('종목코드를 찾을 수 없습니다.')
-    # 기업번호(8자리)인 경우 그대로 사용
-    
+    resolved, err = resolve_corp_code(corp_code)
+    if err:
+        from django.http import HttpResponseNotFound
+        return HttpResponseNotFound(err)
+    corp_code = resolved
     return render(request, 'companies/detail.html', {'corp_code': corp_code})
 
 
@@ -53,40 +61,6 @@ def calculator(request):
     GET /companies/calculator/
     """
     return render(request, 'companies/calculator.html')
-
-
-def add_indicators(request, corp_code):
-    """
-    지표 추가 페이지
-    GET /companies/<corp_code>/add-indicators/
-    
-    corp_code는 종목코드(6자리) 또는 기업번호(8자리)를 받을 수 있습니다.
-    - 종목코드(6자리): 기업명 검색 결과에서 선택한 경우 또는 직접 입력
-    - 기업번호(8자리): 기업명 검색 결과에서 선택한 경우 (corp_code로 전달)
-    """
-    # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
-    if len(corp_code) == 6 and corp_code.isdigit():
-        # 종목코드를 기업번호로 변환
-        from apps.dart.client import DartClient
-        dart_client = DartClient()
-        converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-        if converted_corp_code:
-            corp_code = converted_corp_code
-    
-    # 기업 정보 조회 (기업명 표시용)
-    from django.apps import apps as django_apps
-    CompanyModel = django_apps.get_model('apps', 'Company')
-    company_name = ""
-    try:
-        company = CompanyModel.objects.get(corp_code=corp_code)
-        company_name = company.company_name or ""
-    except CompanyModel.DoesNotExist:
-        pass
-    
-    return render(request, 'companies/add_indicators.html', {
-        'corp_code': corp_code,
-        'company_name': company_name
-    })
 
 
 @api_view(['GET'])
@@ -202,20 +176,12 @@ def get_financial_data(request, corp_code):
     try:
         from django.apps import apps as django_apps
         CompanyModel = django_apps.get_model('apps', 'Company')
-        
-        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
-        if len(corp_code) == 6 and corp_code.isdigit():
-            # 종목코드를 기업번호로 변환
-            from apps.dart.client import DartClient
-            dart_client = DartClient()
-            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-            if not converted_corp_code:
-                return Response(
-                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            corp_code = converted_corp_code
-        
+
+        resolved, err = resolve_corp_code(corp_code)
+        if err:
+            return Response({'error': err}, status=status.HTTP_404_NOT_FOUND)
+        corp_code = resolved
+
         # DB에서 먼저 조회
         company_data = load_company_from_db(corp_code)
         if company_data and company_data.yearly_data and not should_collect_company(corp_code):
@@ -396,19 +362,11 @@ def get_calculator_data(request, corp_code):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
-        if len(corp_code) == 6 and corp_code.isdigit():
-            # 종목코드를 기업번호로 변환
-            from apps.dart.client import DartClient
-            dart_client = DartClient()
-            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-            if not converted_corp_code:
-                return Response(
-                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            corp_code = converted_corp_code
-        
+        resolved, err = resolve_corp_code(corp_code)
+        if err:
+            return Response({'error': err}, status=status.HTTP_404_NOT_FOUND)
+        corp_code = resolved
+
         # Company 모델 조회
         try:
             company = CompanyModel.objects.get(corp_code=corp_code)
@@ -417,7 +375,7 @@ def get_calculator_data(request, corp_code):
                 {'error': f'기업코드 {corp_code}에 해당하는 데이터를 찾을 수 없습니다.'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         # YearlyFinancialData 모델 조회 (해당 년도)
         try:
             yearly_data = YearlyFinancialDataModel.objects.get(company=company, year=year)
@@ -446,96 +404,6 @@ def get_calculator_data(request, corp_code):
 
 
 @api_view(['POST'])
-def batch_get_financial_data(request):
-    """
-    여러 기업의 재무 데이터를 한 번에 조회
-    POST /api/companies/batch/
-    
-    Body: {
-        "corp_codes": ["00126380", "00164742", ...]
-    }
-    """
-    try:
-        corp_codes = request.data.get('corp_codes', [])
-        
-        if not corp_codes:
-            return Response(
-                {'error': 'corp_codes 리스트가 필요합니다.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # 중복 제거
-        corp_codes = list(set(corp_codes))
-        
-        results = []
-        errors = []
-        
-        # Django 모델 가져오기
-        from django.apps import apps as django_apps
-        CompanyModel = django_apps.get_model('apps', 'Company')
-        
-        orchestrator = DataOrchestrator()
-        
-        for corp_code_or_stock_code in corp_codes:
-            try:
-                # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
-                if len(corp_code_or_stock_code) == 6 and corp_code_or_stock_code.isdigit():
-                    # 종목코드를 기업번호로 변환
-                    from apps.dart.client import DartClient
-                    dart_client = DartClient()
-                    corp_code = dart_client._get_corp_code_by_stock_code(corp_code_or_stock_code)
-                    if not corp_code:
-                        errors.append({
-                            'corp_code': corp_code_or_stock_code,
-                            'error': f'종목코드 {corp_code_or_stock_code}에 해당하는 기업번호를 찾을 수 없습니다.'
-                        })
-                        continue
-                else:
-                    corp_code = corp_code_or_stock_code
-                
-                # DB에서 먼저 조회
-                try:
-                    company = CompanyModel.objects.get(corp_code=corp_code)
-                    # DB에 데이터가 있으면 DB에서 반환
-                    results.append({
-                        'corp_code': company.corp_code,
-                        'company_name': company.company_name,
-                        'passed_all_filters': company.passed_all_filters,
-                    })
-                    continue
-                except CompanyModel.DoesNotExist:
-                    # DB에 없으면 실시간 수집
-                    pass
-                
-                # DB에 없으면 실시간 수집
-                company_data = orchestrator.collect_company_data(corp_code)
-                results.append({
-                    'corp_code': company_data.corp_code,
-                    'company_name': company_data.company_name,
-                    'passed_all_filters': company_data.passed_all_filters,
-                })
-            except Exception as e:
-                errors.append({
-                    'corp_code': corp_code_or_stock_code,
-                    'error': str(e)
-                })
-        
-        return Response({
-            'results': results,
-            'errors': errors,
-            'total': len(corp_codes),
-            'success': len(results),
-            'failed': len(errors)
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        return Response(
-            {'error': str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['POST'])
 def save_memo(request, corp_code):
     """
     기업 메모 저장 API
@@ -548,22 +416,14 @@ def save_memo(request, corp_code):
     try:
         from django.apps import apps as django_apps
         CompanyModel = django_apps.get_model('apps', 'Company')
-        
-        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
-        if len(corp_code) == 6 and corp_code.isdigit():
-            # 종목코드를 기업번호로 변환
-            from apps.dart.client import DartClient
-            dart_client = DartClient()
-            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-            if not converted_corp_code:
-                return Response(
-                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            corp_code = converted_corp_code
-        
+
+        resolved, err = resolve_corp_code(corp_code)
+        if err:
+            return Response({'error': err}, status=status.HTTP_404_NOT_FOUND)
+        corp_code = resolved
+
         from django.utils import timezone
-        
+
         memo = request.data.get('memo', '')
         
         # 메모 저장 시 현재 시간 기록
@@ -632,20 +492,7 @@ def _process_single_year_indicators(year_data, corp_code, company):
     yearly_data_obj.intangible_asset_acquisition = year_data.get('intangible_asset_acquisition', 0) or 0
     yearly_data_obj.operating_income = year_data.get('operating_income', 0) or 0
     yearly_data_obj.equity = year_data.get('equity', 0) or 0
-    # 이자부채 통합: 프론트엔드에서 6개 필드로 보내면 합산, 단일 필드로 보내면 그대로 사용
-    interest_bearing_debt = (
-        (year_data.get('short_term_borrowings', 0) or 0) +
-        (year_data.get('current_portion_of_long_term_borrowings', 0) or 0) +
-        (year_data.get('long_term_borrowings', 0) or 0) +
-        (year_data.get('bonds', 0) or 0) +
-        (year_data.get('lease_liabilities', 0) or 0) +
-        (year_data.get('convertible_bonds', 0) or 0)
-    )
-    # interest_bearing_debt 필드가 직접 전달되면 우선 사용
-    if 'interest_bearing_debt' in year_data and year_data.get('interest_bearing_debt'):
-        yearly_data_obj.interest_bearing_debt = year_data.get('interest_bearing_debt', 0) or 0
-    else:
-        yearly_data_obj.interest_bearing_debt = interest_bearing_debt
+    yearly_data_obj.interest_bearing_debt = year_data.get('interest_bearing_debt', 0) or 0
     yearly_data_obj.cash_and_cash_equivalents = year_data.get('cash_and_cash_equivalents', 0) or 0
     yearly_data_obj.interest_expense = year_data.get('interest_expense', 0) or 0
     
@@ -688,11 +535,7 @@ def save_calculated_indicators(request, corp_code):
         "operating_income": 800000000,
         "tax_rate": 25.0,
         "equity": 5000000000,
-        "short_term_borrowings": 1000000000,
-        "current_portion_of_long_term_borrowings": 200000000,
-        "long_term_borrowings": 2000000000,
-        "bonds": 500000000,
-        "lease_liabilities": 300000000,
+        "interest_bearing_debt": 4500000000,
         "cash_and_cash_equivalents": 1000000000,
         "interest_expense": 200000000,
         "bond_yield": 3.5,
@@ -714,19 +557,11 @@ def save_calculated_indicators(request, corp_code):
         CompanyModel = django_apps.get_model('apps', 'Company')
         YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
         
-        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
-        if len(corp_code) == 6 and corp_code.isdigit():
-            # 종목코드를 기업번호로 변환
-            from apps.dart.client import DartClient
-            dart_client = DartClient()
-            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-            if not converted_corp_code:
-                return Response(
-                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            corp_code = converted_corp_code
-        
+        resolved, err = resolve_corp_code(corp_code)
+        if err:
+            return Response({'error': err}, status=status.HTTP_404_NOT_FOUND)
+        corp_code = resolved
+
         # Company 확인
         try:
             company = CompanyModel.objects.get(corp_code=corp_code)
@@ -789,288 +624,48 @@ def save_calculated_indicators(request, corp_code):
         )
 
 
-@api_view(['POST'])
-def save_manual_financial_data(request, corp_code):
-    """
-    수기 재무 데이터 저장 API
-    POST /api/companies/{corp_code}/manual-financial-data/
-    
-    Body: {
-        "year": 2023,
-        "revenue": 1000000000,
-        "operating_income": 500000000,
-        "net_income": 400000000,
-        "total_assets": 5000000000,
-        "total_equity": 3000000000
-    }
-    
-    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
-    """
-    try:
-        from django.apps import apps as django_apps
-        from apps.service.calculator import IndicatorCalculator
-        from apps.service.filter import CompanyFilter
-        from apps.models import YearlyFinancialDataObject
-        from apps.utils.utils import load_company_from_db
-        from django.utils import timezone
-        from django.db import transaction
-        
-        CompanyModel = django_apps.get_model('apps', 'Company')
-        YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
-        
-        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
-        if len(corp_code) == 6 and corp_code.isdigit():
-            # 종목코드를 기업번호로 변환
-            from apps.dart.client import DartClient
-            dart_client = DartClient()
-            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-            if not converted_corp_code:
-                return Response(
-                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            corp_code = converted_corp_code
-        
-        # 입력 데이터 검증 및 타입 변환
-        year = request.data.get('year')
-        try:
-            year = int(year) if year else None
-        except (ValueError, TypeError):
-            year = None
-        
-        if not year:
-            return Response(
-                {'error': 'year 필드가 필요합니다.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # 숫자 필드들을 정수로 변환 (문자열도 처리)
-        def to_int(value, default=0):
-            try:
-                if value is None or value == '':
-                    return default
-                return int(float(value))  # 문자열 숫자도 처리
-            except (ValueError, TypeError):
-                return default
-        
-        revenue = to_int(request.data.get('revenue'), 0)
-        operating_income = to_int(request.data.get('operating_income'), 0)
-        net_income = to_int(request.data.get('net_income'), 0)
-        total_assets = to_int(request.data.get('total_assets'), 0)
-        total_equity = to_int(request.data.get('total_equity'), 0)
-        
-        # SQLite 잠금 문제 해결을 위한 재시도 로직
-        max_retries = 3
-        retry_delay = 0.1  # 100ms
-        
-        for attempt in range(max_retries):
-            try:
-                with transaction.atomic():
-                    # Company 모델 확인 또는 생성
-                    company, created = CompanyModel.objects.get_or_create(
-                        corp_code=corp_code,
-                        defaults={
-                            'company_name': '',
-                        }
-                    )
-                    
-                    # YearlyFinancialDataObject 생성 (계산용)
-                    yearly_data_obj = YearlyFinancialDataObject(year=year)
-                    yearly_data_obj.revenue = revenue
-                    yearly_data_obj.operating_income = operating_income
-                    yearly_data_obj.net_income = net_income
-                    yearly_data_obj.total_assets = total_assets
-                    yearly_data_obj.total_equity = total_equity
-                    
-                    # 영업이익률 계산
-                    operating_margin = IndicatorCalculator.calculate_operating_margin(yearly_data_obj)
-                    
-                    # ROE 계산
-                    roe = IndicatorCalculator.calculate_roe(yearly_data_obj)
-                    
-                    # YearlyFinancialData 모델 저장 또는 업데이트
-                    yearly_data_db, created = YearlyFinancialDataModel.objects.update_or_create(
-                        company=company,
-                        year=year,
-                        defaults={
-                            'revenue': revenue,
-                            'operating_income': operating_income,
-                            'net_income': net_income,
-                            'total_assets': total_assets,
-                            'total_equity': total_equity,
-                            'operating_margin': operating_margin,
-                            'roe': roe,
-                        }
-                    )
-                
-                # 트랜잭션 성공 시 루프 종료
-                break
-                
-            except Exception as e:
-                error_message = str(e)
-                is_db_locked = 'database is locked' in error_message.lower()
-                
-                if is_db_locked and attempt < max_retries - 1:
-                    # SQLite 잠금 오류인 경우 재시도
-                    import time
-                    time.sleep(retry_delay * (attempt + 1))  # 지수 백오프
-                    continue
-                else:
-                    # 다른 오류이거나 재시도 횟수 초과
-                    raise
-        
-        # 트랜잭션 완료 후 연결 명시적으로 닫기 (SQLite 잠금 방지)
-        from django.db import connection
-        connection.close()
-        
-        # DB에서 CompanyFinancialObject 로드 (재시도 로직 포함)
-        company_data = None
-        for attempt in range(max_retries):
-            try:
-                company_data = load_company_from_db(corp_code)
-                # 성공 시 루프 종료
-                break
-            except Exception as e:
-                error_message = str(e)
-                is_db_locked = 'database is locked' in error_message.lower()
-                
-                if is_db_locked and attempt < max_retries - 1:
-                    import time
-                    time.sleep(retry_delay * (attempt + 1))
-                    continue
-                else:
-                    return Response(
-                        {'error': f'데이터 로드 중 오류 발생: {error_message}'},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
-        
-        # load_company_from_db 성공 후 연결 닫기
-        from django.db import connection
-        connection.close()
-        
-        if not company_data:
-            return Response(
-                {'error': '데이터를 로드할 수 없습니다.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
-        # 필터 재검사
-        try:
-            CompanyFilter.apply_all_filters(company_data)
-        except Exception as e:
-            return Response(
-                {'error': f'필터 적용 중 오류 발생: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
-        # 필터 결과를 Company 모델에 저장
-        try:
-            with transaction.atomic():
-                CompanyModel.objects.filter(corp_code=corp_code).update(
-                    passed_all_filters=company_data.passed_all_filters,
-                    filter_operating_income=company_data.filter_operating_income,
-                    filter_net_income=company_data.filter_net_income,
-                    filter_revenue_cagr=company_data.filter_revenue_cagr,
-                    filter_operating_margin=company_data.filter_operating_margin,
-                    filter_roe=company_data.filter_roe,
-                )
-        except Exception as e:
-            return Response(
-                {'error': f'필터 결과 저장 중 오류 발생: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
-        return Response({
-            'corp_code': corp_code,
-            'year': year,
-            'revenue': revenue,
-            'operating_income': operating_income,
-            'net_income': net_income,
-            'total_assets': total_assets,
-            'total_equity': total_equity,
-            'operating_margin': operating_margin,
-            'roe': roe,
-            'passed_all_filters': company_data.passed_all_filters,
-            'filter_operating_income': company_data.filter_operating_income,
-            'filter_net_income': company_data.filter_net_income,
-            'filter_revenue_cagr': company_data.filter_revenue_cagr,
-            'filter_operating_margin': company_data.filter_operating_margin,
-            'filter_roe': company_data.filter_roe,
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        return Response(
-            {'error': f'서버 오류가 발생했습니다: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
 @api_view(['GET'])
 def get_annual_report_link(request, corp_code):
     """
     사업보고서 링크 조회 API
     GET /api/companies/{corp_code}/annual-report-link/
-    
-    가장 최근 년도의 사업보고서 접수번호를 조회하여 DART 링크 생성
-    
+
+    DB에 저장된 최근 사업보고서 접수번호로 DART 링크 생성 (5년 수집 시 채워짐).
     corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
     """
     try:
-        from apps.dart.client import DartClient
-        from datetime import datetime
-        
-        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
-        if len(corp_code) == 6 and corp_code.isdigit():
-            # 종목코드를 기업번호로 변환
-            dart_client = DartClient()
-            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-            if not converted_corp_code:
-                return Response(
-                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            corp_code = converted_corp_code
-        
-        client = DartClient()
-        
-        # 가장 최근 년도 계산 (사업보고서는 다음 해 3-4월에 제출되므로)
-        current_year = datetime.now().year
-        current_month = datetime.now().month
-        
-        # 현재 월이 4월 이후면 작년 사업보고서가 이미 제출됨
-        # 4월 이전이면 전년도 사업보고서를 찾아야 함
-        if current_month >= 4:
-            latest_year = current_year - 1
-        else:
-            latest_year = current_year - 2
-        
-        # 사업보고서 접수번호 조회
-        rcept_no = client.get_annual_report_rcept_no(corp_code, str(latest_year))
-        
-        if rcept_no:
-            dart_link = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
-            return Response({
-                'rcept_no': rcept_no,
-                'year': latest_year,
-                'link': dart_link
-            }, status=status.HTTP_200_OK)
-        else:
-            # 최근 3년 동안 찾아보기
-            for year_offset in range(1, 4):
-                try_year = latest_year - year_offset
-                rcept_no = client.get_annual_report_rcept_no(corp_code, str(try_year))
-                if rcept_no:
-                    dart_link = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
-                    return Response({
-                        'rcept_no': rcept_no,
-                        'year': try_year,
-                        'link': dart_link
-                    }, status=status.HTTP_200_OK)
-            
-            return Response({
-                'error': f'사업보고서를 찾을 수 없습니다.'
-            }, status=status.HTTP_404_NOT_FOUND)
-            
+        from django.apps import apps as django_apps
+
+        resolved, err = resolve_corp_code(corp_code)
+        if err:
+            return Response({'error': err}, status=status.HTTP_404_NOT_FOUND)
+        corp_code = resolved
+
+        CompanyModel = django_apps.get_model('apps', 'Company')
+        try:
+            company = CompanyModel.objects.get(corp_code=corp_code)
+        except CompanyModel.DoesNotExist:
+            return Response(
+                {'error': '기업을 찾을 수 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        rcept_no = company.latest_annual_rcept_no
+        year = company.latest_annual_report_year
+
+        if not rcept_no:
+            return Response(
+                {'error': '사업보고서를 찾을 수 없습니다. 재무 데이터를 먼저 수집해 주세요.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        dart_link = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
+        return Response({
+            'rcept_no': rcept_no,
+            'year': year,
+            'link': dart_link
+        }, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response(
             {'error': str(e)},
@@ -1087,10 +682,8 @@ def get_favorites(request):
     그룹별로 그룹화된 즐겨찾기 목록을 반환합니다.
     """
     try:
-        from django.apps import apps as django_apps
-        FavoriteGroupModel = django_apps.get_model('apps', 'FavoriteGroup')
-        FavoriteModel = django_apps.get_model('apps', 'Favorite')
-        
+        FavoriteGroupModel, FavoriteModel, _ = _get_favorite_models()
+
         # 모든 그룹 조회
         groups = FavoriteGroupModel.objects.all().order_by('name')
         
@@ -1133,24 +726,13 @@ def favorite(request, corp_code):
     corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
     """
     try:
-        from django.apps import apps as django_apps
-        CompanyModel = django_apps.get_model('apps', 'Company')
-        FavoriteGroupModel = django_apps.get_model('apps', 'FavoriteGroup')
-        FavoriteModel = django_apps.get_model('apps', 'Favorite')
-        
-        # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
-        if len(corp_code) == 6 and corp_code.isdigit():
-            # 종목코드를 기업번호로 변환
-            from apps.dart.client import DartClient
-            dart_client = DartClient()
-            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-            if not converted_corp_code:
-                return Response(
-                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            corp_code = converted_corp_code
-        
+        FavoriteGroupModel, FavoriteModel, CompanyModel = _get_favorite_models()
+
+        resolved, err = resolve_corp_code(corp_code)
+        if err:
+            return Response({'error': err}, status=status.HTTP_404_NOT_FOUND)
+        corp_code = resolved
+
         # 기업 확인
         try:
             company = CompanyModel.objects.get(corp_code=corp_code)
@@ -1235,9 +817,8 @@ def favorite_detail(request, favorite_id):
     DELETE /api/companies/favorites/<favorite_id>/
     """
     try:
-        from django.apps import apps as django_apps
-        FavoriteModel = django_apps.get_model('apps', 'Favorite')
-        
+        _, FavoriteModel, _ = _get_favorite_models()
+
         # favorite_id 유효성 검사
         try:
             favorite_id = int(favorite_id)
@@ -1286,10 +867,8 @@ def change_favorite_group(request, favorite_id):
     Body: {"group_id": 2}
     """
     try:
-        from django.apps import apps as django_apps
-        FavoriteGroupModel = django_apps.get_model('apps', 'FavoriteGroup')
-        FavoriteModel = django_apps.get_model('apps', 'Favorite')
-        
+        FavoriteGroupModel, FavoriteModel, _ = _get_favorite_models()
+
         # 즐겨찾기 확인
         try:
             favorite = FavoriteModel.objects.get(id=favorite_id)
@@ -1298,7 +877,7 @@ def change_favorite_group(request, favorite_id):
                 {'error': f'즐겨찾기 ID {favorite_id}를 찾을 수 없습니다.'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         # 그룹 ID 확인
         group_id = request.data.get('group_id')
         if not group_id:
@@ -1368,9 +947,8 @@ def favorite_groups(request):
     POST /api/companies/favorite-groups/ - 그룹 생성
     """
     try:
-        from django.apps import apps as django_apps
-        FavoriteGroupModel = django_apps.get_model('apps', 'FavoriteGroup')
-        
+        FavoriteGroupModel, _, _ = _get_favorite_models()
+
         if request.method == 'GET':
             groups = FavoriteGroupModel.objects.all().order_by('name')
             return Response({
@@ -1422,9 +1000,8 @@ def favorite_group_detail(request, group_id):
     DELETE /api/companies/favorite-groups/<group_id>/ - 그룹 삭제
     """
     try:
-        from django.apps import apps as django_apps
-        FavoriteGroupModel = django_apps.get_model('apps', 'FavoriteGroup')
-        
+        FavoriteGroupModel, _, _ = _get_favorite_models()
+
         # 그룹 확인
         try:
             group = FavoriteGroupModel.objects.get(id=group_id)
@@ -1433,7 +1010,7 @@ def favorite_group_detail(request, group_id):
                 {'error': f'그룹 ID {group_id}를 찾을 수 없습니다.'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         if request.method == 'PUT':
             name = request.data.get('name', '').strip()
             if not name:
@@ -1483,7 +1060,8 @@ def collect_quarterly_reports(request, corp_code):
     최근 분기보고서 수집 API
     POST /api/companies/{corp_code}/quarterly-reports/collect/
     
-    가장 최근 사업보고서 이후의 분기보고서를 수집하여 DB에 저장합니다.
+    DB에 저장된 가장 최근 사업보고서(접수일/연도) 이후의 분기보고서를 수집하여 DB에 저장합니다.
+    연간 재무 수집 후 사용하세요.
     
     corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
     """
@@ -1495,20 +1073,14 @@ def collect_quarterly_reports(request, corp_code):
         from django.utils import timezone
         from django.db import transaction
         
-        # 종목코드인지 기업번호인지 확인
-        if len(corp_code) == 6 and corp_code.isdigit():
-            dart_client = DartClient()
-            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-            if not converted_corp_code:
-                return Response(
-                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            corp_code = converted_corp_code
-        
+        resolved, err = resolve_corp_code(corp_code)
+        if err:
+            return Response({'error': err}, status=status.HTTP_404_NOT_FOUND)
+        corp_code = resolved
+
         CompanyModel = django_apps.get_model('apps', 'Company')
         QuarterlyFinancialDataModel = django_apps.get_model('apps', 'QuarterlyFinancialData')
-        
+
         # 기업 존재 확인
         try:
             company = CompanyModel.objects.get(corp_code=corp_code)
@@ -1518,21 +1090,21 @@ def collect_quarterly_reports(request, corp_code):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # DART 클라이언트 및 서비스 초기화
-        dart_client = DartClient()
-        dart_service = DartDataService()
-        
-        # 가장 최근 사업보고서 접수일자 조회
-        latest_annual_date = dart_client.get_latest_annual_report_date(corp_code)
-        
-        if not latest_annual_date:
+        # 가장 최근 사업보고서 기준일: DB 저장값 사용 (DART 연도별 검색 제거)
+        after_date = None
+        if company.latest_annual_rcept_no and len(company.latest_annual_rcept_no) >= 8:
+            after_date = company.latest_annual_rcept_no[:8]
+        elif company.latest_annual_report_year is not None:
+            after_date = f"{company.latest_annual_report_year + 1}0430"
+        if not after_date:
             return Response(
-                {'error': '최근 사업보고서를 찾을 수 없습니다.'},
+                {'error': '먼저 연간 재무 수집이 필요합니다.'},
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # 해당 날짜 이후의 분기보고서 목록 조회
-        quarterly_reports = dart_client.get_quarterly_reports_after_date(corp_code, latest_annual_date)
+        dart_client = DartClient()
+        dart_service = DartDataService()
+        quarterly_reports = dart_client.get_quarterly_reports_after_date(corp_code, after_date)
         
         if not quarterly_reports:
             return Response(
@@ -1542,6 +1114,9 @@ def collect_quarterly_reports(request, corp_code):
         
         # 분기보고서 데이터 수집
         quarterly_data_list = dart_service.collect_quarterly_financial_data(corp_code, quarterly_reports)
+        quarterly_data_list.sort(key=lambda x: (-x[0], -x[1]))  # (year, quarter) 최신순
+        
+        rcept_no_to_reprt = {r.get('rcept_no'): r.get('reprt_code', '') for r in quarterly_reports}
         
         # DB에 저장
         collected_count = 0
@@ -1551,13 +1126,7 @@ def collect_quarterly_reports(request, corp_code):
             for year, quarter, quarterly_data, rcept_no in quarterly_data_list:
                 # 기본 재무지표 계산 (영업이익률만, ROE는 계산하지 않음)
                 IndicatorCalculator.calculate_basic_financial_ratios_for_quarterly(quarterly_data)
-                
-                # 해당 분기보고서의 reprt_code 찾기
-                reprt_code = None
-                for report in quarterly_reports:
-                    if report.get('rcept_no') == rcept_no:
-                        reprt_code = report.get('reprt_code', '')
-                        break
+                reprt_code = rcept_no_to_reprt.get(rcept_no, '')
                 
                 # DB에 저장 (ROE는 저장하지 않음, 0.0으로 유지)
                 QuarterlyFinancialDataModel.objects.update_or_create(
@@ -1612,21 +1181,14 @@ def get_quarterly_financial_data(request, corp_code):
     try:
         from django.apps import apps as django_apps
         
-        # 종목코드인지 기업번호인지 확인
-        if len(corp_code) == 6 and corp_code.isdigit():
-            from apps.dart.client import DartClient
-            dart_client = DartClient()
-            converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
-            if not converted_corp_code:
-                return Response(
-                    {'error': f'종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            corp_code = converted_corp_code
-        
+        resolved, err = resolve_corp_code(corp_code)
+        if err:
+            return Response({'error': err}, status=status.HTTP_404_NOT_FOUND)
+        corp_code = resolved
+
         CompanyModel = django_apps.get_model('apps', 'Company')
         QuarterlyFinancialDataModel = django_apps.get_model('apps', 'QuarterlyFinancialData')
-        
+
         # Company 먼저 조회 (인덱스 활용, JOIN 최소화)
         try:
             company = CompanyModel.objects.get(corp_code=corp_code)

@@ -61,6 +61,25 @@ def get_bond_yield_5y() -> float:
         return 0.0
 
 
+def resolve_corp_code(corp_code: str) -> tuple[str | None, str | None]:
+    """
+    종목코드(6자리) → 기업번호(8자리) 변환. 8자리면 그대로 반환.
+
+    Returns:
+        (resolved_corp_code, error_message)
+        - 성공: (corp_code, None)
+        - 6자리인데 변환 실패: (None, "종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.")
+    """
+    if not (len(corp_code) == 6 and corp_code.isdigit()):
+        return (corp_code, None)
+    from apps.dart.client import DartClient
+    client = DartClient()
+    converted = client._get_corp_code_by_stock_code(corp_code)
+    if not converted:
+        return (None, f"종목코드 {corp_code}에 해당하는 기업번호를 찾을 수 없습니다.")
+    return (converted, None)
+
+
 def normalize_account_name(account_name: str) -> str:
     """
     계정명 정규화 함수
@@ -371,6 +390,8 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                 'filter_revenue_cagr': company_data.filter_revenue_cagr,
                 'filter_operating_margin': company_data.filter_operating_margin,
                 'filter_roe': company_data.filter_roe,
+                'latest_annual_rcept_no': getattr(company_data, 'latest_annual_rcept_no', None),
+                'latest_annual_report_year': getattr(company_data, 'latest_annual_report_year', None),
                 # memo와 memo_updated_at은 defaults에 포함하지 않음 (수집 로직에서 미변경)
             }
         )

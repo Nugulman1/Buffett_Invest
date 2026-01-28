@@ -17,11 +17,9 @@ urlpatterns = [
         path('search/', companies_views.search_companies, name='search_companies'),
         path('<str:corp_code>/financial-data/', companies_views.get_financial_data, name='get_financial_data'),
         path('<str:corp_code>/calculator-data/', companies_views.get_calculator_data, name='get_calculator_data'),
-        path('batch/', companies_views.batch_get_financial_data, name='batch_get_financial_data'),
         path('<str:corp_code>/annual-report-link/', companies_views.get_annual_report_link, name='get_annual_report_link'),
         path('<str:corp_code>/memo/', companies_views.save_memo, name='save_memo'),
         path('<str:corp_code>/calculated-indicators/', companies_views.save_calculated_indicators, name='save_calculated_indicators'),
-        path('<str:corp_code>/manual-financial-data/', companies_views.save_manual_financial_data, name='save_manual_financial_data'),
         # 즐겨찾기 관련 API (더 구체적인 패턴을 먼저 배치)
         path('favorites/', companies_views.get_favorites, name='get_favorites'),
         path('favorites/<int:favorite_id>/group/', companies_views.change_favorite_group, name='change_favorite_group'),

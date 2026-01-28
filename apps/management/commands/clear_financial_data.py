@@ -84,6 +84,9 @@ class Command(BaseCommand):
                     company.filter_revenue_cagr = False
                     company.filter_operating_margin = False
                     company.filter_roe = False
+                    # 최근 사업보고서 링크용 필드 초기화
+                    company.latest_annual_rcept_no = None
+                    company.latest_annual_report_year = None
                     company.save(update_fields=[
                         'last_collected_at',
                         'passed_all_filters',
@@ -91,7 +94,9 @@ class Command(BaseCommand):
                         'filter_net_income',
                         'filter_revenue_cagr',
                         'filter_operating_margin',
-                        'filter_roe'
+                        'filter_roe',
+                        'latest_annual_rcept_no',
+                        'latest_annual_report_year',
                     ])
                 
                 self.stdout.write(
@@ -144,7 +149,7 @@ class Command(BaseCommand):
                 )
                 # 전체 분기 데이터 삭제
                 deleted_quarterly_count = QuarterlyFinancialDataModel.objects.all().delete()[0]
-                # 모든 Company의 last_collected_at 및 필터 필드 초기화
+                # 모든 Company의 last_collected_at, 필터 필드, 최근 사업보고서 링크용 필드 초기화
                 CompanyModel.objects.all().update(
                     last_collected_at=None,
                     passed_all_filters=False,
@@ -152,7 +157,9 @@ class Command(BaseCommand):
                     filter_net_income=False,
                     filter_revenue_cagr=False,
                     filter_operating_margin=False,
-                    filter_roe=False
+                    filter_roe=False,
+                    latest_annual_rcept_no=None,
+                    latest_annual_report_year=None,
                 )
             
             # passed_filters_companies.json 파일 초기화 (전체 재수집 시)

@@ -17,6 +17,8 @@ class Company(models.Model):
     filter_roe = models.BooleanField(default=False, verbose_name='ROE필터')
     memo = models.TextField(blank=True, null=True, verbose_name='메모')
     memo_updated_at = models.DateTimeField(null=True, blank=True, verbose_name='메모수정일시')
+    latest_annual_rcept_no = models.CharField(max_length=14, blank=True, null=True, verbose_name='최근사업보고서접수번호')
+    latest_annual_report_year = models.IntegerField(null=True, blank=True, verbose_name='최근사업보고서연도')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
     
@@ -193,6 +195,9 @@ class FinancialStatementData:
         self.year = year
         self.reprt_code = reprt_code
         self.fs_div = fs_div
+        self.rcept_no = ''
+        if raw_data and len(raw_data) > 0:
+            self.rcept_no = (raw_data[0].get('rcept_no') or '').strip()
         
         # O(1) 조회를 위한 인덱싱 (계정명을 키로, 값만 저장)
         self.account_index = {}
@@ -275,6 +280,10 @@ class YearlyFinancialDataObject:
         self.roic: float = 0.0  # 투하자본수익률 (%)
         self.wacc: float = 0.0  # 가중평균자본비용 (%)
 
+        # 사업보고서 접수번호 (fnlttSinglAcnt raw_data 기준, DB 미저장)
+        # fill_basic_indicators 정렬 후 가장 최근 연도 것만 Company에 저장
+        self.rcept_no: str | None = None
+
 class CompanyFinancialObject:
     """회사 재무제표 데이터 객체"""
     
@@ -285,6 +294,10 @@ class CompanyFinancialObject:
         
         # 년도별 데이터 리스트
         self.yearly_data: list[YearlyFinancialDataObject] = []
+        
+        # 최근 사업보고서 링크용 (5년 수집 정렬 직후 채움)
+        self.latest_annual_rcept_no: str | None = None
+        self.latest_annual_report_year: int | None = None
         
         # === 필터 결과 ===
         self.passed_all_filters: bool = False  # 전체 필터 통과 여부
