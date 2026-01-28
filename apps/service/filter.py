@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # 최근 5년 중 영업이익 ≤ 0 인 연도 ≤ 1회
 # 최근 5년 중 당기순이익 합계 > 0
-# 매출액 CAGR ≥ 5%
+# 매출액 CAGR ≥ 10%
 # 영업이익률 평균 ≥ 10%
 # ROE 평균 (규모별): 대기업 ≥ 8%, 중견기업 ≥ 10%, 중소기업 ≥ 12%
 
@@ -73,7 +73,7 @@ class CompanyFilter:
     @staticmethod
     def filter_revenue_cagr(company_data: CompanyFinancialObject) -> bool:
         """
-        매출액 CAGR 필터: 매출액 CAGR ≥ 5%
+        매출액 CAGR 필터: 매출액 CAGR ≥ 10%
         (5년 데이터가 없어도 수집된 데이터로 계산, 최소 2년 데이터 필요)
         
         Args:
@@ -100,8 +100,8 @@ class CompanyFilter:
         # CAGR 계산
         cagr = IndicatorCalculator.calculate_cagr(start_value, end_value, years_span)
         
-        # CAGR ≥ 5% 인지 확인
-        return cagr >= 5.0
+        # CAGR ≥ 10% 인지 확인 (소수 형태: 0.10 = 10%)
+        return cagr >= 0.10
     
     @staticmethod
     def filter_operating_margin(company_data: CompanyFinancialObject) -> bool:

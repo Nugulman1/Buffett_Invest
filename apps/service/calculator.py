@@ -48,8 +48,8 @@ class IndicatorCalculator:
             years: 기간 (년수, 시작값과 최종값 사이의 간격)
         
         Returns:
-            CAGR (% 단위, float). 계산 불가능한 경우 0.0 반환
-            예: 10.5 = 10.5%의 CAGR
+            CAGR (소수 형태, float). 계산 불가능한 경우 0.0 반환
+            예: 0.105 = 10.5%의 CAGR
         """
         if start_value <= 0:
             logger.warning(f"CAGR 계산 실패: 시작값이 0 이하입니다 (start_value: {start_value})")
@@ -67,8 +67,8 @@ class IndicatorCalculator:
         ratio = end_value / start_value
         cagr = (ratio ** (1.0 / years)) - 1
         
-        # 백분율로 변환
-        return cagr * 100
+        # 소수 형태로 반환 (예: 0.10 = 10%)
+        return cagr
     
     @staticmethod
     def calculate_fcf(yearly_data: YearlyFinancialDataObject) -> int:
@@ -125,7 +125,7 @@ class IndicatorCalculator:
             tax_rate: 법인세율 (기본값: 0.25)
         
         Returns:
-            ROIC 값 (% 단위, float)
+            ROIC 값 (소수 형태, float, 예: 0.10 = 10%)
         """
         # 이자부채 (통합 필드 사용)
         interest_bearing_debt = yearly_data.interest_bearing_debt
@@ -145,9 +145,8 @@ class IndicatorCalculator:
         # 분자: 영업이익 × (1 - 법인세율)
         numerator = yearly_data.operating_income * (1 - tax_rate)
         
-        # ROIC 계산 (백분율로 변환)
-        roic = (numerator / denominator) * 100
-        return roic
+        # ROIC 계산 (소수 형태)
+        return numerator / denominator
     
     @staticmethod
     def calculate_wacc(
@@ -173,7 +172,7 @@ class IndicatorCalculator:
             equity_risk_premium: 주주기대수익률 (퍼센트 형태, 기본값: 5.0)
         
         Returns:
-            WACC 값 (% 단위, float)
+            WACC 값 (소수 형태, float, 예: 0.10 = 10%)
         """
         # E = 자기자본
         equity = yearly_data.equity
@@ -209,8 +208,8 @@ class IndicatorCalculator:
         
         wacc = (equity_weight * cost_of_equity) + (debt_weight * cost_of_debt * (1 - tax_rate))
         
-        # 백분율로 변환하여 반환
-        return wacc * 100
+        # 소수 형태로 반환
+        return wacc
     
     @classmethod
     def calculate_all_indicators(
@@ -233,29 +232,6 @@ class IndicatorCalculator:
         """
         if not company_data.yearly_data:
             return
-        
-        # XBRL 데이터 수집 중단으로 인해 계산 지표 계산도 중단
-        # 가장 최근 년도만 계산 (XBRL 데이터 수집의 한계)
-        # latest_data = max(company_data.yearly_data, key=lambda x: x.year)
-        # 
-        # # FCF 계산
-        # latest_data.fcf = cls.calculate_fcf(latest_data)
-        # 
-        # # ICR 계산 주석 처리
-        # # 해당 계산에 이자비용을 금융비용으로 대체했으나 계산값이 너무 튀어 일단 주석처리함
-        # # latest_data.icr = cls.calculate_icr(latest_data)
-        # 
-        # # ROIC 계산
-        # latest_data.roic = cls.calculate_roic(latest_data, tax_rate)
-        # 
-        # # WACC 계산 주석 처리
-        # # 해당 계산에 이자비용을 금융비용으로 대체했으나 계산값이 너무 튀어 일단 주석처리함
-        # # latest_data.wacc = cls.calculate_wacc(
-        # #     latest_data,
-        # #     company_data.bond_yield_5y,
-        # #     tax_rate,
-        # #     equity_risk_premium
-        # # )
     
     @staticmethod
     def calculate_operating_margin(yearly_data: YearlyFinancialDataObject) -> float:

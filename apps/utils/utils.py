@@ -359,15 +359,6 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
     now = timezone.now()
     
     with transaction.atomic():
-        # 기존 메모 조회 (보존용)
-        try:
-            existing_company = CompanyModel.objects.get(corp_code=company_data.corp_code)
-            existing_memo = existing_company.memo
-            existing_memo_updated_at = existing_company.memo_updated_at
-        except CompanyModel.DoesNotExist:
-            existing_memo = None
-            existing_memo_updated_at = None
-        
         # Company 모델 저장 또는 업데이트
         company, created = CompanyModel.objects.update_or_create(
             corp_code=company_data.corp_code,
@@ -380,15 +371,9 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                 'filter_revenue_cagr': company_data.filter_revenue_cagr,
                 'filter_operating_margin': company_data.filter_operating_margin,
                 'filter_roe': company_data.filter_roe,
-                # memo와 memo_updated_at은 defaults에 포함하지 않음 (자동 보존)
+                # memo와 memo_updated_at은 defaults에 포함하지 않음 (수집 로직에서 미변경)
             }
         )
-        
-        # 명시적으로 메모 보존 (기존 메모가 있으면 유지)
-        if existing_memo:
-            company.memo = existing_memo
-            company.memo_updated_at = existing_memo_updated_at
-            company.save(update_fields=['memo', 'memo_updated_at'])
         
         # YearlyFinancialData 모델 저장 또는 업데이트
         for yearly_data in company_data.yearly_data:

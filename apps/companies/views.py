@@ -232,7 +232,7 @@ def get_financial_data(request, corp_code):
             data = {
                 'corp_code': company_data.corp_code,
                 'company_name': company_data.company_name,
-                'bond_yield_5y': get_bond_yield_5y() * 100,  # 백분율로 변환
+                'bond_yield_5y': get_bond_yield_5y(),  # 소수 형태 (예: 0.03057 = 3.057%)
                 'passed_all_filters': company_data.passed_all_filters,
                 'filter_operating_income': company_data.filter_operating_income,
                 'filter_net_income': company_data.filter_net_income,
@@ -290,7 +290,7 @@ def get_financial_data(request, corp_code):
             data = {
                 'corp_code': company_data_from_db.corp_code,
                 'company_name': company_data_from_db.company_name,
-                'bond_yield_5y': get_bond_yield_5y() * 100,  # 백분율로 변환
+                'bond_yield_5y': get_bond_yield_5y(),  # 소수 형태 (예: 0.03057 = 3.057%)
                 'passed_all_filters': company_data_from_db.passed_all_filters,
                 'filter_operating_income': company_data_from_db.filter_operating_income,
                 'filter_net_income': company_data_from_db.filter_net_income,
@@ -329,7 +329,7 @@ def get_financial_data(request, corp_code):
             data = {
                 'corp_code': company_data.corp_code,
                 'company_name': company_data.company_name,
-                'bond_yield_5y': get_bond_yield_5y() * 100,  # 백분율로 변환
+                'bond_yield_5y': get_bond_yield_5y(),  # 소수 형태 (예: 0.03057 = 3.057%)
                 'passed_all_filters': company_data.passed_all_filters,
                 'filter_operating_income': company_data.filter_operating_income,
                 'filter_net_income': company_data.filter_net_income,
@@ -435,7 +435,7 @@ def get_calculator_data(request, corp_code):
             'year': year,
             'total_equity': total_equity,
             'operating_income': operating_income,
-            'bond_yield_5y': get_bond_yield_5y() * 100  # 백분율로 변환
+            'bond_yield_5y': get_bond_yield_5y()  # 소수 형태 (예: 0.03057 = 3.057%)
         }, status=status.HTTP_200_OK)
         
     except Exception as e:

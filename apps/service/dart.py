@@ -8,7 +8,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from apps.dart.client import DartClient
 from apps.models import FinancialStatementData, YearlyFinancialDataObject, CompanyFinancialObject
 from apps.utils.utils import normalize_account_name
-from apps.service.xbrl_parser import XbrlParser
 
 
 class DartDataService:
@@ -75,40 +74,10 @@ class DartDataService:
                         fs_div=fs_div,
                         raw_data=raw_data
                     )
-            except Exception as e:
+            except Exception:
                 if fs_div == 'CFS':
                     continue  # OFS도 시도
-                # OFS도 실패했으므로 폴백 로직 실행
-        
-        # 직접 조회 실패 시, 사업보고서 접수번호를 찾아서 시도
-        try:
-            rcept_no = self.client.get_annual_report_rcept_no(corp_code, year)
-            if rcept_no:
-                # 접수번호에서 사업연도 추출 (접수번호 연도 - 1)
-                rcept_year = int(rcept_no[:4])
-                actual_bsns_year = str(rcept_year - 1)
-                
-                # 추출한 사업연도로 다시 조회 시도
-                for fs_div_fallback in ['CFS', 'OFS']:
-                    try:
-                        raw_data = self.client.get_financial_statement(
-                            corp_code=corp_code,
-                            bsns_year=actual_bsns_year,
-                            reprt_code='11011',
-                            fs_div=fs_div_fallback
-                        )
-                        
-                        if raw_data:
-                            return FinancialStatementData(
-                                year=year,  # 원래 요청한 연도 유지
-                                reprt_code='11011',
-                                fs_div=fs_div_fallback,
-                                raw_data=raw_data
-                            )
-                    except:
-                        continue
-        except:
-            pass
+                break
         
         return None
     
@@ -152,30 +121,30 @@ class DartDataService:
         
         # YearlyFinancialData 객체 생성
         yearly_data = YearlyFinancialDataObject(year=year)
-        
-        # 각 지표에 대해 매핑 및 추출
-        for indicator_key, mapping_config in mappings.items():
+
+        # 역매핑 생성: "정규화된 계정명" -> "YearlyFinancialDataObject 필드명"
+        # (매핑표를 1회만 순회)
+        reverse_mapping: dict[str, str] = {}
+        for mapping_config in mappings.values():
             internal_field = mapping_config.get('internal_field')
+            if not internal_field:
+                continue
+
             dart_variants = mapping_config.get('dart_variants', [])
-            
-            # dart_variants를 순회하며 매칭 시도 (O(1) 조회)
-            value = 0
             for variant in dart_variants:
-                # 정규화된 계정명으로 매칭 시도
                 normalized_variant = normalize_account_name(variant)
-                
-                # 정규화된 인덱스에서 직접 조회 (O(1))
-                if normalized_variant in fs_data.normalized_account_index:
-                    data = fs_data.normalized_account_index[normalized_variant]
-                    amount = data.get('thstrm_amount', '0')
-                    value = int(amount.replace(',', '')) if amount else 0
-                    break  # 매칭 성공 시 종료
-            
-            # 객체에 직접 할당 (이미 값이 있으면 CFS 우선이므로 덮어쓰지 않음)
-            if internal_field and hasattr(yearly_data, internal_field):
-                current_value = getattr(yearly_data, internal_field)
-                if current_value == 0:  # 아직 값이 없을 때만 할당
-                    setattr(yearly_data, internal_field, value)
+                # 이미 등록된 키는 유지 (첫 매핑 우선)
+                reverse_mapping.setdefault(normalized_variant, internal_field)
+
+        # DART에서 가져온 계정을 1회만 순회하며 매핑/저장
+        for normalized_account_name, account_data in fs_data.normalized_account_index.items():
+            internal_field = reverse_mapping.get(normalized_account_name)
+            if not internal_field or not hasattr(yearly_data, internal_field):
+                continue
+
+            amount = account_data.get('thstrm_amount', '0')
+            value = int(amount.replace(',', '')) if amount else 0
+            setattr(yearly_data, internal_field, value)
         
         return (year, yearly_data)
     
@@ -343,66 +312,6 @@ class DartDataService:
                     pass
         
         return quarterly_data_list
-    
-    # XBRL 데이터 수집 중단: 표본이 너무 적어서 데이터화를 못할듯하여 일단 중단
-    # def collect_xbrl_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
-    #     """
-    #     XBRL 파일에서 추가 지표 수집
-    #     
-    #     Args:
-    #         corp_code: 고유번호 (8자리)
-    #         years: 수집할 연도 리스트
-    #         company_data: 채울 CompanyFinancialObject 객체 (in-place 수정)
-    #     """
-    #     parser = XbrlParser()
-    #     
-    #     # 각 연도별로 처리
-    #     for year in years:
-    #         year_str = str(year)
-    #         
-    #         # 해당 연도의 YearlyFinancialData 찾기
-    #         yearly_data = None
-    #         for yd in company_data.yearly_data:
-    #             if yd.year == year:
-    #                 yearly_data = yd
-    #                 break
-    #         
-    #         # YearlyFinancialData가 없으면 생성
-    #         if yearly_data is None:
-    #             yearly_data = YearlyFinancialData(year=year, corp_code=corp_code)
-    #             company_data.yearly_data.append(yearly_data)
-    #        
-    #         try:
-    #             # 사업보고서 접수번호 조회
-    #             try:
-    #                 rcept_no = self.client.get_annual_report_rcept_no(corp_code, year_str)
-    #                 if not rcept_no:
-    #                     continue
-    #             except Exception as e:
-    #                 continue
-    #             
-    #             # XBRL 다운로드 및 사업보고서 XML 추출
-    #             xml_content = self.client.download_xbrl_and_extract_annual_report(rcept_no)
-    #             
-    #             # XBRL 파싱
-    #             xbrl_data = parser.parse_xbrl_file(xml_content)
-    #             
-    #             # YearlyFinancialData에 채우기
-    #             yearly_data.tangible_asset_acquisition = xbrl_data.get('tangible_asset_acquisition', 0)
-    #             yearly_data.intangible_asset_acquisition = xbrl_data.get('intangible_asset_acquisition', 0)
-    #             yearly_data.cfo = xbrl_data.get('cfo', 0)
-    #             yearly_data.equity = xbrl_data.get('equity', 0)
-    #             yearly_data.cash_and_cash_equivalents = xbrl_data.get('cash_and_cash_equivalents', 0)
-    #             yearly_data.short_term_borrowings = xbrl_data.get('short_term_borrowings', 0)
-    #             yearly_data.current_portion_of_long_term_borrowings = xbrl_data.get('current_portion_of_long_term_borrowings', 0)
-    #             yearly_data.long_term_borrowings = xbrl_data.get('long_term_borrowings', 0)
-    #             yearly_data.bonds = xbrl_data.get('bonds', 0)
-    #             yearly_data.lease_liabilities = xbrl_data.get('lease_liabilities', 0)
-    #             yearly_data.finance_costs = xbrl_data.get('finance_costs', 0)
-    #             
-    #         except Exception as e:
-    #             # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)
-    #             continue
     
     def _process_single_year_financial(self, corp_code: str, year: int, indicator_mappings: dict):
         """

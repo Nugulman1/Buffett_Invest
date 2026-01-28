@@ -51,16 +51,6 @@ class DataOrchestrator:
         # API 호출 최적화를 위해 재무지표 API 호출을 제거하고 계산 방식으로 변경
         IndicatorCalculator.calculate_basic_financial_ratios(company_data)
         
-        # XBRL 데이터 수집 (가장 최근 년도만 수집)
-        # 표본이 너무 적어서 데이터화를 못할듯하여 일단 중단
-        # try:
-        #     latest_year = [max(years)] if years else []
-        #     if latest_year:
-        #         self.dart_service.collect_xbrl_indicators(corp_code, latest_year, company_data)
-        # except Exception as e:
-        #     # XBRL 수집 실패 시에도 기본 지표 수집은 계속 진행
-        #     pass
-        
         # ECOS 데이터 수집 (채권수익률 - 하루 기준으로 캐싱)
         # 채권수익률은 BondYield 모델에 캐싱되며, 필요 시 get_bond_yield_5y() 함수로 조회
         try:
@@ -92,13 +82,6 @@ class DataOrchestrator:
             print(f"경고: 채권수익률 수집 실패: {e}")
             # 채권수익률 수집 실패해도 계속 진행 (기본값 사용)
         
-        # 계산 로직 호출하여 계산 지표 채우기
-        # try:
-        #     IndicatorCalculator.calculate_all_indicators(company_data)
-        # except Exception as e:
-        #     print(f"경고: 계산 지표 계산 실패: {e}")
-        #     # 계산 실패 시에도 수집된 데이터는 반환
-        
         # 필터 적용
         try:
             CompanyFilter.apply_all_filters(company_data)
@@ -106,7 +89,7 @@ class DataOrchestrator:
             print(f"경고: 필터 적용 실패: {e}")
             # 필터 실패 시에도 수집된 데이터는 반환
         
-        # DB 저장 로직 (save_to_db가 True일 때만 실행)
+        # DB 저장 로직 (save_to_db가 True일 때만 실행) -> 동시 쓰기 회피 용도
         if save_to_db:
             try:
                 save_company_to_db(company_data)
