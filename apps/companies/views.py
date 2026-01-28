@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from apps.service.orchestrator import DataOrchestrator
 from apps.models import CompanyFinancialObject
-from apps.utils.utils import format_amount_korean, should_collect_company, load_company_from_db, load_passed_companies_json
+from apps.utils.utils import format_amount_korean, should_collect_company, load_company_from_db, load_passed_companies_json, get_bond_yield_5y
 import json
 
 
@@ -180,7 +180,6 @@ def search_companies(request):
         results.append({
             'corp_code': company.corp_code,
             'company_name': company.company_name or '',
-            'business_type_name': company.business_type_name or '',
         })
     
     return Response({
@@ -233,9 +232,7 @@ def get_financial_data(request, corp_code):
             data = {
                 'corp_code': company_data.corp_code,
                 'company_name': company_data.company_name,
-                'business_type_code': company_data.business_type_code,
-                'business_type_name': company_data.business_type_name,
-                'bond_yield_5y': company_data.bond_yield_5y,
+                'bond_yield_5y': get_bond_yield_5y() * 100,  # 백분율로 변환
                 'passed_all_filters': company_data.passed_all_filters,
                 'filter_operating_income': company_data.filter_operating_income,
                 'filter_net_income': company_data.filter_net_income,
@@ -252,8 +249,6 @@ def get_financial_data(request, corp_code):
                         'net_income': yd.net_income,
                         'total_assets': yd.total_assets,
                         'total_equity': yd.total_equity,
-                        'gross_profit_margin': yd.gross_profit_margin,
-                        'selling_admin_expense_ratio': yd.selling_admin_expense_ratio,
                         'operating_margin': yd.operating_margin,
                         'roe': yd.roe,
                         'fcf': yd.fcf,
@@ -295,9 +290,7 @@ def get_financial_data(request, corp_code):
             data = {
                 'corp_code': company_data_from_db.corp_code,
                 'company_name': company_data_from_db.company_name,
-                'business_type_code': company_data_from_db.business_type_code,
-                'business_type_name': company_data_from_db.business_type_name,
-                'bond_yield_5y': company_data_from_db.bond_yield_5y,
+                'bond_yield_5y': get_bond_yield_5y() * 100,  # 백분율로 변환
                 'passed_all_filters': company_data_from_db.passed_all_filters,
                 'filter_operating_income': company_data_from_db.filter_operating_income,
                 'filter_net_income': company_data_from_db.filter_net_income,
@@ -314,8 +307,6 @@ def get_financial_data(request, corp_code):
                         'net_income': yd.net_income,
                         'total_assets': yd.total_assets,
                         'total_equity': yd.total_equity,
-                        'gross_profit_margin': yd.gross_profit_margin,
-                        'selling_admin_expense_ratio': yd.selling_admin_expense_ratio,
                         'operating_margin': yd.operating_margin,
                         'roe': yd.roe,
                         'fcf': yd.fcf,
@@ -338,9 +329,7 @@ def get_financial_data(request, corp_code):
             data = {
                 'corp_code': company_data.corp_code,
                 'company_name': company_data.company_name,
-                'business_type_code': company_data.business_type_code,
-                'business_type_name': company_data.business_type_name,
-                'bond_yield_5y': company_data.bond_yield_5y,
+                'bond_yield_5y': get_bond_yield_5y() * 100,  # 백분율로 변환
                 'passed_all_filters': company_data.passed_all_filters,
                 'filter_operating_income': company_data.filter_operating_income,
                 'filter_net_income': company_data.filter_net_income,
@@ -357,8 +346,6 @@ def get_financial_data(request, corp_code):
                         'net_income': yd.net_income,
                         'total_assets': yd.total_assets,
                         'total_equity': yd.total_equity,
-                        'gross_profit_margin': yd.gross_profit_margin,
-                        'selling_admin_expense_ratio': yd.selling_admin_expense_ratio,
                         'operating_margin': yd.operating_margin,
                         'roe': yd.roe,
                         'fcf': None,
@@ -422,10 +409,9 @@ def get_calculator_data(request, corp_code):
                 )
             corp_code = converted_corp_code
         
-        # Company 모델 조회 (국채수익률)
+        # Company 모델 조회
         try:
             company = CompanyModel.objects.get(corp_code=corp_code)
-            bond_yield_5y = company.bond_yield_5y or 0.0
         except CompanyModel.DoesNotExist:
             return Response(
                 {'error': f'기업코드 {corp_code}에 해당하는 데이터를 찾을 수 없습니다.'},
@@ -449,7 +435,7 @@ def get_calculator_data(request, corp_code):
             'year': year,
             'total_equity': total_equity,
             'operating_income': operating_income,
-            'bond_yield_5y': bond_yield_5y
+            'bond_yield_5y': get_bond_yield_5y() * 100  # 백분율로 변환
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
@@ -514,7 +500,6 @@ def batch_get_financial_data(request):
                     results.append({
                         'corp_code': company.corp_code,
                         'company_name': company.company_name,
-                        'business_type_name': company.business_type_name,
                         'passed_all_filters': company.passed_all_filters,
                     })
                     continue
@@ -527,7 +512,6 @@ def batch_get_financial_data(request):
                 results.append({
                     'corp_code': company_data.corp_code,
                     'company_name': company_data.company_name,
-                    'business_type_name': company_data.business_type_name,
                     'passed_all_filters': company_data.passed_all_filters,
                 })
             except Exception as e:
@@ -642,18 +626,26 @@ def _process_single_year_indicators(year_data, corp_code, company):
         raise YearlyFinancialDataModel.DoesNotExist(f'{year}년도 데이터를 찾을 수 없습니다. 먼저 재무 데이터를 수집해주세요.')
     
     # 입력 데이터로 YearlyFinancialDataObject 생성
-    yearly_data_obj = YearlyFinancialDataObject(year=year, corp_code=corp_code)
+    yearly_data_obj = YearlyFinancialDataObject(year=year)
     yearly_data_obj.cfo = year_data.get('cfo', 0) or 0
     yearly_data_obj.tangible_asset_acquisition = year_data.get('tangible_asset_acquisition', 0) or 0
     yearly_data_obj.intangible_asset_acquisition = year_data.get('intangible_asset_acquisition', 0) or 0
     yearly_data_obj.operating_income = year_data.get('operating_income', 0) or 0
     yearly_data_obj.equity = year_data.get('equity', 0) or 0
-    yearly_data_obj.short_term_borrowings = year_data.get('short_term_borrowings', 0) or 0
-    yearly_data_obj.current_portion_of_long_term_borrowings = year_data.get('current_portion_of_long_term_borrowings', 0) or 0
-    yearly_data_obj.long_term_borrowings = year_data.get('long_term_borrowings', 0) or 0
-    yearly_data_obj.bonds = year_data.get('bonds', 0) or 0
-    yearly_data_obj.lease_liabilities = year_data.get('lease_liabilities', 0) or 0
-    yearly_data_obj.convertible_bonds = year_data.get('convertible_bonds', 0) or 0
+    # 이자부채 통합: 프론트엔드에서 6개 필드로 보내면 합산, 단일 필드로 보내면 그대로 사용
+    interest_bearing_debt = (
+        (year_data.get('short_term_borrowings', 0) or 0) +
+        (year_data.get('current_portion_of_long_term_borrowings', 0) or 0) +
+        (year_data.get('long_term_borrowings', 0) or 0) +
+        (year_data.get('bonds', 0) or 0) +
+        (year_data.get('lease_liabilities', 0) or 0) +
+        (year_data.get('convertible_bonds', 0) or 0)
+    )
+    # interest_bearing_debt 필드가 직접 전달되면 우선 사용
+    if 'interest_bearing_debt' in year_data and year_data.get('interest_bearing_debt'):
+        yearly_data_obj.interest_bearing_debt = year_data.get('interest_bearing_debt', 0) or 0
+    else:
+        yearly_data_obj.interest_bearing_debt = interest_bearing_debt
     yearly_data_obj.cash_and_cash_equivalents = year_data.get('cash_and_cash_equivalents', 0) or 0
     yearly_data_obj.interest_expense = year_data.get('interest_expense', 0) or 0
     
@@ -879,13 +871,11 @@ def save_manual_financial_data(request, corp_code):
                         corp_code=corp_code,
                         defaults={
                             'company_name': '',
-                            'business_type_code': '',
-                            'business_type_name': '',
                         }
                     )
                     
                     # YearlyFinancialDataObject 생성 (계산용)
-                    yearly_data_obj = YearlyFinancialDataObject(year=year, corp_code=corp_code)
+                    yearly_data_obj = YearlyFinancialDataObject(year=year)
                     yearly_data_obj.revenue = revenue
                     yearly_data_obj.operating_income = operating_income
                     yearly_data_obj.net_income = net_income

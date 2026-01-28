@@ -151,7 +151,7 @@ class DartDataService:
             return None  # 수집 실패 시 None 반환
         
         # YearlyFinancialData 객체 생성
-        yearly_data = YearlyFinancialDataObject(year=year, corp_code=corp_code)
+        yearly_data = YearlyFinancialDataObject(year=year)
         
         # 각 지표에 대해 매핑 및 추출
         for indicator_key, mapping_config in mappings.items():
@@ -271,7 +271,7 @@ class DartDataService:
                     )
                     
                     # YearlyFinancialDataObject 생성 (분기 데이터용)
-                    quarterly_data = YearlyFinancialDataObject(year=bsns_year, corp_code=corp_code)
+                    quarterly_data = YearlyFinancialDataObject(year=bsns_year)
                     
                     # 각 지표에 대해 매핑 및 추출
                     for indicator_key, mapping_config in mappings.items():

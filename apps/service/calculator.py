@@ -127,15 +127,8 @@ class IndicatorCalculator:
         Returns:
             ROIC 값 (% 단위, float)
         """
-        # 이자부채 계산
-        interest_bearing_debt = (
-            yearly_data.short_term_borrowings +
-            yearly_data.current_portion_of_long_term_borrowings +
-            yearly_data.long_term_borrowings +
-            yearly_data.bonds +
-            yearly_data.lease_liabilities +
-            yearly_data.convertible_bonds
-        )
+        # 이자부채 (통합 필드 사용)
+        interest_bearing_debt = yearly_data.interest_bearing_debt
         
         # 분모 계산: 자기자본 + 이자부채 - 현금및현금성자산
         denominator = yearly_data.equity + interest_bearing_debt - yearly_data.cash_and_cash_equivalents
@@ -169,7 +162,7 @@ class IndicatorCalculator:
         공식: WACC = (E / (E + D)) × Re + (D / (E + D)) × Rd × (1 - 법인세율)
         
         - E = 자기자본 (equity)
-        - D = 이자부채 (단기차입금 + 유동성장기차입금 + 장기차입금 + 사채 + 리스부채 + 전환부채)
+        - D = 이자부채 (interest_bearing_debt)
         - Re = 국채수익률 (bond_yield) + 주주기대수익률 (equity_risk_premium)
         - Rd = 이자비용 / 이자부채
         
@@ -185,15 +178,8 @@ class IndicatorCalculator:
         # E = 자기자본
         equity = yearly_data.equity
         
-        # D = 이자부채
-        interest_bearing_debt = (
-            yearly_data.short_term_borrowings +
-            yearly_data.current_portion_of_long_term_borrowings +
-            yearly_data.long_term_borrowings +
-            yearly_data.bonds +
-            yearly_data.lease_liabilities +
-            yearly_data.convertible_bonds
-        )
+        # D = 이자부채 (통합 필드 사용)
+        interest_bearing_debt = yearly_data.interest_bearing_debt
         
         # E + D가 0이면 계산 불가
         total_capital = equity + interest_bearing_debt

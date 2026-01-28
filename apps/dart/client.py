@@ -38,6 +38,54 @@ class DartClient:
         if not self.api_key:
             raise ValueError("DART_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
     
+    def _calculate_wait_time(self, attempt, response=None):
+        """
+        재시도 대기 시간 계산
+        
+        Args:
+            attempt: 현재 재시도 횟수 (0부터 시작)
+            response: Response 객체 (있을 수도, 없을 수도)
+            
+        Returns:
+            대기 시간 (초)
+        """
+        # Rate Limit (429)인 경우 Retry-After 헤더 확인
+        if response and hasattr(response, 'status_code') and response.status_code == 429:
+            retry_after = response.headers.get('Retry-After')
+            if retry_after:
+                try:
+                    return int(retry_after)
+                except ValueError:
+                    # Retry-After가 유효하지 않으면 exponential backoff
+                    pass
+        
+        # Exponential Backoff: 2^attempt 초 대기 (1초, 2초, 4초...)
+        return 2 ** attempt
+    
+    def _should_retry(self, attempt, max_retries, response=None, retryable_codes=None):
+        """
+        재시도 가능 여부 판단
+        
+        Args:
+            attempt: 현재 재시도 횟수 (0부터 시작)
+            max_retries: 최대 재시도 횟수
+            response: Response 객체 (있을 수도, 없을 수도)
+            retryable_codes: 재시도 가능한 HTTP 상태 코드 집합
+            
+        Returns:
+            재시도 가능하면 True, 아니면 False
+        """
+        # 마지막 시도면 재시도 안 함
+        if attempt >= max_retries:
+            return False
+        
+        # response가 있으면 (HTTPError) → status_code 확인
+        if response and hasattr(response, 'status_code'):
+            return response.status_code in (retryable_codes or {})
+        
+        # response가 없으면 (네트워크 오류) → 재시도 가능
+        return True
+    
     def _make_request(self, endpoint, params=None, return_binary=False, max_retries=None, timeout=None):
         """
         API 요청 공통 메서드 (재시도 로직 포함)
@@ -68,8 +116,6 @@ class DartClient:
         # 재시도 가능한 HTTP 상태 코드 (일시적 오류)
         retryable_status_codes = {429, 500, 502, 503, 504}
         
-        last_exception = None
-        
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (총 4번 시도)
             try:
                 # API 호출 횟수 증가
@@ -92,72 +138,33 @@ class DartClient:
                     return response.json()
                 
                 # 재시도 가능한 오류인지 확인
-                if response.status_code in retryable_status_codes:
-                    if attempt < max_retries:  # 마지막 시도가 아니면 재시도
-                        # Rate Limit (429)인 경우 Retry-After 헤더 확인
-                        if response.status_code == 429:
-                            retry_after = response.headers.get('Retry-After')
-                            if retry_after:
-                                try:
-                                    wait_time = int(retry_after)
-                                except ValueError:
-                                    wait_time = 2 ** attempt  # Retry-After가 유효하지 않으면 exponential backoff
-                            else:
-                                wait_time = 2 ** attempt
-                        else:
-                            # Exponential Backoff: 2^attempt 초 대기 (1초, 2초, 4초...)
-                            wait_time = 2 ** attempt
-                        
-                        time.sleep(wait_time)
-                        continue  # 재시도
-                    else:
-                        # 마지막 시도에서도 실패
-                        response.raise_for_status()
+                if self._should_retry(attempt, max_retries, response, retryable_status_codes):
+                    # 재시도
+                    wait_time = self._calculate_wait_time(attempt, response)
+                    time.sleep(wait_time)
+                    continue
                 else:
                     # 재시도 불가능한 오류 (400, 401, 404 등)
                     response.raise_for_status()
                     
-            except requests.exceptions.Timeout as e:
-                # 타임아웃은 재시도 가능
-                last_exception = e
-                if attempt < max_retries:
-                    wait_time = 2 ** attempt
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    raise Exception(f"DART API 요청 실패 (타임아웃, 최대 {max_retries}회 재시도 후 실패): {str(e)}")
-                    
-            except requests.exceptions.ConnectionError as e:
-                # 네트워크 연결 오류는 재시도 가능
-                last_exception = e
-                if attempt < max_retries:
-                    wait_time = 2 ** attempt
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    raise Exception(f"DART API 요청 실패 (연결 오류, 최대 {max_retries}회 재시도 후 실패): {str(e)}")
-                    
-            except requests.exceptions.HTTPError as e:
-                # HTTP 오류 (이미 위에서 상태 코드로 처리했지만 안전장치)
-                last_exception = e
-                if attempt < max_retries and hasattr(e.response, 'status_code') and e.response.status_code in retryable_status_codes:
-                    wait_time = 2 ** attempt
-                    time.sleep(wait_time)
-                    continue
-                raise  # 재시도 불가능한 오류는 즉시 raise
-                
             except requests.exceptions.RequestException as e:
-                # 기타 RequestException
-                last_exception = e
-                if attempt < max_retries:
-                    wait_time = 2 ** attempt
+                # 모든 네트워크/HTTP 오류 통합 처리
+                response = getattr(e, 'response', None)
+                
+                # 재시도 가능 여부 판단
+                if self._should_retry(attempt, max_retries, response, retryable_status_codes):
+                    # 재시도
+                    wait_time = self._calculate_wait_time(attempt, response)
                     time.sleep(wait_time)
                     continue
                 else:
-                    raise Exception(f"DART API 요청 실패 (최대 {max_retries}회 재시도 후 실패): {str(e)}")
-        
-        # 모든 재시도 실패 (이 코드는 실행되지 않아야 하지만 안전장치)
-        raise Exception(f"DART API 요청 실패 (최대 {max_retries}회 재시도 후 실패): {str(last_exception)}")
+                    # 재시도 불가능
+                    if isinstance(e, requests.exceptions.HTTPError):
+                        # HTTPError는 원래 예외 유지 (상태 코드, 에러 메시지 등 보존)
+                        raise
+                    else:
+                        # 네트워크 오류는 새로운 예외 생성 (상세 정보 포함)
+                        raise Exception(f"DART API 요청 실패 (최대 {max_retries}회 재시도 후 실패): {str(e)}")
     
     def get_company_info(self, corp_code):
         """

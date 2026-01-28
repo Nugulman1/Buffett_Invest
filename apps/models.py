@@ -8,9 +8,6 @@ class Company(models.Model):
     """회사 정보 및 필터 결과를 저장하는 Django 모델"""
     corp_code = models.CharField(max_length=8, primary_key=True, verbose_name='고유번호')
     company_name = models.CharField(max_length=200, blank=True, verbose_name='회사명')
-    business_type_code = models.CharField(max_length=10, blank=True, verbose_name='업종코드')
-    business_type_name = models.CharField(max_length=50, blank=True, verbose_name='업종명')
-    bond_yield_5y = models.FloatField(default=0.0, verbose_name='채권수익률(5년)')
     last_collected_at = models.DateTimeField(null=True, blank=True, verbose_name='마지막수집일시')
     passed_all_filters = models.BooleanField(default=False, verbose_name='전체필터통과')
     filter_operating_income = models.BooleanField(default=False, verbose_name='영업이익필터')
@@ -81,12 +78,9 @@ class YearlyFinancialData(models.Model):
     net_income = models.BigIntegerField(default=0, verbose_name='당기순이익')
     total_assets = models.BigIntegerField(default=0, verbose_name='자산총계')
     total_equity = models.BigIntegerField(default=0, verbose_name='자본총계')
-    # 주의: 아래 두 필드는 현재 수집하지 않음 (기본 지표 API에 해당 계정이 없음)
-    # API 호출 최적화를 위해 재무지표 API 호출을 제거했으며, 매출총이익률과 판관비율은 수집하지 않음
-    gross_profit_margin = models.FloatField(default=0.0, verbose_name='매출총이익률')  # 사용 안 함 (API 호출 제거)
-    selling_admin_expense_ratio = models.FloatField(default=0.0, verbose_name='판관비율')  # 사용 안 함 (API 호출 제거)
     operating_margin = models.FloatField(default=0.0, verbose_name='영업이익률')  # 계산 방식 (영업이익/매출액)
     roe = models.FloatField(default=0.0, verbose_name='ROE')  # 계산 방식 (당기순이익/자본총계)
+    interest_bearing_debt = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='이자부채')
     fcf = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자유현금흐름')
     roic = models.FloatField(default=0.0, null=True, blank=True, verbose_name='투하자본수익률')
     wacc = models.FloatField(default=0.0, null=True, blank=True, verbose_name='가중평균자본비용')
@@ -247,15 +241,13 @@ class FinancialStatementData:
 class YearlyFinancialDataObject:
     """년도별 재무 데이터 객체 (Python 클래스)"""
     
-    def __init__(self, year: int, corp_code: str = ""):
+    def __init__(self, year: int):
         """
         Args:
             year: 사업연도
-            corp_code: 고유번호 (8자리)
         """
         # 회사 정보
         self.year: int = year
-        self.corp_code: str = corp_code
         
         # === 기본 지표 (DART API) ===
         self.revenue: int = 0  # 매출액 (5Y)
@@ -263,10 +255,6 @@ class YearlyFinancialDataObject:
         self.net_income: int = 0  # 당기순이익 (5Y)
         self.total_assets: int = 0  # 자산총계
         self.total_equity: int = 0  # 자본총계
-        # 주의: 아래 두 필드는 현재 수집하지 않음 (기본 지표 API에 해당 계정이 없음)
-        # API 호출 최적화를 위해 재무지표 API 호출을 제거했으며, 매출총이익률과 판관비율은 수집하지 않음
-        self.gross_profit_margin: float = 0.0  # 매출총이익률 (%) - 사용 안 함 (API 호출 제거)
-        self.selling_admin_expense_ratio: float = 0.0  # 판관비율 (%) - 사용 안 함 (API 호출 제거)
         self.operating_margin: float = 0.0  # 영업이익률 (%) - 계산 방식 (영업이익/매출액)
         self.roe: float = 0.0  # ROE (%) - 계산 방식 (당기순이익/자본총계)
         
@@ -276,17 +264,7 @@ class YearlyFinancialDataObject:
         self.cfo: int = 0  # 영업활동현금흐름
         self.equity: int = 0  # 자기자본
         self.cash_and_cash_equivalents: int = 0  # 현금및현금성자산
-        self.short_term_borrowings: int = 0  # 단기차입금
-        self.current_portion_of_long_term_borrowings: int = 0  # 유동성장기차입금
-        self.long_term_borrowings: int = 0  # 장기차입금
-        self.bonds: int = 0  # 사채
-        self.lease_liabilities: int = 0  # 리스부채
-        self.convertible_bonds: int = 0  # 전환부채
-        
-        # === 현재 계산에 사용하지 않는 지표 ===
-        # (향후 계산 공식 변경 시 사용 가능, 데이터 수집은 계속 진행)
-        self.current_liabilities: int = 0  # 유동부채
-        self.interest_bearing_current_liabilities: int = 0  # 이자부유동부채
+        self.interest_bearing_debt: int = 0  # 이자부채 (통합)
         self.interest_expense: int = 0  # 이자비용 (WACC 계산에 사용)
         self.beta: float = 1.0  # 베타 (고정)
         self.mrp: float = 5.0  # MRP (고정)
@@ -297,17 +275,13 @@ class YearlyFinancialDataObject:
         self.roic: float = 0.0  # 투하자본수익률 (%)
         self.wacc: float = 0.0  # 가중평균자본비용 (%)
 
-
 class CompanyFinancialObject:
     """회사 재무제표 데이터 객체"""
     
     def __init__(self):
         # 회사 정보
         self.company_name: str = ""
-        self.business_type_code: str = ""
-        self.business_type_name: str = ""
         self.corp_code: str = ""
-        self.bond_yield_5y: float = 0.0  # 채권수익률 (국채 5년, 가장 최근 값)
         
         # 년도별 데이터 리스트
         self.yearly_data: list[YearlyFinancialDataObject] = []

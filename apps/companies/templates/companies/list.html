@@ -9,17 +9,16 @@
             <i class="bi bi-building me-2"></i>기업 정보
         </h2>
     </div>
-    
+
     <!-- 왼쪽 컬럼: 즐겨찾기 -->
     <div class="col-md-6">
         <div class="card mb-4">
             <div class="card-body p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div class="d-flex align-items-center">
-                        <button type="button" class="btn btn-sm btn-link p-0 me-2" @click="toggleFavorites()" 
+                        <button type="button" class="btn btn-sm btn-link p-0 me-2" @click="toggleFavorites()"
                             :title="favoritesCollapsed ? '펼치기' : '접기'">
-                            <i class="bi" 
-                                :class="favoritesCollapsed ? 'bi-chevron-down' : 'bi-chevron-up'"
+                            <i class="bi" :class="favoritesCollapsed ? 'bi-chevron-down' : 'bi-chevron-up'"
                                 style="transition: transform 0.2s;"></i>
                         </button>
                         <h2 class="card-title mb-0">
@@ -32,8 +31,7 @@
                 </div>
 
                 <!-- 그룹 필터 -->
-                <div class="mb-3" x-show="!favoritesCollapsed" 
-                    x-transition:enter="transition ease-out duration-200"
+                <div class="mb-3" x-show="!favoritesCollapsed" x-transition:enter="transition ease-out duration-200"
                     x-transition:enter-start="opacity-0 transform -translate-y-2"
                     x-transition:enter-end="opacity-100 transform translate-y-0"
                     x-transition:leave="transition ease-in duration-150"
@@ -48,32 +46,24 @@
                 </div>
 
                 <!-- 즐겨찾기 목록 -->
-                <div x-show="!favoritesCollapsed && loadingFavorites" 
-                    x-transition:enter="transition ease-out duration-200"
-                    x-transition:enter-start="opacity-0"
-                    x-transition:enter-end="opacity-100"
-                    x-transition:leave="transition ease-in duration-150"
-                    x-transition:leave-start="opacity-100"
-                    x-transition:leave-end="opacity-0"
-                    class="text-center py-3">
+                <div x-show="!favoritesCollapsed && loadingFavorites"
+                    x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+                    x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150"
+                    x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="text-center py-3">
                     <div class="loading-spinner mx-auto mb-2"></div>
                     <p class="text-muted">로딩 중...</p>
                 </div>
 
-                <div x-show="!favoritesCollapsed && !loadingFavorites && favoritesGroups.length === 0" 
-                    x-transition:enter="transition ease-out duration-200"
-                    x-transition:enter-start="opacity-0"
-                    x-transition:enter-end="opacity-100"
-                    x-transition:leave="transition ease-in duration-150"
-                    x-transition:leave-start="opacity-100"
-                    x-transition:leave-end="opacity-0"
+                <div x-show="!favoritesCollapsed && !loadingFavorites && favoritesGroups.length === 0"
+                    x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+                    x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150"
+                    x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
                     class="text-center py-3 text-muted">
                     즐겨찾기가 없습니다.
                 </div>
 
                 <template x-for="group in favoritesGroups" :key="group.group_id">
-                    <div class="mb-3" x-show="!favoritesCollapsed"
-                        x-transition:enter="transition ease-out duration-200"
+                    <div class="mb-3" x-show="!favoritesCollapsed" x-transition:enter="transition ease-out duration-200"
                         x-transition:enter-start="opacity-0 transform -translate-y-2"
                         x-transition:enter-end="opacity-100 transform translate-y-0"
                         x-transition:leave="transition ease-in duration-150"
@@ -81,10 +71,10 @@
                         x-transition:leave-end="opacity-0 transform -translate-y-2">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="d-flex align-items-center">
-                                <button type="button" class="btn btn-sm btn-link p-0 me-2" 
-                                    @click="toggleGroup(group.group_id)" 
+                                <button type="button" class="btn btn-sm btn-link p-0 me-2"
+                                    @click="toggleGroup(group.group_id)"
                                     :title="isGroupCollapsed(group.group_id) ? '펼치기' : '접기'">
-                                    <i class="bi" 
+                                    <i class="bi"
                                         :class="isGroupCollapsed(group.group_id) ? 'bi-chevron-down' : 'bi-chevron-up'"
                                         style="transition: transform 0.2s;"></i>
                                 </button>
@@ -96,7 +86,7 @@
                                 <i class="bi bi-trash"></i>
                             </button>
                         </div>
-                        <div class="list-group" 
+                        <div class="list-group"
                             x-show="!isGroupCollapsed(group.group_id) && group.favorites && group.favorites.length > 0"
                             x-transition:enter="transition ease-out duration-200"
                             x-transition:enter-start="opacity-0 max-h-0"
@@ -121,13 +111,10 @@
                                 </a>
                             </template>
                         </div>
-                        <div x-show="!isGroupCollapsed(group.group_id) && (!group.favorites || group.favorites.length === 0)" 
-                            x-transition:enter="transition ease-out duration-200"
-                            x-transition:enter-start="opacity-0"
-                            x-transition:enter-end="opacity-100"
-                            x-transition:leave="transition ease-in duration-150"
-                            x-transition:leave-start="opacity-100"
-                            x-transition:leave-end="opacity-0"
+                        <div x-show="!isGroupCollapsed(group.group_id) && (!group.favorites || group.favorites.length === 0)"
+                            x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+                            x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150"
+                            x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
                             class="text-muted small py-2">
                             이 그룹에 즐겨찾기가 없습니다.
                         </div>
@@ -136,17 +123,16 @@
             </div>
         </div>
     </div>
-    
+
     <!-- 오른쪽 컬럼: 필터 PASS 기업 -->
     <div class="col-md-6">
         <div class="card mb-4">
             <div class="card-body p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div class="d-flex align-items-center">
-                        <button type="button" class="btn btn-sm btn-link p-0 me-2" @click="togglePassedCompanies()" 
+                        <button type="button" class="btn btn-sm btn-link p-0 me-2" @click="togglePassedCompanies()"
                             :title="passedCompaniesCollapsed ? '펼치기' : '접기'">
-                            <i class="bi" 
-                                :class="passedCompaniesCollapsed ? 'bi-chevron-down' : 'bi-chevron-up'"
+                            <i class="bi" :class="passedCompaniesCollapsed ? 'bi-chevron-down' : 'bi-chevron-up'"
                                 style="transition: transform 0.2s;"></i>
                         </button>
                         <h2 class="card-title mb-0">
@@ -156,30 +142,23 @@
                 </div>
 
                 <!-- 필터 PASS 기업 목록 -->
-                <div x-show="!passedCompaniesCollapsed && loadingPassedCompanies" 
-                    x-transition:enter="transition ease-out duration-200"
-                    x-transition:enter-start="opacity-0"
-                    x-transition:enter-end="opacity-100"
-                    x-transition:leave="transition ease-in duration-150"
-                    x-transition:leave-start="opacity-100"
-                    x-transition:leave-end="opacity-0"
-                    class="text-center py-3">
+                <div x-show="!passedCompaniesCollapsed && loadingPassedCompanies"
+                    x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+                    x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150"
+                    x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="text-center py-3">
                     <div class="loading-spinner mx-auto mb-2"></div>
                     <p class="text-muted">로딩 중...</p>
                 </div>
 
-                <div x-show="!passedCompaniesCollapsed && !loadingPassedCompanies && passedCompanies.length === 0" 
-                    x-transition:enter="transition ease-out duration-200"
-                    x-transition:enter-start="opacity-0"
-                    x-transition:enter-end="opacity-100"
-                    x-transition:leave="transition ease-in duration-150"
-                    x-transition:leave-start="opacity-100"
-                    x-transition:leave-end="opacity-0"
+                <div x-show="!passedCompaniesCollapsed && !loadingPassedCompanies && passedCompanies.length === 0"
+                    x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+                    x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150"
+                    x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
                     class="text-center py-3 text-muted">
                     필터 통과 기업이 없습니다.
                 </div>
 
-                <div x-show="!passedCompaniesCollapsed && !loadingPassedCompanies && passedCompanies.length > 0" 
+                <div x-show="!passedCompaniesCollapsed && !loadingPassedCompanies && passedCompanies.length > 0"
                     x-transition:enter="transition ease-out duration-200"
                     x-transition:enter-start="opacity-0 transform -translate-y-2"
                     x-transition:enter-end="opacity-100 transform translate-y-0"
@@ -188,9 +167,10 @@
                     x-transition:leave-end="opacity-0 transform -translate-y-2">
                     <!-- 페이지네이션 정보 -->
                     <div class="mb-2 text-muted small">
-                        <span x-text="`${(passedCompaniesPage - 1) * passedCompaniesPageSize + 1}-${Math.min(passedCompaniesPage * passedCompaniesPageSize, passedCompaniesTotal)} / ${passedCompaniesTotal}개`"></span>
+                        <span
+                            x-text="`${(passedCompaniesPage - 1) * passedCompaniesPageSize + 1}-${Math.min(passedCompaniesPage * passedCompaniesPageSize, passedCompaniesTotal)} / ${passedCompaniesTotal}개`"></span>
                     </div>
-                    
+
                     <!-- 기업 목록 -->
                     <div class="list-group mb-3">
                         <template x-for="company in passedCompanies" :key="company.corp_code">
@@ -204,18 +184,18 @@
                             </a>
                         </template>
                     </div>
-                    
+
                     <!-- 페이지네이션 -->
                     <nav x-show="passedCompaniesTotalPages > 1" aria-label="필터 통과 기업 페이지네이션">
                         <ul class="pagination pagination-sm justify-content-center mb-0">
                             <!-- 이전 버튼 -->
                             <li class="page-item" :class="{ 'disabled': passedCompaniesPage === 1 }">
-                                <a class="page-link" href="#" @click.prevent="prevPassedCompaniesPage()" 
+                                <a class="page-link" href="#" @click.prevent="prevPassedCompaniesPage()"
                                     :aria-disabled="passedCompaniesPage === 1">
                                     <i class="bi bi-chevron-left"></i>
                                 </a>
                             </li>
-                            
+
                             <!-- 첫 페이지 -->
                             <template x-if="getPassedCompaniesPageRange()[0] > 1">
                                 <li class="page-item">
@@ -227,7 +207,7 @@
                                     <span class="page-link">...</span>
                                 </li>
                             </template>
-                            
+
                             <!-- 페이지 번호 -->
                             <template x-for="pageNum in getPassedCompaniesPageRange()" :key="pageNum">
                                 <li class="page-item" :class="{ 'active': pageNum === passedCompaniesPage }">
@@ -235,22 +215,26 @@
                                         x-text="pageNum"></a>
                                 </li>
                             </template>
-                            
+
                             <!-- 마지막 페이지 -->
-                            <template x-if="getPassedCompaniesPageRange()[getPassedCompaniesPageRange().length - 1] < passedCompaniesTotalPages - 1">
+                            <template
+                                x-if="getPassedCompaniesPageRange()[getPassedCompaniesPageRange().length - 1] < passedCompaniesTotalPages - 1">
                                 <li class="page-item disabled">
                                     <span class="page-link">...</span>
                                 </li>
                             </template>
-                            <template x-if="getPassedCompaniesPageRange()[getPassedCompaniesPageRange().length - 1] < passedCompaniesTotalPages">
+                            <template
+                                x-if="getPassedCompaniesPageRange()[getPassedCompaniesPageRange().length - 1] < passedCompaniesTotalPages">
                                 <li class="page-item">
-                                    <a class="page-link" href="#" @click.prevent="goToPassedCompaniesPage(passedCompaniesTotalPages)"
+                                    <a class="page-link" href="#"
+                                        @click.prevent="goToPassedCompaniesPage(passedCompaniesTotalPages)"
                                         x-text="passedCompaniesTotalPages"></a>
                                 </li>
                             </template>
-                            
+
                             <!-- 다음 버튼 -->
-                            <li class="page-item" :class="{ 'disabled': passedCompaniesPage === passedCompaniesTotalPages }">
+                            <li class="page-item"
+                                :class="{ 'disabled': passedCompaniesPage === passedCompaniesTotalPages }">
                                 <a class="page-link" href="#" @click.prevent="nextPassedCompaniesPage()"
                                     :aria-disabled="passedCompaniesPage === passedCompaniesTotalPages">
                                     <i class="bi bi-chevron-right"></i>
@@ -262,499 +246,490 @@
             </div>
         </div>
     </div>
-    
+
     <!-- 기업 조회 섹션 (전체 너비) -->
     <div class="col-12">
         <div class="card mb-4">
-        <div class="card mb-4">
-            <div class="card-body p-4">
-                <h2 class="card-title mb-4">
-                    <i class="bi bi-building me-2"></i>기업 재무 데이터 조회
-                </h2>
-                <p class="text-muted mb-4">
-                    기업명 또는 종목코드(6자리)를 입력하세요.
-                </p>
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h2 class="card-title mb-4">
+                        <i class="bi bi-building me-2"></i>기업 재무 데이터 조회
+                    </h2>
+                    <p class="text-muted mb-4">
+                        기업명 또는 종목코드(6자리)를 입력하세요.
+                    </p>
 
-                <div class="mb-3" style="position: relative;">
-                    <label for="corpCodeInput" class="form-label">기업명 또는 종목코드</label>
-                    <input type="text" id="corpCodeInput" 
-                        x-model="corpCode" 
-                        @input="handleInput()"
-                        @keyup.enter="handleEnter()"
-                        @focus="handleFocus()"
-                        @blur="handleBlur()"
-                        class="form-control" 
-                        placeholder="예: 삼성전자 또는 005930">
-                    <div class="form-text">
-                        <i class="bi bi-info-circle me-1"></i>
-                        기업명을 입력하면 자동완성 목록이 표시됩니다.
-                    </div>
-                    
-                    <!-- 자동완성 드롭다운 -->
-                    <div x-show="showSearchResults && searchResults.length > 0" 
-                        x-transition:enter="transition ease-out duration-200"
-                        x-transition:enter-start="opacity-0 transform -translate-y-2"
-                        x-transition:enter-end="opacity-100 transform translate-y-0"
-                        x-transition:leave="transition ease-in duration-150"
-                        x-transition:leave-start="opacity-100 transform translate-y-0"
-                        x-transition:leave-end="opacity-0 transform -translate-y-2"
-                        class="list-group" 
-                        style="position: absolute; z-index: 1000; width: 100%; max-height: 300px; overflow-y: auto; margin-top: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                        <template x-for="company in searchResults" :key="company.corp_code">
-                            <a href="#" 
-                                @click.prevent="selectCompany(company.corp_code)"
-                                class="list-group-item list-group-item-action">
-                                <div>
-                                    <strong x-text="company.company_name || '-'"></strong>
-                                    <br>
-                                    <small class="text-muted" x-text="company.business_type_name || '-'"></small>
-                                </div>
-                            </a>
-                        </template>
-                    </div>
-                </div>
+                    <div class="mb-3" style="position: relative;">
+                        <label for="corpCodeInput" class="form-label">기업명 또는 종목코드</label>
+                        <input type="text" id="corpCodeInput" x-model="corpCode" @input="handleInput()"
+                            @keyup.enter="handleEnter()" @focus="handleFocus()" @blur="handleBlur()"
+                            class="form-control" placeholder="예: 삼성전자 또는 005930">
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1"></i>
+                            기업명을 입력하면 자동완성 목록이 표시됩니다.
+                        </div>
 
-                <button type="button" class="btn btn-primary btn-lg w-100" @click="goToCompanyDetail()"
-                    :disabled="loading">
-                    <span x-show="!loading">
-                        <i class="bi bi-search me-2"></i>조회
-                    </span>
-                    <span x-show="loading" class="loading-spinner me-2"></span>
-                    <span x-show="loading">조회 중...</span>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 그룹 추가 모달 -->
-    <div x-show="showGroupModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050;"
-        x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0"
-        x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200"
-        x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
-        <div class="modal fade show"
-            style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">그룹 추가</h5>
-                        <button type="button" class="btn-close" @click="showGroupModal = false"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">그룹명</label>
-                            <input type="text" class="form-control" x-model="newGroupName" @keyup.enter="createGroup()"
-                                placeholder="예: 관심기업">
+                        <!-- 자동완성 드롭다운 -->
+                        <div x-show="showSearchResults && searchResults.length > 0"
+                            x-transition:enter="transition ease-out duration-200"
+                            x-transition:enter-start="opacity-0 transform -translate-y-2"
+                            x-transition:enter-end="opacity-100 transform translate-y-0"
+                            x-transition:leave="transition ease-in duration-150"
+                            x-transition:leave-start="opacity-100 transform translate-y-0"
+                            x-transition:leave-end="opacity-0 transform -translate-y-2" class="list-group"
+                            style="position: absolute; z-index: 1000; width: 100%; max-height: 300px; overflow-y: auto; margin-top: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                            <template x-for="company in searchResults" :key="company.corp_code">
+                                <a href="#" @click.prevent="selectCompany(company.corp_code)"
+                                    class="list-group-item list-group-item-action">
+                                    <div>
+                                        <strong x-text="company.company_name || '-'"></strong>
+                                    </div>
+                                </a>
+                            </template>
                         </div>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" @click="showGroupModal = false">취소</button>
-                        <button type="button" class="btn btn-primary" @click="createGroup()"
-                            :disabled="!newGroupName || creatingGroup">
-                            <span x-show="!creatingGroup">추가</span>
-                            <span x-show="creatingGroup">추가 중...</span>
-                        </button>
-                    </div>
+
+                    <button type="button" class="btn btn-primary btn-lg w-100" @click="goToCompanyDetail()"
+                        :disabled="loading">
+                        <span x-show="!loading">
+                            <i class="bi bi-search me-2"></i>조회
+                        </span>
+                        <span x-show="loading" class="loading-spinner me-2"></span>
+                        <span x-show="loading">조회 중...</span>
+                    </button>
                 </div>
             </div>
         </div>
-        <div class="modal-backdrop fade show"
-            style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1040; background-color: rgba(0,0,0,0.5);">
+
+        <!-- 그룹 추가 모달 -->
+        <div x-show="showGroupModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050;"
+            x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+            <div class="modal fade show"
+                style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">그룹 추가</h5>
+                            <button type="button" class="btn-close" @click="showGroupModal = false"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">그룹명</label>
+                                <input type="text" class="form-control" x-model="newGroupName"
+                                    @keyup.enter="createGroup()" placeholder="예: 관심기업">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @click="showGroupModal = false">취소</button>
+                            <button type="button" class="btn btn-primary" @click="createGroup()"
+                                :disabled="!newGroupName || creatingGroup">
+                                <span x-show="!creatingGroup">추가</span>
+                                <span x-show="creatingGroup">추가 중...</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-backdrop fade show"
+                style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1040; background-color: rgba(0,0,0,0.5);">
+            </div>
         </div>
     </div>
-</div>
 
-<script>
-    function companyList() {
-        return {
-            corpCode: '',
-            loading: false,
-            loadingFavorites: false,
-            favoriteGroups: [],
-            favoritesGroups: [],
-            selectedGroupId: '',
-            showGroupModal: false,
-            newGroupName: '',
-            creatingGroup: false,
-            favoritesCollapsed: true,  // 전체 섹션 접고 펼치기 (기본값: true - 접힌 상태)
-            collapsedGroups: {},        // 그룹별 접고 펼치기 상태 (group_id를 키로 사용, 기본값: 모든 그룹 접힘)
-            // 기업명 검색 관련
-            searchQuery: '',
-            searchResults: [],
-            showSearchResults: false,
-            searching: false,
-            searchTimeout: null,
-            // 필터 PASS 기업 관련
-            passedCompanies: [],
-            loadingPassedCompanies: false,
-            passedCompaniesCollapsed: true,  // 기본값: 접힌 상태
-            passedCompaniesPage: 1,  // 현재 페이지
-            passedCompaniesPageSize: 10,  // 페이지당 항목 수
-            passedCompaniesTotalPages: 0,  // 총 페이지 수
-            passedCompaniesTotal: 0,  // 전체 기업 수
+    <script>
+        function companyList() {
+            return {
+                corpCode: '',
+                loading: false,
+                loadingFavorites: false,
+                favoriteGroups: [],
+                favoritesGroups: [],
+                selectedGroupId: '',
+                showGroupModal: false,
+                newGroupName: '',
+                creatingGroup: false,
+                favoritesCollapsed: true,  // 전체 섹션 접고 펼치기 (기본값: true - 접힌 상태)
+                collapsedGroups: {},        // 그룹별 접고 펼치기 상태 (group_id를 키로 사용, 기본값: 모든 그룹 접힘)
+                // 기업명 검색 관련
+                searchQuery: '',
+                searchResults: [],
+                showSearchResults: false,
+                searching: false,
+                searchTimeout: null,
+                // 필터 PASS 기업 관련
+                passedCompanies: [],
+                loadingPassedCompanies: false,
+                passedCompaniesCollapsed: true,  // 기본값: 접힌 상태
+                passedCompaniesPage: 1,  // 현재 페이지
+                passedCompaniesPageSize: 10,  // 페이지당 항목 수
+                passedCompaniesTotalPages: 0,  // 총 페이지 수
+                passedCompaniesTotal: 0,  // 전체 기업 수
 
-            async init() {
-                await this.loadFavoriteGroups();
-                await this.loadFavorites();
-                await this.loadPassedCompanies();
-            },
+                async init() {
+                    await this.loadFavoriteGroups();
+                    await this.loadFavorites();
+                    await this.loadPassedCompanies();
+                },
 
-            async loadFavoriteGroups() {
-                try {
-                    const response = await fetch('/api/companies/favorite-groups/');
-                    const data = await response.json();
-                    if (response.ok) {
-                        this.favoriteGroups = data.groups || [];
-                    }
-                } catch (error) {
-                    console.error('그룹 목록 로드 실패:', error);
-                }
-            },
-
-            async loadFavorites() {
-                this.loadingFavorites = true;
-                try {
-                    const response = await fetch('/api/companies/favorites/');
-                    const data = await response.json();
-                    if (response.ok) {
-                        let groups = data.groups || [];
-                        // 그룹 필터 적용
-                        if (this.selectedGroupId) {
-                            groups = groups.filter(g => g.group_id == this.selectedGroupId);
+                async loadFavoriteGroups() {
+                    try {
+                        const response = await fetch('/api/companies/favorite-groups/');
+                        const data = await response.json();
+                        if (response.ok) {
+                            this.favoriteGroups = data.groups || [];
                         }
-                        this.favoritesGroups = groups;
+                    } catch (error) {
+                        console.error('그룹 목록 로드 실패:', error);
                     }
-                } catch (error) {
-                    console.error('즐겨찾기 목록 로드 실패:', error);
-                } finally {
-                    this.loadingFavorites = false;
-                }
-            },
+                },
 
-            async createGroup() {
-                if (!this.newGroupName.trim()) {
-                    alert('그룹명을 입력해주세요.');
-                    return;
-                }
-
-                this.creatingGroup = true;
-                try {
-                    const response = await fetch('/api/companies/favorite-groups/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': this.getCsrfToken()
-                        },
-                        body: JSON.stringify({ name: this.newGroupName.trim() })
-                    });
-
-                    const data = await response.json();
-                    if (response.ok) {
-                        await this.loadFavoriteGroups();
-                        this.newGroupName = '';
-                        this.showGroupModal = false;
-                        alert('그룹이 추가되었습니다.');
-                    } else {
-                        alert(data.error || '그룹 추가에 실패했습니다.');
-                    }
-                } catch (error) {
-                    alert('그룹 추가 중 오류가 발생했습니다: ' + error.message);
-                } finally {
-                    this.creatingGroup = false;
-                }
-            },
-
-            async deleteFavorite(corpCode, favoriteId) {
-                // favoriteId 유효성 검사
-                if (!favoriteId || favoriteId === 'undefined' || favoriteId === 'null') {
-                    alert('즐겨찾기 ID가 유효하지 않습니다.');
-                    console.error('Invalid favoriteId:', favoriteId);
-                    return;
-                }
-
-                // favoriteId가 숫자인지 확인
-                if (isNaN(parseInt(favoriteId))) {
-                    alert('즐겨찾기 ID가 유효하지 않습니다.');
-                    console.error('Invalid favoriteId (not a number):', favoriteId);
-                    return;
-                }
-
-                if (!confirm('이 그룹에서 즐겨찾기를 삭제하시겠습니까?')) {
-                    return;
-                }
-
-                try {
-                    const response = await fetch(`/api/companies/favorites/${favoriteId}/`, {
-                        method: 'DELETE',
-                        headers: {
-                            'X-CSRFToken': this.getCsrfToken()
+                async loadFavorites() {
+                    this.loadingFavorites = true;
+                    try {
+                        const response = await fetch('/api/companies/favorites/');
+                        const data = await response.json();
+                        if (response.ok) {
+                            let groups = data.groups || [];
+                            // 그룹 필터 적용
+                            if (this.selectedGroupId) {
+                                groups = groups.filter(g => g.group_id == this.selectedGroupId);
+                            }
+                            this.favoritesGroups = groups;
                         }
-                    });
-
-                    const data = await response.json();
-                    if (response.ok) {
-                        await this.loadFavorites();
-                        alert('즐겨찾기에서 삭제되었습니다.');
-                    } else {
-                        alert(data.error || '즐겨찾기 삭제에 실패했습니다.');
+                    } catch (error) {
+                        console.error('즐겨찾기 목록 로드 실패:', error);
+                    } finally {
+                        this.loadingFavorites = false;
                     }
-                } catch (error) {
-                    alert('즐겨찾기 삭제 중 오류가 발생했습니다: ' + error.message);
-                }
-            },
+                },
 
-            async deleteGroup(groupId, groupName) {
-                if (!confirm(`"${groupName}" 그룹을 삭제하시겠습니까? 그룹에 속한 모든 즐겨찾기도 함께 삭제됩니다.`)) {
-                    return;
-                }
+                async createGroup() {
+                    if (!this.newGroupName.trim()) {
+                        alert('그룹명을 입력해주세요.');
+                        return;
+                    }
 
-                try {
-                    const response = await fetch(`/api/companies/favorite-groups/${groupId}/`, {
-                        method: 'DELETE',
-                        headers: {
-                            'X-CSRFToken': this.getCsrfToken()
+                    this.creatingGroup = true;
+                    try {
+                        const response = await fetch('/api/companies/favorite-groups/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': this.getCsrfToken()
+                            },
+                            body: JSON.stringify({ name: this.newGroupName.trim() })
+                        });
+
+                        const data = await response.json();
+                        if (response.ok) {
+                            await this.loadFavoriteGroups();
+                            this.newGroupName = '';
+                            this.showGroupModal = false;
+                            alert('그룹이 추가되었습니다.');
+                        } else {
+                            alert(data.error || '그룹 추가에 실패했습니다.');
                         }
-                    });
+                    } catch (error) {
+                        alert('그룹 추가 중 오류가 발생했습니다: ' + error.message);
+                    } finally {
+                        this.creatingGroup = false;
+                    }
+                },
 
-                    const data = await response.json();
-                    if (response.ok) {
-                        await this.loadFavoriteGroups();
-                        await this.loadFavorites();
-                        alert('그룹이 삭제되었습니다.');
+                async deleteFavorite(corpCode, favoriteId) {
+                    // favoriteId 유효성 검사
+                    if (!favoriteId || favoriteId === 'undefined' || favoriteId === 'null') {
+                        alert('즐겨찾기 ID가 유효하지 않습니다.');
+                        console.error('Invalid favoriteId:', favoriteId);
+                        return;
+                    }
+
+                    // favoriteId가 숫자인지 확인
+                    if (isNaN(parseInt(favoriteId))) {
+                        alert('즐겨찾기 ID가 유효하지 않습니다.');
+                        console.error('Invalid favoriteId (not a number):', favoriteId);
+                        return;
+                    }
+
+                    if (!confirm('이 그룹에서 즐겨찾기를 삭제하시겠습니까?')) {
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/companies/favorites/${favoriteId}/`, {
+                            method: 'DELETE',
+                            headers: {
+                                'X-CSRFToken': this.getCsrfToken()
+                            }
+                        });
+
+                        const data = await response.json();
+                        if (response.ok) {
+                            await this.loadFavorites();
+                            alert('즐겨찾기에서 삭제되었습니다.');
+                        } else {
+                            alert(data.error || '즐겨찾기 삭제에 실패했습니다.');
+                        }
+                    } catch (error) {
+                        alert('즐겨찾기 삭제 중 오류가 발생했습니다: ' + error.message);
+                    }
+                },
+
+                async deleteGroup(groupId, groupName) {
+                    if (!confirm(`"${groupName}" 그룹을 삭제하시겠습니까? 그룹에 속한 모든 즐겨찾기도 함께 삭제됩니다.`)) {
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/companies/favorite-groups/${groupId}/`, {
+                            method: 'DELETE',
+                            headers: {
+                                'X-CSRFToken': this.getCsrfToken()
+                            }
+                        });
+
+                        const data = await response.json();
+                        if (response.ok) {
+                            await this.loadFavoriteGroups();
+                            await this.loadFavorites();
+                            alert('그룹이 삭제되었습니다.');
+                        } else {
+                            alert(data.error || '그룹 삭제에 실패했습니다.');
+                        }
+                    } catch (error) {
+                        alert('그룹 삭제 중 오류가 발생했습니다: ' + error.message);
+                    }
+                },
+
+                getCsrfToken() {
+                    const cookies = document.cookie.split(';');
+                    for (let cookie of cookies) {
+                        const [name, value] = cookie.trim().split('=');
+                        if (name === 'csrftoken') {
+                            return value;
+                        }
+                    }
+                    return '';
+                },
+
+                toggleFavorites() {
+                    this.favoritesCollapsed = !this.favoritesCollapsed;
+                },
+
+                toggleGroup(groupId) {
+                    if (this.collapsedGroups[groupId]) {
+                        delete this.collapsedGroups[groupId];
                     } else {
-                        alert(data.error || '그룹 삭제에 실패했습니다.');
+                        this.collapsedGroups[groupId] = true;
                     }
-                } catch (error) {
-                    alert('그룹 삭제 중 오류가 발생했습니다: ' + error.message);
-                }
-            },
+                },
 
-            getCsrfToken() {
-                const cookies = document.cookie.split(';');
-                for (let cookie of cookies) {
-                    const [name, value] = cookie.trim().split('=');
-                    if (name === 'csrftoken') {
-                        return value;
-                    }
-                }
-                return '';
-            },
+                isGroupCollapsed(groupId) {
+                    return this.collapsedGroups[groupId] === true;
+                },
 
-            toggleFavorites() {
-                this.favoritesCollapsed = !this.favoritesCollapsed;
-            },
+                togglePassedCompanies() {
+                    this.passedCompaniesCollapsed = !this.passedCompaniesCollapsed;
+                },
 
-            toggleGroup(groupId) {
-                if (this.collapsedGroups[groupId]) {
-                    delete this.collapsedGroups[groupId];
-                } else {
-                    this.collapsedGroups[groupId] = true;
-                }
-            },
-
-            isGroupCollapsed(groupId) {
-                return this.collapsedGroups[groupId] === true;
-            },
-            
-            togglePassedCompanies() {
-                this.passedCompaniesCollapsed = !this.passedCompaniesCollapsed;
-            },
-            
-            async loadPassedCompanies(page = null) {
-                // page 파라미터가 없으면 현재 페이지 사용
-                if (page === null) {
-                    page = this.passedCompaniesPage;
-                } else {
-                    this.passedCompaniesPage = page;
-                }
-                
-                this.loadingPassedCompanies = true;
-                try {
-                    const response = await fetch(`/api/companies/passed/?page=${page}&page_size=${this.passedCompaniesPageSize}`);
-                    const data = await response.json();
-                    if (response.ok) {
-                        this.passedCompanies = data.companies || [];
-                        this.passedCompaniesTotal = data.total || 0;
-                        this.passedCompaniesTotalPages = data.total_pages || 0;
-                        this.passedCompaniesPage = data.page || 1;
-                    }
-                } catch (error) {
-                    console.error('필터 통과 기업 목록 로드 실패:', error);
-                    this.passedCompanies = [];
-                    this.passedCompaniesTotal = 0;
-                    this.passedCompaniesTotalPages = 0;
-                } finally {
-                    this.loadingPassedCompanies = false;
-                }
-            },
-            
-            goToPassedCompaniesPage(page) {
-                if (page >= 1 && page <= this.passedCompaniesTotalPages) {
-                    this.loadPassedCompanies(page);
-                }
-            },
-            
-            prevPassedCompaniesPage() {
-                if (this.passedCompaniesPage > 1) {
-                    this.goToPassedCompaniesPage(this.passedCompaniesPage - 1);
-                }
-            },
-            
-            nextPassedCompaniesPage() {
-                if (this.passedCompaniesPage < this.passedCompaniesTotalPages) {
-                    this.goToPassedCompaniesPage(this.passedCompaniesPage + 1);
-                }
-            },
-            
-            getPassedCompaniesPageRange() {
-                // 표시할 페이지 번호 범위 계산 (최대 7개)
-                const maxVisible = 7;
-                const current = this.passedCompaniesPage;
-                const total = this.passedCompaniesTotalPages;
-                
-                if (total <= maxVisible) {
-                    // 총 페이지가 7개 이하면 모두 표시
-                    return Array.from({ length: total }, (_, i) => i + 1);
-                }
-                
-                // 현재 페이지를 중심으로 표시
-                let start = Math.max(1, current - Math.floor(maxVisible / 2));
-                let end = Math.min(total, start + maxVisible - 1);
-                
-                // 끝에 도달했을 때 조정
-                if (end - start < maxVisible - 1) {
-                    start = Math.max(1, end - maxVisible + 1);
-                }
-                
-                return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-            },
-
-            handleInput() {
-                const query = this.corpCode.trim();
-                
-                // 기존 타이머 취소
-                if (this.searchTimeout) {
-                    clearTimeout(this.searchTimeout);
-                }
-                
-                // 숫자만 입력된 경우 (종목코드) 검색하지 않음
-                if (/^\d+$/.test(query)) {
-                    this.showSearchResults = false;
-                    this.searchResults = [];
-                    return;
-                }
-                
-                // 빈 검색어 처리
-                if (!query || query.length < 1) {
-                    this.showSearchResults = false;
-                    this.searchResults = [];
-                    return;
-                }
-                
-                // Debounce: 300ms 후 검색 실행
-                this.searchTimeout = setTimeout(() => {
-                    this.searchCompanies(query);
-                }, 300);
-            },
-            
-            async searchCompanies(query) {
-                if (!query || query.trim().length < 1) {
-                    this.showSearchResults = false;
-                    this.searchResults = [];
-                    return;
-                }
-                
-                this.searching = true;
-                try {
-                    const response = await fetch(`/api/companies/search/?q=${encodeURIComponent(query)}&limit=10`);
-                    const data = await response.json();
-                    
-                    if (response.ok) {
-                        this.searchResults = data.companies || [];
-                        this.showSearchResults = this.searchResults.length > 0;
+                async loadPassedCompanies(page = null) {
+                    // page 파라미터가 없으면 현재 페이지 사용
+                    if (page === null) {
+                        page = this.passedCompaniesPage;
                     } else {
+                        this.passedCompaniesPage = page;
+                    }
+
+                    this.loadingPassedCompanies = true;
+                    try {
+                        const response = await fetch(`/api/companies/passed/?page=${page}&page_size=${this.passedCompaniesPageSize}`);
+                        const data = await response.json();
+                        if (response.ok) {
+                            this.passedCompanies = data.companies || [];
+                            this.passedCompaniesTotal = data.total || 0;
+                            this.passedCompaniesTotalPages = data.total_pages || 0;
+                            this.passedCompaniesPage = data.page || 1;
+                        }
+                    } catch (error) {
+                        console.error('필터 통과 기업 목록 로드 실패:', error);
+                        this.passedCompanies = [];
+                        this.passedCompaniesTotal = 0;
+                        this.passedCompaniesTotalPages = 0;
+                    } finally {
+                        this.loadingPassedCompanies = false;
+                    }
+                },
+
+                goToPassedCompaniesPage(page) {
+                    if (page >= 1 && page <= this.passedCompaniesTotalPages) {
+                        this.loadPassedCompanies(page);
+                    }
+                },
+
+                prevPassedCompaniesPage() {
+                    if (this.passedCompaniesPage > 1) {
+                        this.goToPassedCompaniesPage(this.passedCompaniesPage - 1);
+                    }
+                },
+
+                nextPassedCompaniesPage() {
+                    if (this.passedCompaniesPage < this.passedCompaniesTotalPages) {
+                        this.goToPassedCompaniesPage(this.passedCompaniesPage + 1);
+                    }
+                },
+
+                getPassedCompaniesPageRange() {
+                    // 표시할 페이지 번호 범위 계산 (최대 7개)
+                    const maxVisible = 7;
+                    const current = this.passedCompaniesPage;
+                    const total = this.passedCompaniesTotalPages;
+
+                    if (total <= maxVisible) {
+                        // 총 페이지가 7개 이하면 모두 표시
+                        return Array.from({ length: total }, (_, i) => i + 1);
+                    }
+
+                    // 현재 페이지를 중심으로 표시
+                    let start = Math.max(1, current - Math.floor(maxVisible / 2));
+                    let end = Math.min(total, start + maxVisible - 1);
+
+                    // 끝에 도달했을 때 조정
+                    if (end - start < maxVisible - 1) {
+                        start = Math.max(1, end - maxVisible + 1);
+                    }
+
+                    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+                },
+
+                handleInput() {
+                    const query = this.corpCode.trim();
+
+                    // 기존 타이머 취소
+                    if (this.searchTimeout) {
+                        clearTimeout(this.searchTimeout);
+                    }
+
+                    // 숫자만 입력된 경우 (종목코드) 검색하지 않음
+                    if (/^\d+$/.test(query)) {
+                        this.showSearchResults = false;
+                        this.searchResults = [];
+                        return;
+                    }
+
+                    // 빈 검색어 처리
+                    if (!query || query.length < 1) {
+                        this.showSearchResults = false;
+                        this.searchResults = [];
+                        return;
+                    }
+
+                    // Debounce: 300ms 후 검색 실행
+                    this.searchTimeout = setTimeout(() => {
+                        this.searchCompanies(query);
+                    }, 300);
+                },
+
+                async searchCompanies(query) {
+                    if (!query || query.trim().length < 1) {
+                        this.showSearchResults = false;
+                        this.searchResults = [];
+                        return;
+                    }
+
+                    this.searching = true;
+                    try {
+                        const response = await fetch(`/api/companies/search/?q=${encodeURIComponent(query)}&limit=10`);
+                        const data = await response.json();
+
+                        if (response.ok) {
+                            this.searchResults = data.companies || [];
+                            this.showSearchResults = this.searchResults.length > 0;
+                        } else {
+                            this.searchResults = [];
+                            this.showSearchResults = false;
+                        }
+                    } catch (error) {
+                        console.error('기업 검색 실패:', error);
                         this.searchResults = [];
                         this.showSearchResults = false;
+                    } finally {
+                        this.searching = false;
                     }
-                } catch (error) {
-                    console.error('기업 검색 실패:', error);
-                    this.searchResults = [];
-                    this.showSearchResults = false;
-                } finally {
-                    this.searching = false;
-                }
-            },
-            
-            selectCompany(corpCode) {
-                // 선택한 기업의 상세 페이지로 이동
-                window.location.href = `/companies/${corpCode}/`;
-            },
-            
-            handleFocus() {
-                // 포커스 시 검색 결과가 있으면 표시
-                if (this.searchResults.length > 0) {
-                    this.showSearchResults = true;
-                }
-            },
-            
-            handleBlur() {
-                // blur 이벤트는 약간 지연시켜서 클릭 이벤트가 먼저 발생하도록
-                setTimeout(() => {
-                    this.showSearchResults = false;
-                }, 200);
-            },
-            
-            handleEnter() {
-                // 엔터키 입력 시
-                const code = this.corpCode.trim();
-                
-                if (!code) {
-                    return;
-                }
-                
-                // 검색 결과가 있고 첫 번째 결과가 있으면 해당 기업으로 이동
-                if (this.searchResults.length > 0) {
-                    this.selectCompany(this.searchResults[0].corp_code);
-                    return;
-                }
-                
-                // 숫자만 입력된 경우 종목코드(6자리)로 처리
-                if (/^\d+$/.test(code)) {
-                    if (code.length === 6) {
-                        // 종목코드로 이동
-                        window.location.href = '/companies/' + code + '/';
-                    } else {
-                        alert('종목코드는 6자리 숫자입니다.');
-                    }
-                }
-            },
-            
-            goToCompanyDetail() {
-                const code = this.corpCode.trim();
+                },
 
-                if (!code) {
-                    alert('기업명 또는 종목코드를 입력해주세요.');
-                    return;
-                }
+                selectCompany(corpCode) {
+                    // 선택한 기업의 상세 페이지로 이동
+                    window.location.href = `/companies/${corpCode}/`;
+                },
 
-                // 입력값이 숫자만 있는지 확인 (종목코드인 경우)
-                if (/^\d+$/.test(code)) {
-                    // 종목코드(6자리)만 허용
-                    if (code.length === 6) {
-                        // 종목코드로 이동 (백엔드에서 변환 처리)
-                        window.location.href = '/companies/' + code + '/';
-                    } else {
-                        alert('종목코드는 6자리 숫자입니다.');
-                    }
-                } else {
-                    // 기업명인 경우 검색 결과에서 선택하도록 안내
+                handleFocus() {
+                    // 포커스 시 검색 결과가 있으면 표시
                     if (this.searchResults.length > 0) {
-                        alert('검색 결과에서 기업을 선택해주세요.');
+                        this.showSearchResults = true;
+                    }
+                },
+
+                handleBlur() {
+                    // blur 이벤트는 약간 지연시켜서 클릭 이벤트가 먼저 발생하도록
+                    setTimeout(() => {
+                        this.showSearchResults = false;
+                    }, 200);
+                },
+
+                handleEnter() {
+                    // 엔터키 입력 시
+                    const code = this.corpCode.trim();
+
+                    if (!code) {
+                        return;
+                    }
+
+                    // 검색 결과가 있고 첫 번째 결과가 있으면 해당 기업으로 이동
+                    if (this.searchResults.length > 0) {
+                        this.selectCompany(this.searchResults[0].corp_code);
+                        return;
+                    }
+
+                    // 숫자만 입력된 경우 종목코드(6자리)로 처리
+                    if (/^\d+$/.test(code)) {
+                        if (code.length === 6) {
+                            // 종목코드로 이동
+                            window.location.href = '/companies/' + code + '/';
+                        } else {
+                            alert('종목코드는 6자리 숫자입니다.');
+                        }
+                    }
+                },
+
+                goToCompanyDetail() {
+                    const code = this.corpCode.trim();
+
+                    if (!code) {
+                        alert('기업명 또는 종목코드를 입력해주세요.');
+                        return;
+                    }
+
+                    // 입력값이 숫자만 있는지 확인 (종목코드인 경우)
+                    if (/^\d+$/.test(code)) {
+                        // 종목코드(6자리)만 허용
+                        if (code.length === 6) {
+                            // 종목코드로 이동 (백엔드에서 변환 처리)
+                            window.location.href = '/companies/' + code + '/';
+                        } else {
+                            alert('종목코드는 6자리 숫자입니다.');
+                        }
                     } else {
-                        alert('기업명을 입력하면 검색 결과가 표시됩니다. 검색 결과에서 기업을 선택해주세요.');
+                        // 기업명인 경우 검색 결과에서 선택하도록 안내
+                        if (this.searchResults.length > 0) {
+                            alert('검색 결과에서 기업을 선택해주세요.');
+                        } else {
+                            alert('기업명을 입력하면 검색 결과가 표시됩니다. 검색 결과에서 기업을 선택해주세요.');
+                        }
                     }
                 }
             }
         }
-    }
-</script>
-{% endblock %}
+    </script>
+    {% endblock %}

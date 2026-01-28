@@ -1,13 +1,19 @@
 # TODO 리스트
 
-## [최우선] 
+## [진행중] 
+- 오케스트라 작동 추적하며 코드 구조 개선중
+  - 진행 위치: `apps/service/orchestrator.py` (44-45줄)
+  - 완료된 작업:
+    - `_make_request()` 메서드 리팩토링 (헬퍼 함수 추가, 예외 처리 통합)
+    - 금융업 관련 로직 제거 (`is_financial_industry()`, `business_type_code`, `business_type_name` 필드 제거)
+    - 불필요한 필드 제거 (`business_type_code`, `business_type_name`)
 
+## [최우선] 
 - 구조 정리, 코드 리팩토링, 의존성 개선 등 효율성 개선
 - 로그 정리
 - 마지막 단계 완료되면 실제 사용 영상 만들어 팀 들어가는 포트폴리오로 활용
 
 ## [보류]
-
 
 ## [추후]
 - 해외 기업까지 분석 기능 추가

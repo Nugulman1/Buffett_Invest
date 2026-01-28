@@ -7,7 +7,7 @@ from apps.service.calculator import IndicatorCalculator
 from apps.service.filter import CompanyFilter
 from apps.models import CompanyFinancialObject, YearlyFinancialDataObject
 from apps.dart.client import DartClient
-from apps.utils.utils import is_financial_industry, save_company_to_db
+from apps.utils.utils import save_company_to_db
 
 
 class DataOrchestrator:
@@ -38,12 +38,6 @@ class DataOrchestrator:
             company_info = self.dart_client.get_company_info(corp_code)
             if company_info:
                 company_data.company_name = company_info.get('corp_name', '')
-                induty_code = company_info.get('induty_code', '')
-                company_data.business_type_code = induty_code
-                
-                # 금융업 여부 판별
-                is_financial = is_financial_industry(induty_code)
-                company_data.business_type_name = "금융업" if is_financial else "비금융업"
         except Exception as e:
             print(f"경고: 기업 정보 조회 실패: {e}")
         
@@ -68,6 +62,7 @@ class DataOrchestrator:
         #     pass
         
         # ECOS 데이터 수집 (채권수익률 - 하루 기준으로 캐싱)
+        # 채권수익률은 BondYield 모델에 캐싱되며, 필요 시 get_bond_yield_5y() 함수로 조회
         try:
             from django.utils import timezone
             from datetime import timedelta
@@ -93,15 +88,9 @@ class DataOrchestrator:
                 bond_yield_obj.yield_value = bond_yield_value
                 bond_yield_obj.collected_at = timezone.now()
                 bond_yield_obj.save()
-            else:
-                # 캐시된 값 사용
-                bond_yield_value = bond_yield_obj.yield_value
-            
-            company_data.bond_yield_5y = bond_yield_value
         except Exception as e:
             print(f"경고: 채권수익률 수집 실패: {e}")
-            # 채권수익률은 실패해도 계속 진행
-            company_data.bond_yield_5y = 0.0
+            # 채권수익률 수집 실패해도 계속 진행 (기본값 사용)
         
         # 계산 로직 호출하여 계산 지표 채우기
         # try:

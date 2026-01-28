@@ -6,31 +6,6 @@ from django.apps import apps as django_apps
 from apps.models import CompanyFinancialObject, YearlyFinancialDataObject
 
 
-def is_financial_industry(induty_code: str) -> bool:
-    """
-    KSIC 코드로 금융업 여부 판별
-    
-    금융업 KSIC 코드:
-    - 651: 일반 금융업
-    - 659: 기타 금융업
-    - 660: 보험 및 연금업
-    - 671: 금융 관련 서비스업
-    
-    Args:
-        induty_code: KSIC 업종 코드 (예: '264', '651')
-        
-    Returns:
-        금융업 여부 (bool)
-    """
-    if not induty_code:
-        return False
-    
-    # 앞 3자리로 판별
-    code_prefix = str(induty_code)[:3]
-    financial_codes = ['651', '659', '660', '671']
-    return code_prefix in financial_codes
-
-
 def classify_company_size(total_assets: int) -> str:
     """
     총자산 기준으로 기업 규모 분류
@@ -55,6 +30,35 @@ def classify_company_size(total_assets: int) -> str:
         return 'large'  # 대기업
     else:
         return 'medium'  # 중견기업
+
+
+def get_bond_yield_5y() -> float:
+    """
+    캐싱된 국채 5년 수익률 조회 (BondYield 모델에서)
+    
+    BondYield 모델은 단일 레코드만 유지하며, 하루 기준으로 캐싱됩니다.
+    필요 시 ECOS API를 호출하여 업데이트하는 것은 orchestrator에서 처리합니다.
+    
+    Returns:
+        국채 5년 수익률 (소수 형태, 예: 0.03057 = 3.057%)
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    BondYieldModel = django_apps.get_model('apps', 'BondYield')
+    
+    try:
+        bond_yield_obj, created = BondYieldModel.objects.get_or_create(
+            id=1,  # 단일 레코드
+            defaults={
+                'yield_value': 0.0,
+                'collected_at': timezone.now() - timedelta(days=2)  # 기본값: 2일 전
+            }
+        )
+        return bond_yield_obj.yield_value
+    except Exception:
+        # 에러 발생 시 기본값 반환
+        return 0.0
 
 
 def normalize_account_name(account_name: str) -> str:
@@ -177,8 +181,9 @@ def print_latest_year_indicators(company_data: CompanyFinancialObject):
     print("=" * 80)
     print(f"회사 정보: {company_data.company_name} ({company_data.corp_code})")
     print(f"가장 최근 년도: {latest_data.year}년")
-    if company_data.bond_yield_5y > 0:
-        print(f"채권수익률 (5년): {company_data.bond_yield_5y:.2f}%")
+    bond_yield = get_bond_yield_5y()
+    if bond_yield > 0:
+        print(f"채권수익률 (5년): {bond_yield * 100:.2f}%")
     else:
         print(f"채권수익률 (5년): 수집되지 않음")
     print("=" * 80)
@@ -186,19 +191,13 @@ def print_latest_year_indicators(company_data: CompanyFinancialObject):
     print(f"  자산총계: {format_amount_korean(latest_data.total_assets)} ({latest_data.total_assets:,} 원)")
     print(f"  영업이익: {format_amount_korean(latest_data.operating_income)} ({latest_data.operating_income:,} 원)")
     print(f"  당기순이익: {format_amount_korean(latest_data.net_income)} ({latest_data.net_income:,} 원)")
-    print(f"  유동부채: {format_amount_korean(latest_data.current_liabilities)} ({latest_data.current_liabilities:,} 원)")
-    print(f"  이자부유동부채: {format_amount_korean(latest_data.interest_bearing_current_liabilities)} ({latest_data.interest_bearing_current_liabilities:,} 원)")
     print(f"  유형자산 취득: {format_amount_korean(latest_data.tangible_asset_acquisition)} ({latest_data.tangible_asset_acquisition:,} 원)")
     print(f"  무형자산 취득: {format_amount_korean(latest_data.intangible_asset_acquisition)} ({latest_data.intangible_asset_acquisition:,} 원)")
     print(f"  CFO (영업활동현금흐름): {format_amount_korean(latest_data.cfo)} ({latest_data.cfo:,} 원)")
     print(f"  이자비용: {format_amount_korean(latest_data.interest_expense)} ({latest_data.interest_expense:,} 원)")
     print(f"  자기자본: {format_amount_korean(latest_data.equity)} ({latest_data.equity:,} 원)")
     print(f"  현금및현금성자산: {format_amount_korean(latest_data.cash_and_cash_equivalents)} ({latest_data.cash_and_cash_equivalents:,} 원)")
-    print(f"  단기차입금: {format_amount_korean(latest_data.short_term_borrowings)} ({latest_data.short_term_borrowings:,} 원)")
-    print(f"  유동성장기차입금: {format_amount_korean(latest_data.current_portion_of_long_term_borrowings)} ({latest_data.current_portion_of_long_term_borrowings:,} 원)")
-    print(f"  장기차입금: {format_amount_korean(latest_data.long_term_borrowings)} ({latest_data.long_term_borrowings:,} 원)")
-    print(f"  사채: {format_amount_korean(latest_data.bonds)} ({latest_data.bonds:,} 원)")
-    print(f"  리스부채: {format_amount_korean(latest_data.lease_liabilities)} ({latest_data.lease_liabilities:,} 원)")
+    print(f"  이자부채: {format_amount_korean(latest_data.interest_bearing_debt)} ({latest_data.interest_bearing_debt:,} 원)")
     print(f"  베타: {latest_data.beta}")
     print(f"  MRP: {latest_data.mrp}%")
     
@@ -310,9 +309,6 @@ def load_company_from_db(corp_code: str) -> CompanyFinancialObject | None:
         company_data = CompanyFinancialObject()
         company_data.corp_code = company.corp_code
         company_data.company_name = company.company_name or ""
-        company_data.business_type_code = company.business_type_code or ""
-        company_data.business_type_name = company.business_type_name or ""
-        company_data.bond_yield_5y = company.bond_yield_5y or 0.0
         company_data.passed_all_filters = company.passed_all_filters
         company_data.filter_operating_income = company.filter_operating_income
         company_data.filter_net_income = company.filter_net_income
@@ -322,16 +318,15 @@ def load_company_from_db(corp_code: str) -> CompanyFinancialObject | None:
         
         # YearlyFinancialDataObject 리스트 생성
         for yearly_data_db in yearly_data_list:
-            yearly_data_obj = YearlyFinancialDataObject(year=yearly_data_db.year, corp_code=corp_code)
+            yearly_data_obj = YearlyFinancialDataObject(year=yearly_data_db.year)
             yearly_data_obj.revenue = yearly_data_db.revenue or 0
             yearly_data_obj.operating_income = yearly_data_db.operating_income or 0
             yearly_data_obj.net_income = yearly_data_db.net_income or 0
             yearly_data_obj.total_assets = yearly_data_db.total_assets or 0
             yearly_data_obj.total_equity = yearly_data_db.total_equity or 0
-            yearly_data_obj.gross_profit_margin = yearly_data_db.gross_profit_margin or 0.0
-            yearly_data_obj.selling_admin_expense_ratio = yearly_data_db.selling_admin_expense_ratio or 0.0
             yearly_data_obj.operating_margin = yearly_data_db.operating_margin or 0.0
             yearly_data_obj.roe = yearly_data_db.roe or 0.0
+            yearly_data_obj.interest_bearing_debt = yearly_data_db.interest_bearing_debt or 0
             yearly_data_obj.fcf = yearly_data_db.fcf
             yearly_data_obj.roic = yearly_data_db.roic
             yearly_data_obj.wacc = yearly_data_db.wacc
@@ -378,9 +373,6 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
             corp_code=company_data.corp_code,
             defaults={
                 'company_name': company_data.company_name,
-                'business_type_code': company_data.business_type_code,
-                'business_type_name': company_data.business_type_name,
-                'bond_yield_5y': company_data.bond_yield_5y,
                 'last_collected_at': now,
                 'passed_all_filters': company_data.passed_all_filters,
                 'filter_operating_income': company_data.filter_operating_income,
@@ -409,12 +401,10 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                     'net_income': yearly_data.net_income,
                     'total_assets': yearly_data.total_assets,
                     'total_equity': yearly_data.total_equity,
-                    # gross_profit_margin, selling_admin_expense_ratio는 수집하지 않음 (0.0으로 저장됨)
-                    'gross_profit_margin': yearly_data.gross_profit_margin,
-                    'selling_admin_expense_ratio': yearly_data.selling_admin_expense_ratio,
                     # operating_margin, roe는 계산 방식으로 채워짐
                     'operating_margin': yearly_data.operating_margin,
                     'roe': yearly_data.roe,
+                    'interest_bearing_debt': yearly_data.interest_bearing_debt or 0,
                 }
             )
 

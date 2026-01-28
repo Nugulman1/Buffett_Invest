@@ -43,16 +43,16 @@
                     isQuarterly: false,
                     displayYear: yd.year.toString()
                 }));
-                
+
                 const quarterly = this.quarterlyData.map(qd => {
-                    const quarterNames = {1: 'Q1', 2: '반기', 3: 'Q3'};
+                    const quarterNames = { 1: 'Q1', 2: '반기', 3: 'Q3' };
                     return {
                         ...qd,
                         isQuarterly: true,
                         displayYear: `${qd.year}-${quarterNames[qd.quarter] || qd.quarter}`
                     };
                 });
-                
+
                 // 연도와 분기 기준으로 정렬 (최신순)
                 const all = [...yearly, ...quarterly];
                 return all.sort((a, b) => {
@@ -76,7 +76,7 @@
                 await this.fetchQuarterlyData();
                 await this.loadFavoriteGroups();
                 await this.loadFavorites();
-                
+
                 // 메모 변경 추적
                 this.$watch('memoText', (newVal, oldVal) => {
                     if (newVal !== this.initialMemoText) {
@@ -85,7 +85,7 @@
                         this.memoChanged = false;
                     }
                 });
-                
+
                 // 페이지 종료 시 자동 저장
                 window.addEventListener('beforeunload', (e) => {
                     if (this.memoChanged && this.memoText !== null) {
@@ -271,16 +271,16 @@
                 if (!this.memoChanged || !this.memoText) {
                     return;
                 }
-                
+
                 // FormData 사용 (sendBeacon은 FormData 또는 Blob만 지원)
                 const formData = new FormData();
                 formData.append('memo', this.memoText);
                 formData.append('csrfmiddlewaretoken', this.getCsrfToken());
-                
+
                 // sendBeacon으로 저장 (페이지 전환 후에도 전송 보장)
                 const url = `/api/companies/${this.corpCode}/memo/`;
                 const success = navigator.sendBeacon(url, formData);
-                
+
                 // 성공 여부는 알 수 없지만, 최선을 다해 저장 시도
                 if (success) {
                     // sendBeacon은 응답을 받을 수 없으므로 플래그만 초기화
@@ -399,17 +399,14 @@
                             </h4>
                             <div>
                                 <h5 class="mb-2" x-text="companyData?.company_name || '-'"></h5>
-                                <p class="text-muted mb-2" x-text="companyData?.business_type_name || '-'"></p>
                                 <p class="text-muted-small mb-2">
                                     <code x-text="companyData?.corp_code || '-'"></code>
                                 </p>
                                 <div class="mb-2">
-                                    <strong>업종 코드:</strong>
-                                    <span x-text="companyData?.business_type_code || '-'" class="ms-2"></span>
-                                </div>
-                                <div class="mb-2">
                                     <strong>5년 만기 국채 수익률:</strong>
-                                    <span x-text="companyData?.bond_yield_5y ? (companyData.bond_yield_5y * 100).toFixed(2) + '%' : '-'" class="ms-2"></span>
+                                    <span
+                                        x-text="companyData?.bond_yield_5y ? (companyData.bond_yield_5y * 100).toFixed(2) + '%' : '-'"
+                                        class="ms-2"></span>
                                 </div>
                                 <div class="mt-3">
                                     <div class="d-flex gap-2 flex-wrap">
@@ -419,9 +416,7 @@
                                                 사업보고서 보기
                                             </a>
                                         </div>
-                                        <button 
-                                            @click="collectQuarterlyReports()" 
-                                            :disabled="collectingQuarterly"
+                                        <button @click="collectQuarterlyReports()" :disabled="collectingQuarterly"
                                             class="btn btn-sm btn-success">
                                             <span x-show="!collectingQuarterly">
                                                 <i class="bi bi-download me-2"></i>
@@ -533,7 +528,8 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <template x-for="data in allFinancialDataSorted" :key="data.isQuarterly ? `${data.year}-${data.quarter}` : data.year">
+                                        <template x-for="data in allFinancialDataSorted"
+                                            :key="data.isQuarterly ? `${data.year}-${data.quarter}` : data.year">
                                             <tr :class="data.isQuarterly ? 'table-info' : ''">
                                                 <td>
                                                     <strong x-text="data.displayYear"></strong>
@@ -573,7 +569,8 @@
                                         마지막 수정: <span x-text="formatMemoDate(memoUpdatedAt)"></span>
                                     </small>
                                 </div>
-                                <button type="button" class="btn btn-primary btn-sm" @click="saveMemo()" :disabled="savingMemo">
+                                <button type="button" class="btn btn-primary btn-sm" @click="saveMemo()"
+                                    :disabled="savingMemo">
                                     <span x-show="!savingMemo">
                                         <i class="bi bi-save me-1"></i>저장
                                     </span>
@@ -583,7 +580,8 @@
                                 </button>
                             </div>
                             <div x-show="memoMessage" class="mt-3">
-                                <div :class="memoMessageType === 'success' ? 'alert alert-success alert-sm' : 'alert alert-danger alert-sm'">
+                                <div
+                                    :class="memoMessageType === 'success' ? 'alert alert-success alert-sm' : 'alert alert-danger alert-sm'">
                                     <span x-text="memoMessage"></span>
                                 </div>
                             </div>
@@ -598,7 +596,8 @@
                                 <h5 class="card-title mb-0">
                                     <i class="bi bi-star-fill me-2"></i>즐겨찾기
                                 </h5>
-                                <button type="button" class="btn btn-sm btn-success" @click="showAddFavoriteModal = true">
+                                <button type="button" class="btn btn-sm btn-success"
+                                    @click="showAddFavoriteModal = true">
                                     <i class="bi bi-plus-circle me-1"></i>추가
                                 </button>
                             </div>
@@ -606,16 +605,18 @@
                                 <div class="loading-spinner mx-auto mb-2"></div>
                                 <p class="text-muted small">로딩 중...</p>
                             </div>
-                            <div x-show="!loadingFavorites && favoritesGroups.length === 0" class="text-center py-3 text-muted small">
+                            <div x-show="!loadingFavorites && favoritesGroups.length === 0"
+                                class="text-center py-3 text-muted small">
                                 즐겨찾기가 없습니다.
                             </div>
-                            <div x-show="!loadingFavorites && favoritesGroups.length > 0" style="max-height: 500px; overflow-y: auto;">
+                            <div x-show="!loadingFavorites && favoritesGroups.length > 0"
+                                style="max-height: 500px; overflow-y: auto;">
                                 <template x-for="group in favoritesGroups" :key="group.group_id">
                                     <div class="mb-3">
                                         <h6 class="mb-2" x-text="group.group_name"></h6>
                                         <div class="list-group list-group-flush">
                                             <template x-for="fav in group.favorites" :key="fav.id">
-                                                <a :href="`/companies/${fav.corp_code}/`" 
+                                                <a :href="`/companies/${fav.corp_code}/`"
                                                     class="list-group-item list-group-item-action px-0 py-2">
                                                     <div>
                                                         <strong class="small" x-text="fav.company_name || '-'"></strong>
@@ -634,10 +635,10 @@
 
         <!-- 즐겨찾기 추가 모달 -->
         <div x-show="showAddFavoriteModal"
-             style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050;"
-             x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0"
-             x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200"
-             x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+            style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050;"
+            x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
             <div class="modal fade show"
                 style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
                 <div class="modal-dialog modal-dialog-centered">
@@ -662,7 +663,8 @@
                             </div>
                         </div>
                         <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" @click="showAddFavoriteModal = false">취소</button>
+                            <button type="button" class="btn btn-secondary"
+                                @click="showAddFavoriteModal = false">취소</button>
                             <button type="button" class="btn btn-primary" @click="addFavorite()"
                                 :disabled="!selectedGroupForAdd || addingFavorite">
                                 <span x-show="!addingFavorite">추가</span>
@@ -672,7 +674,9 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-backdrop fade show" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1040; background-color: rgba(0,0,0,0.5);"></div>
+            <div class="modal-backdrop fade show"
+                style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1040; background-color: rgba(0,0,0,0.5);">
+            </div>
         </div>
     </div>
 </div>
