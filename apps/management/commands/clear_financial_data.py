@@ -124,7 +124,7 @@ class Command(BaseCommand):
                         f'연도별 데이터 기본 필드 초기화 및 분기 데이터 {total_quarterly_data}개 삭제.\n'
                         f'FCF, ROIC, WACC는 보존되며, Company 정보와 메모도 모두 유지됩니다.\n'
                         f'필터 필드는 초기화됩니다.\n'
-                        f'passed_filters_stock_codes.txt 파일도 초기화됩니다.\n'
+                        f'passed_filters_companies.json 파일도 초기화됩니다.\n'
                         f'계속하려면 --confirm 옵션을 추가하세요.'
                     )
                 )
@@ -155,10 +155,17 @@ class Command(BaseCommand):
                     filter_roe=False
                 )
             
-            # passed_filters_stock_codes.txt 파일 초기화 (전체 재수집 시)
-            passed_filters_file = settings.BASE_DIR / 'passed_filters_stock_codes.txt'
+            # passed_filters_companies.json 파일 초기화 (전체 재수집 시)
+            import json
+            passed_filters_file = settings.BASE_DIR / 'passed_filters_companies.json'
             if passed_filters_file.exists():
-                passed_filters_file.write_text('', encoding='utf-8')
+                # JSON 파일을 빈 구조로 초기화
+                empty_data = {
+                    'last_updated': None,
+                    'companies': []
+                }
+                with open(passed_filters_file, 'w', encoding='utf-8') as f:
+                    json.dump(empty_data, f, ensure_ascii=False, indent=2)
                 self.stdout.write(
                     self.style.SUCCESS(f'✓ 필터 통과 기업 목록 파일 초기화: {passed_filters_file.name}')
                 )

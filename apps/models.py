@@ -29,6 +29,7 @@ class Company(models.Model):
         verbose_name_plural = '회사들'
         indexes = [
             models.Index(fields=['corp_code']),
+            models.Index(fields=['company_name']),  # 기업명 검색 성능 향상
         ]
     
     def __str__(self):

@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from apps.service.orchestrator import DataOrchestrator
 from apps.models import CompanyFinancialObject
-from apps.utils.utils import format_amount_korean, should_collect_company, load_company_from_db
+from apps.utils.utils import format_amount_korean, should_collect_company, load_company_from_db, load_passed_companies_json
 import json
 
 
@@ -26,7 +26,9 @@ def company_detail(request, corp_code):
     기업 상세 정보 페이지
     GET /companies/{corp_code}/
     
-    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
+    corp_code는 종목코드(6자리) 또는 기업번호(8자리)를 받을 수 있습니다.
+    - 종목코드(6자리): 기업명 검색 결과에서 선택한 경우 또는 직접 입력
+    - 기업번호(8자리): 기업명 검색 결과에서 선택한 경우 (corp_code로 전달)
     """
     # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
     if len(corp_code) == 6 and corp_code.isdigit():
@@ -36,6 +38,11 @@ def company_detail(request, corp_code):
         converted_corp_code = dart_client._get_corp_code_by_stock_code(corp_code)
         if converted_corp_code:
             corp_code = converted_corp_code
+        else:
+            # 종목코드 변환 실패
+            from django.http import HttpResponseNotFound
+            return HttpResponseNotFound('종목코드를 찾을 수 없습니다.')
+    # 기업번호(8자리)인 경우 그대로 사용
     
     return render(request, 'companies/detail.html', {'corp_code': corp_code})
 
@@ -53,7 +60,9 @@ def add_indicators(request, corp_code):
     지표 추가 페이지
     GET /companies/<corp_code>/add-indicators/
     
-    corp_code는 기업번호(8자리) 또는 종목코드(6자리)를 받을 수 있습니다.
+    corp_code는 종목코드(6자리) 또는 기업번호(8자리)를 받을 수 있습니다.
+    - 종목코드(6자리): 기업명 검색 결과에서 선택한 경우 또는 직접 입력
+    - 기업번호(8자리): 기업명 검색 결과에서 선택한 경우 (corp_code로 전달)
     """
     # 종목코드인지 기업번호인지 확인 (종목코드는 6자리 숫자)
     if len(corp_code) == 6 and corp_code.isdigit():
@@ -77,6 +86,106 @@ def add_indicators(request, corp_code):
     return render(request, 'companies/add_indicators.html', {
         'corp_code': corp_code,
         'company_name': company_name
+    })
+
+
+@api_view(['GET'])
+def get_passed_companies(request):
+    """
+    필터 통과 기업 목록 조회 API
+    GET /api/companies/passed/?page=1&page_size=10
+    
+    JSON 파일에서 필터 통과 기업 목록을 읽어서 페이지네이션과 함께 반환합니다.
+    """
+    from django.conf import settings
+    import math
+    
+    # 페이지네이션 파라미터
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 10))
+    
+    # 유효성 검사
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 10
+    
+    # JSON 파일 경로
+    json_file = settings.BASE_DIR / 'passed_filters_companies.json'
+    
+    # JSON 파일 읽기
+    data = load_passed_companies_json(json_file)
+    
+    # 전체 목록 포맷팅
+    all_companies = []
+    for company in data.get('companies', []):
+        all_companies.append({
+            'stock_code': company.get('stock_code', ''),
+            'company_name': company.get('company_name', ''),
+            'corp_code': company.get('corp_code', '')
+        })
+    
+    total = len(all_companies)
+    total_pages = math.ceil(total / page_size) if total > 0 else 0
+    
+    # 페이지 범위 검증
+    if page > total_pages and total_pages > 0:
+        page = total_pages
+    
+    # 페이지별 슬라이싱
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    companies = all_companies[start_idx:end_idx]
+    
+    return Response({
+        'companies': companies,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages,
+        'last_updated': data.get('last_updated')
+    })
+
+
+@api_view(['GET'])
+def search_companies(request):
+    """
+    기업명 검색 API
+    GET /api/companies/search/?q=검색어&limit=10
+    
+    DB에 저장된 기업 목록에서 기업명으로 검색합니다.
+    """
+    from django.apps import apps as django_apps
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    
+    # 검색어 가져오기
+    search_query = request.GET.get('q', '').strip()
+    limit = int(request.GET.get('limit', 10))
+    
+    # 빈 검색어 처리
+    if not search_query:
+        return Response({
+            'companies': [],
+            'total': 0
+        })
+    
+    # DB에서 검색 (부분 일치, 대소문자 구분 없음)
+    companies = CompanyModel.objects.filter(
+        company_name__icontains=search_query
+    )[:limit]
+    
+    # 결과 포맷팅
+    results = []
+    for company in companies:
+        results.append({
+            'corp_code': company.corp_code,
+            'company_name': company.company_name or '',
+            'business_type_name': company.business_type_name or '',
+        })
+    
+    return Response({
+        'companies': results,
+        'total': len(results)
     })
 
 
@@ -163,25 +272,15 @@ def get_financial_data(request, corp_code):
         # 수집 후 DB에서 다시 조회 (새로 추가된 필드 포함)
         company_data_from_db = load_company_from_db(corp_code)
         if company_data_from_db:
-            # 필터 통과 시 파일에 추가
+            # 필터 통과 시 JSON 파일에 추가
             if company_data_from_db.passed_all_filters:
-                from apps.utils.utils import get_stock_code_by_corp_code
-                from django.conf import settings
+                from apps.utils.utils import get_stock_code_by_corp_code, save_passed_companies_json
                 
                 stock_code = get_stock_code_by_corp_code(corp_code)
                 if stock_code:
-                    passed_filters_file = settings.BASE_DIR / 'passed_filters_stock_codes.txt'
-                    
-                    # 기존 파일 로드 (중복 방지)
-                    existing_passed = set()
-                    if passed_filters_file.exists():
-                        with open(passed_filters_file, 'r', encoding='utf-8') as f:
-                            existing_passed = set(line.strip() for line in f if line.strip())
-                    
-                    # 새로 통과한 것만 추가 (중복 제거)
-                    if stock_code not in existing_passed:
-                        with open(passed_filters_file, 'a', encoding='utf-8') as f:
-                            f.write(f"{stock_code}\n")
+                    company_name = company_data_from_db.company_name or ''
+                    # JSON 파일에 저장
+                    save_passed_companies_json(stock_code, company_name, corp_code)
             
             # memo와 memo_updated_at은 별도로 조회
             try:
@@ -1535,11 +1634,21 @@ def get_quarterly_financial_data(request, corp_code):
                 )
             corp_code = converted_corp_code
         
+        CompanyModel = django_apps.get_model('apps', 'Company')
         QuarterlyFinancialDataModel = django_apps.get_model('apps', 'QuarterlyFinancialData')
         
-        # 분기보고서 데이터 조회
+        # Company 먼저 조회 (인덱스 활용, JOIN 최소화)
+        try:
+            company = CompanyModel.objects.get(corp_code=corp_code)
+        except CompanyModel.DoesNotExist:
+            # 기업이 없으면 빈 결과 반환
+            return Response({
+                'quarterly_data': []
+            }, status=status.HTTP_200_OK)
+        
+        # company_id로 직접 조회 (인덱스 활용, JOIN 없음)
         quarterly_data_list = QuarterlyFinancialDataModel.objects.filter(
-            company__corp_code=corp_code
+            company=company
         ).order_by('-year', '-quarter')
         
         quarterly_data = [

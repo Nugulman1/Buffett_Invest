@@ -13,6 +13,8 @@ urlpatterns = [
     path('api/ecos/', include('apps.ecos.urls')),
     path('companies/', include('apps.companies.urls')),
     path('api/companies/', include([
+        path('passed/', companies_views.get_passed_companies, name='get_passed_companies'),
+        path('search/', companies_views.search_companies, name='search_companies'),
         path('<str:corp_code>/financial-data/', companies_views.get_financial_data, name='get_financial_data'),
         path('<str:corp_code>/calculator-data/', companies_views.get_calculator_data, name='get_calculator_data'),
         path('batch/', companies_views.batch_get_financial_data, name='batch_get_financial_data'),

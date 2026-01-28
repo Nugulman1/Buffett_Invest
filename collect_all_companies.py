@@ -25,7 +25,7 @@ from django.apps import apps as django_apps
 from apps.service.orchestrator import DataOrchestrator
 from apps.dart.client import DartClient
 from apps.ecos.client import EcosClient
-from apps.utils.utils import should_collect_company, save_company_to_db
+from apps.utils.utils import should_collect_company, save_company_to_db, save_passed_companies_json
 
 
 def parse_stock_codes_file(stock_codes_file: Path) -> list:
@@ -150,7 +150,7 @@ def main(limit: int = None, max_workers: int = None):
     
     # 파일 경로
     stock_codes_file = BASE_DIR / '종목코드.md'
-    passed_filters_file = BASE_DIR / 'passed_filters_stock_codes.txt'
+    passed_filters_file = BASE_DIR / 'passed_filters_companies.json'
     
     # 종목코드.md 파일 파싱 (모든 종목코드)
     all_stock_codes = parse_stock_codes_file(stock_codes_file)
@@ -258,27 +258,25 @@ def main(limit: int = None, max_workers: int = None):
     if db_save_fail > 0:
         print(f'[WARNING] DB 저장 실패: {db_save_fail}개')
     
-    # 필터 통과 기업 저장
+    # 필터 통과 기업 저장 (JSON 형식)
     if passed_filter_stock_codes:
-        # 기존 파일 로드 (중복 방지)
-        existing_passed = set()
-        if passed_filters_file.exists():
-            with open(passed_filters_file, 'r', encoding='utf-8') as f:
-                existing_passed = set(line.strip() for line in f if line.strip())
+        saved_count = 0
+        for result in results:
+            if result['status'] == 'success' and result.get('passed_all_filters', False):
+                stock_code = result.get('stock_code')
+                company_data = result.get('company_data')
+                
+                if stock_code and company_data:
+                    # 기업명과 corp_code 추출
+                    company_name = company_data.company_name or ''
+                    corp_code = company_data.corp_code or ''
+                    
+                    # JSON 파일에 저장
+                    if save_passed_companies_json(stock_code, company_name, corp_code, passed_filters_file):
+                        saved_count += 1
         
-        # 새로 통과한 것만 추가 (중복 제거)
-        new_passed = [
-            code for code in passed_filter_stock_codes 
-            if code not in existing_passed
-        ]
-        
-        if new_passed:
-            # 파일에 추가 (append 모드)
-            with open(passed_filters_file, 'a', encoding='utf-8') as f:
-                for stock_code in new_passed:
-                    f.write(f"{stock_code}\n")
-            
-            print(f'[SUCCESS] 필터 통과 기업 {len(new_passed)}개 저장 완료: {passed_filters_file}')
+        if saved_count > 0:
+            print(f'[SUCCESS] 필터 통과 기업 {saved_count}개 저장 완료: {passed_filters_file.name}')
     
     # 전체 처리 시간 계산
     total_time = time.time() - start_time

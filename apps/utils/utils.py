@@ -511,3 +511,181 @@ def restore_company_memos(memo_backup: dict | list) -> int:
     
     return restored_count
 
+
+def load_passed_companies_json(file_path=None):
+    """
+    필터 통과 기업 JSON 파일 읽기
+    
+    Args:
+        file_path: JSON 파일 경로 (없으면 기본 경로 사용)
+        
+    Returns:
+        dict: {
+            'last_updated': str,
+            'companies': [
+                {'stock_code': str, 'company_name': str, 'corp_code': str},
+                ...
+            ]
+        }
+    """
+    from django.conf import settings
+    import json
+    from pathlib import Path
+    
+    if file_path is None:
+        file_path = settings.BASE_DIR / 'passed_filters_companies.json'
+    else:
+        file_path = Path(file_path)
+    
+    if not file_path.exists():
+        return {
+            'last_updated': None,
+            'companies': []
+        }
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data
+    except (json.JSONDecodeError, IOError) as e:
+        # 파일이 손상되었거나 읽을 수 없으면 빈 데이터 반환
+        return {
+            'last_updated': None,
+            'companies': []
+        }
+
+
+def save_passed_companies_json(stock_code, company_name, corp_code, file_path=None):
+    """
+    필터 통과 기업을 JSON 파일에 추가/업데이트
+    
+    Args:
+        stock_code: 종목코드
+        company_name: 기업명
+        corp_code: 기업번호
+        file_path: JSON 파일 경로 (없으면 기본 경로 사용)
+        
+    Returns:
+        bool: 저장 성공 여부
+    """
+    from django.conf import settings
+    import json
+    from pathlib import Path
+    from datetime import datetime
+    
+    if file_path is None:
+        file_path = settings.BASE_DIR / 'passed_filters_companies.json'
+    else:
+        file_path = Path(file_path)
+    
+    # 기존 데이터 로드
+    data = load_passed_companies_json(file_path)
+    
+    # 중복 체크 (stock_code 기준)
+    existing_stock_codes = {c['stock_code'] for c in data.get('companies', [])}
+    
+    if stock_code in existing_stock_codes:
+        # 이미 존재하면 업데이트 (기업명이나 corp_code가 변경되었을 수 있음)
+        for company in data['companies']:
+            if company['stock_code'] == stock_code:
+                company['company_name'] = company_name
+                company['corp_code'] = corp_code
+                break
+    else:
+        # 새로 추가
+        if 'companies' not in data:
+            data['companies'] = []
+        data['companies'].append({
+            'stock_code': stock_code,
+            'company_name': company_name,
+            'corp_code': corp_code
+        })
+    
+    # last_updated 업데이트
+    data['last_updated'] = datetime.now().isoformat()
+    
+    # 파일 저장
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except IOError:
+        return False
+
+
+def migrate_txt_to_json(txt_file_path=None, json_file_path=None):
+    """
+    기존 txt 파일의 데이터를 JSON 파일로 마이그레이션
+    
+    Args:
+        txt_file_path: 기존 txt 파일 경로 (없으면 기본 경로 사용)
+        json_file_path: JSON 파일 경로 (없으면 기본 경로 사용)
+        
+    Returns:
+        int: 마이그레이션된 기업 수
+    """
+    from django.conf import settings
+    from pathlib import Path
+    from apps.dart.client import DartClient
+    from django.apps import apps as django_apps
+    
+    if txt_file_path is None:
+        txt_file_path = settings.BASE_DIR / 'passed_filters_stock_codes.txt'
+    else:
+        txt_file_path = Path(txt_file_path)
+    
+    if json_file_path is None:
+        json_file_path = settings.BASE_DIR / 'passed_filters_companies.json'
+    else:
+        json_file_path = Path(json_file_path)
+    
+    # txt 파일이 없으면 마이그레이션할 데이터 없음
+    if not txt_file_path.exists():
+        return 0
+    
+    # txt 파일 읽기
+    stock_codes = []
+    with open(txt_file_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            stock_code = line.strip()
+            if stock_code:
+                stock_codes.append(stock_code)
+    
+    if not stock_codes:
+        # 빈 파일이면 삭제하고 종료
+        txt_file_path.unlink()
+        return 0
+    
+    # 종목코드 → corp_code 변환
+    dart_client = DartClient()
+    if not dart_client._corp_code_mapping_cache:
+        dart_client.load_corp_code_xml()
+    
+    # DB에서 기업명 조회
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    migrated_count = 0
+    
+    for stock_code in stock_codes:
+        # 종목코드 → corp_code 변환
+        corp_code = dart_client._get_corp_code_by_stock_code(stock_code)
+        if not corp_code:
+            continue
+        
+        # DB에서 기업명 조회
+        try:
+            company = CompanyModel.objects.get(corp_code=corp_code)
+            company_name = company.company_name or ''
+        except CompanyModel.DoesNotExist:
+            # DB에 없으면 기업명은 빈 문자열
+            company_name = ''
+        
+        # JSON 파일에 저장
+        if save_passed_companies_json(stock_code, company_name, corp_code, json_file_path):
+            migrated_count += 1
+    
+    # 마이그레이션 완료 후 txt 파일 삭제
+    if migrated_count > 0:
+        txt_file_path.unlink()
+    
+    return migrated_count
+
