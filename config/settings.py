@@ -178,4 +178,3 @@ LOGGING = {
         'handlers': ['console'],
     },
 }
-
