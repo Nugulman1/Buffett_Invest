@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-01-29T10:29:35.658836",
+  "last_updated": "2026-01-29T12:00:14.581544",
   "companies": [
     {
       "stock_code": "257720",
@@ -20,6 +20,611 @@
       "stock_code": "140860",
       "company_name": "(주)파크시스템스",
       "corp_code": "00244747"
+    },
+    {
+      "stock_code": "483650",
+      "company_name": "(주)달바글로벌",
+      "corp_code": "01649204"
+    },
+    {
+      "stock_code": "481070",
+      "company_name": "(주)에이유브랜즈",
+      "corp_code": "01803927"
+    },
+    {
+      "stock_code": "226590",
+      "company_name": "엠디바이스 주식회사",
+      "corp_code": "01022142"
+    },
+    {
+      "stock_code": "489500",
+      "company_name": "(주)엘케이켐",
+      "corp_code": "01747977"
+    },
+    {
+      "stock_code": "450950",
+      "company_name": "(주)아스테라시스",
+      "corp_code": "01590528"
+    },
+    {
+      "stock_code": "478560",
+      "company_name": "주식회사 블랙야크아이앤씨",
+      "corp_code": "01718407"
+    },
+    {
+      "stock_code": "176750",
+      "company_name": "(주)듀켐바이오",
+      "corp_code": "00867034"
+    },
+    {
+      "stock_code": "484870",
+      "company_name": "주식회사 엠앤씨솔루션",
+      "corp_code": "01519790"
+    },
+    {
+      "stock_code": "473980",
+      "company_name": "(주)노머스",
+      "corp_code": "01703849"
+    },
+    {
+      "stock_code": "457370",
+      "company_name": "(주)한켐",
+      "corp_code": "01016309"
+    },
+    {
+      "stock_code": "461300",
+      "company_name": "(주)아이스크림미디어",
+      "corp_code": "00657224"
+    },
+    {
+      "stock_code": "079900",
+      "company_name": "전진건설로봇(주)",
+      "corp_code": "00372129"
+    },
+    {
+      "stock_code": "062040",
+      "company_name": "산일전기(주)",
+      "corp_code": "00366438"
+    },
+    {
+      "stock_code": "462870",
+      "company_name": "(주)시프트업",
+      "corp_code": "01384787"
+    },
+    {
+      "stock_code": "443060",
+      "company_name": "에이치디현대마린솔루션(주)",
+      "corp_code": "01194689"
+    },
+    {
+      "stock_code": "420570",
+      "company_name": "주식회사 제이투케이바이오",
+      "corp_code": "01553129"
+    },
+    {
+      "stock_code": "278470",
+      "company_name": "(주)에이피알",
+      "corp_code": "01190568"
+    },
+    {
+      "stock_code": "352090",
+      "company_name": "(주)스톰테크",
+      "corp_code": "01226270"
+    },
+    {
+      "stock_code": "418470",
+      "company_name": "(주)케이티밀리의서재",
+      "corp_code": "01467451"
+    },
+    {
+      "stock_code": "448710",
+      "company_name": "코츠테크놀로지(주)",
+      "corp_code": "00959210"
+    },
+    {
+      "stock_code": "439090",
+      "company_name": "(주)마녀공장",
+      "corp_code": "01136977"
+    },
+    {
+      "stock_code": "417790",
+      "company_name": "주식회사 트루엔",
+      "corp_code": "01134216"
+    },
+    {
+      "stock_code": "372170",
+      "company_name": "주식회사 윤성에프앤씨",
+      "corp_code": "00925374"
+    },
+    {
+      "stock_code": "108320",
+      "company_name": "(주)엘엑스세미콘",
+      "corp_code": "00525934"
+    },
+    {
+      "stock_code": "251120",
+      "company_name": "주식회사 바이오에프디엔씨",
+      "corp_code": "01160974"
+    },
+    {
+      "stock_code": "136410",
+      "company_name": "주식회사 아셈스",
+      "corp_code": "00922304"
+    },
+    {
+      "stock_code": "382800",
+      "company_name": "(주)지앤비에스 에코",
+      "corp_code": "00958327"
+    },
+    {
+      "stock_code": "114840",
+      "company_name": "(주)아이패밀리에스씨",
+      "corp_code": "00692254"
+    },
+    {
+      "stock_code": "260970",
+      "company_name": "(주)에스앤디",
+      "corp_code": "00560849"
+    },
+    {
+      "stock_code": "099430",
+      "company_name": "바이오플러스 주식회사",
+      "corp_code": "00636656"
+    },
+    {
+      "stock_code": "099390",
+      "company_name": "브레인즈컴퍼니(주)",
+      "corp_code": "00642897"
+    },
+    {
+      "stock_code": "383310",
+      "company_name": "주식회사 에코프로에이치엔",
+      "corp_code": "01566248"
+    },
+    {
+      "stock_code": "383220",
+      "company_name": "주식회사 에프앤에프",
+      "corp_code": "01568413"
+    },
+    {
+      "stock_code": "352480",
+      "company_name": "(주)씨앤씨인터내셔널",
+      "corp_code": "01226410"
+    },
+    {
+      "stock_code": "333620",
+      "company_name": "(주)엔시스",
+      "corp_code": "01310773"
+    },
+    {
+      "stock_code": "356890",
+      "company_name": "주식회사 싸이버원",
+      "corp_code": "01293953"
+    },
+    {
+      "stock_code": "262840",
+      "company_name": "(주)아이퀘스트",
+      "corp_code": "01146822"
+    },
+    {
+      "stock_code": "357550",
+      "company_name": "주식회사 석경에이티",
+      "corp_code": "00921916"
+    },
+    {
+      "stock_code": "064850",
+      "company_name": "(주)에프앤가이드",
+      "corp_code": "00331016"
+    },
+    {
+      "stock_code": "340570",
+      "company_name": "(주)티앤엘",
+      "corp_code": "00608440"
+    },
+    {
+      "stock_code": "348210",
+      "company_name": "주식회사 넥스틴",
+      "corp_code": "01080252"
+    },
+    {
+      "stock_code": "332370",
+      "company_name": "아이디피(주)",
+      "corp_code": "01213586"
+    },
+    {
+      "stock_code": "298540",
+      "company_name": "(주)더네이쳐홀딩스",
+      "corp_code": "01214743"
+    },
+    {
+      "stock_code": "336570",
+      "company_name": "원텍(주)",
+      "corp_code": "01407909"
+    },
+    {
+      "stock_code": "306040",
+      "company_name": "주식회사 에스제이그룹",
+      "corp_code": "01222432"
+    },
+    {
+      "stock_code": "158430",
+      "company_name": "주식회사 아톤",
+      "corp_code": "00595182"
+    },
+    {
+      "stock_code": "319660",
+      "company_name": "피에스케이 주식회사",
+      "corp_code": "01365825"
+    },
+    {
+      "stock_code": "310200",
+      "company_name": "(주)애니플러스",
+      "corp_code": "01335578"
+    },
+    {
+      "stock_code": "290650",
+      "company_name": "(주)엘앤씨바이오",
+      "corp_code": "01181515"
+    },
+    {
+      "stock_code": "122310",
+      "company_name": "(주)제노레이",
+      "corp_code": "00799539"
+    },
+    {
+      "stock_code": "253590",
+      "company_name": "(주)네오셈",
+      "corp_code": "01170865"
+    },
+    {
+      "stock_code": "068270",
+      "company_name": "(주)셀트리온",
+      "corp_code": "00413046"
+    },
+    {
+      "stock_code": "281740",
+      "company_name": "(주)레이크머티리얼즈",
+      "corp_code": "01255652"
+    },
+    {
+      "stock_code": "263860",
+      "company_name": "지니언스(주)",
+      "corp_code": "00962223"
+    },
+    {
+      "stock_code": "250000",
+      "company_name": "(주)보라티알",
+      "corp_code": "01124680"
+    },
+    {
+      "stock_code": "183300",
+      "company_name": "(주)코미코",
+      "corp_code": "00997812"
+    },
+    {
+      "stock_code": "145720",
+      "company_name": "(주)덴티움",
+      "corp_code": "00526599"
+    },
+    {
+      "stock_code": "241520",
+      "company_name": "디에스씨인베스트먼트(주)",
+      "corp_code": "01109715"
+    },
+    {
+      "stock_code": "241790",
+      "company_name": "티이엠씨씨엔에스(주)",
+      "corp_code": "01113754"
+    },
+    {
+      "stock_code": "207940",
+      "company_name": "삼성바이오로직스(주)",
+      "corp_code": "00877059"
+    },
+    {
+      "stock_code": "238120",
+      "company_name": "(주)얼라인드제네틱스",
+      "corp_code": "01073678"
+    },
+    {
+      "stock_code": "072990",
+      "company_name": "(주)에이치시티",
+      "corp_code": "00527464"
+    },
+    {
+      "stock_code": "230360",
+      "company_name": "(주)에코마케팅",
+      "corp_code": "01029394"
+    },
+    {
+      "stock_code": "236200",
+      "company_name": "(주)슈프리마",
+      "corp_code": "01124653"
+    },
+    {
+      "stock_code": "217950",
+      "company_name": "(주)파마리서치바이오",
+      "corp_code": "01066058"
+    },
+    {
+      "stock_code": "214450",
+      "company_name": "(주)파마리서치",
+      "corp_code": "00970453"
+    },
+    {
+      "stock_code": "214180",
+      "company_name": "(주)헥토이노베이션",
+      "corp_code": "01013311"
+    },
+    {
+      "stock_code": "215200",
+      "company_name": "메가스터디교육(주)",
+      "corp_code": "01074862"
+    },
+    {
+      "stock_code": "215000",
+      "company_name": "(주)골프존",
+      "corp_code": "01067516"
+    },
+    {
+      "stock_code": "213420",
+      "company_name": "덕산네오룩스(주)",
+      "corp_code": "01061558"
+    },
+    {
+      "stock_code": "200670",
+      "company_name": "(주)휴메딕스",
+      "corp_code": "00614478"
+    },
+    {
+      "stock_code": "203650",
+      "company_name": "(주)드림시큐리티",
+      "corp_code": "01038693"
+    },
+    {
+      "stock_code": "090850",
+      "company_name": "(주)현대이지웰",
+      "corp_code": "00656951"
+    },
+    {
+      "stock_code": "131970",
+      "company_name": "(주)두산테스나",
+      "corp_code": "00563545"
+    },
+    {
+      "stock_code": "137400",
+      "company_name": "(주)피엔티",
+      "corp_code": "00612294"
+    },
+    {
+      "stock_code": "093320",
+      "company_name": "(주)케이아이엔엑스",
+      "corp_code": "00603348"
+    },
+    {
+      "stock_code": "126700",
+      "company_name": "(주)하이비젼시스템",
+      "corp_code": "00825959"
+    },
+    {
+      "stock_code": "082920",
+      "company_name": "(주)비츠로셀",
+      "corp_code": "00154718"
+    },
+    {
+      "stock_code": "058630",
+      "company_name": "주식회사 엠게임",
+      "corp_code": "00397058"
+    },
+    {
+      "stock_code": "035420",
+      "company_name": "네이버(주)",
+      "corp_code": "00266961"
+    },
+    {
+      "stock_code": "098120",
+      "company_name": "(주)마이크로컨텍솔루션",
+      "corp_code": "00568188"
+    },
+    {
+      "stock_code": "101160",
+      "company_name": "(주)월덱스",
+      "corp_code": "00580065"
+    },
+    {
+      "stock_code": "059210",
+      "company_name": "(주)메타바이오메드",
+      "corp_code": "00317681"
+    },
+    {
+      "stock_code": "094970",
+      "company_name": "제이엠티(주)",
+      "corp_code": "00533508"
+    },
+    {
+      "stock_code": "028670",
+      "company_name": "팬오션(주)",
+      "corp_code": "00122737"
+    },
+    {
+      "stock_code": "093520",
+      "company_name": "(주)매커스",
+      "corp_code": "00596677"
+    },
+    {
+      "stock_code": "043150",
+      "company_name": "(주)바텍",
+      "corp_code": "00264255"
+    },
+    {
+      "stock_code": "083450",
+      "company_name": "(주)글로벌스탠다드테크놀로지",
+      "corp_code": "00540863"
+    },
+    {
+      "stock_code": "084370",
+      "company_name": "(주)유진테크",
+      "corp_code": "00531014"
+    },
+    {
+      "stock_code": "079940",
+      "company_name": "(주)가비아",
+      "corp_code": "00506294"
+    },
+    {
+      "stock_code": "042700",
+      "company_name": "한미반도체(주)",
+      "corp_code": "00161383"
+    },
+    {
+      "stock_code": "067160",
+      "company_name": "(주)숲",
+      "corp_code": "00399694"
+    },
+    {
+      "stock_code": "074600",
+      "company_name": "(주)원익큐엔씨",
+      "corp_code": "00468374"
+    },
+    {
+      "stock_code": "068930",
+      "company_name": "(주)디지털대성",
+      "corp_code": "00398808"
+    },
+    {
+      "stock_code": "069260",
+      "company_name": "티케이지휴켐스(주)",
+      "corp_code": "00426086"
+    },
+    {
+      "stock_code": "045340",
+      "company_name": "(주)토탈소프트뱅크",
+      "corp_code": "00355089"
+    },
+    {
+      "stock_code": "052400",
+      "company_name": "코나아이(주)",
+      "corp_code": "00349732"
+    },
+    {
+      "stock_code": "035900",
+      "company_name": "(주)제이와이피엔터테인먼트",
+      "corp_code": "00258689"
+    },
+    {
+      "stock_code": "036670",
+      "company_name": "(주)삼양케이씨아이",
+      "corp_code": "00265041"
+    },
+    {
+      "stock_code": "041830",
+      "company_name": "(주)인바디",
+      "corp_code": "00269922"
+    },
+    {
+      "stock_code": "007370",
+      "company_name": "진양제약(주)",
+      "corp_code": "00150536"
+    },
+    {
+      "stock_code": "041190",
+      "company_name": "우리기술투자(주)",
+      "corp_code": "00231664"
+    },
+    {
+      "stock_code": "036830",
+      "company_name": "솔브레인홀딩스(주)",
+      "corp_code": "00247975"
+    },
+    {
+      "stock_code": "036930",
+      "company_name": "주성엔지니어링(주)",
+      "corp_code": "00252135"
+    },
+    {
+      "stock_code": "032190",
+      "company_name": "(주)다우데이타",
+      "corp_code": "00238782"
+    },
+    {
+      "stock_code": "005290",
+      "company_name": "(주)동진쎄미켐",
+      "corp_code": "00118804"
+    },
+    {
+      "stock_code": "023590",
+      "company_name": "(주)다우기술",
+      "corp_code": "00176914"
+    },
+    {
+      "stock_code": "033100",
+      "company_name": "제룡전기(주)",
+      "corp_code": "00185356"
+    },
+    {
+      "stock_code": "031980",
+      "company_name": "피에스케이홀딩스(주)",
+      "corp_code": "00208444"
+    },
+    {
+      "stock_code": "011200",
+      "company_name": "에이치엠엠(주) ",
+      "corp_code": "00164645"
+    },
+    {
+      "stock_code": "018290",
+      "company_name": "(주)브이티",
+      "corp_code": "00150165"
+    },
+    {
+      "stock_code": "021080",
+      "company_name": "(주)에이티넘인베스트먼트",
+      "corp_code": "00161462"
+    },
+    {
+      "stock_code": "002840",
+      "company_name": "미원상사(주)",
+      "corp_code": "00121932"
+    },
+    {
+      "stock_code": "009970",
+      "company_name": "(주)영원무역홀딩스",
+      "corp_code": "00140964"
+    },
+    {
+      "stock_code": "007340",
+      "company_name": "(주)디엔오토모티브",
+      "corp_code": "00116949"
+    },
+    {
+      "stock_code": "002960",
+      "company_name": "한국쉘석유(주)",
+      "corp_code": "00158149"
+    },
+    {
+      "stock_code": "011780",
+      "company_name": "금호석유화학(주)",
+      "corp_code": "00106368"
+    },
+    {
+      "stock_code": "010060",
+      "company_name": "오씨아이홀딩스 주식회사",
+      "corp_code": "00148896"
+    },
+    {
+      "stock_code": "007700",
+      "company_name": "주식회사 에프앤에프홀딩스",
+      "corp_code": "00126487"
+    },
+    {
+      "stock_code": "003230",
+      "company_name": "삼양식품(주)",
+      "corp_code": "00126955"
+    },
+    {
+      "stock_code": "003490",
+      "company_name": "(주)대한항공",
+      "corp_code": "00113526"
     }
   ]
 }

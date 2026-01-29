@@ -1,11 +1,8 @@
 """
 장기 투자 필터링 서비스
 """
-import logging
 from apps.models import CompanyFinancialObject
 from apps.service.calculator import IndicatorCalculator
-
-logger = logging.getLogger(__name__)
 
 # 최근 5년 중 영업이익 ≤ 0 인 연도 ≤ 1회
 # 최근 5년 중 당기순이익 합계 > 0

@@ -1,8 +1,0 @@
-fix: 상세 첫 로드 사업보고서 버튼 + 즐겨찾기 API N+1 제거
-
-- detail.html: init()에서 fetchCompanyData() 완료 후 사업보고서/분기 API 병렬 호출
-  → 첫 진입 시에도 사업보고서 링크 버튼 정상 표시 (DB 준비 후 요청)
-- api_favorites: get_favorites에 prefetch_related(Prefetch('favorites', ...)) 적용
-  → 그룹·즐겨찾기·회사 2쿼리로 고정, N+1 제거
-- 대규모 리팩 후 기능 테스트 완료
-- docs: 코드 구조 요약·TODO 참고사항 반영

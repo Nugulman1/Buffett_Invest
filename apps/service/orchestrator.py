@@ -1,6 +1,7 @@
 """
 데이터 수집 오케스트레이터
 """
+import logging
 from apps.service.dart import DartDataService
 from apps.service.ecos import EcosDataService
 from apps.service.calculator import IndicatorCalculator
@@ -8,6 +9,8 @@ from apps.service.filter import CompanyFilter
 from apps.models import CompanyFinancialObject, YearlyFinancialDataObject
 from apps.dart.client import DartClient
 from apps.service.db import save_company_to_db
+
+logger = logging.getLogger(__name__)
 
 
 class DataOrchestrator:
@@ -39,7 +42,7 @@ class DataOrchestrator:
             if company_info:
                 company_data.company_name = company_info.get('corp_name', '')
         except Exception as e:
-            print(f"경고: 기업 정보 조회 실패: {e}")
+            logger.warning("기업 정보 조회 실패: %s", e)
         
         # 최근 5년 연도 리스트 생성
         years = self.dart_service._get_recent_years(5)
@@ -79,14 +82,14 @@ class DataOrchestrator:
                 bond_yield_obj.collected_at = timezone.now()
                 bond_yield_obj.save()
         except Exception as e:
-            print(f"경고: 채권수익률 수집 실패: {e}")
+            logger.warning("채권수익률 수집 실패: %s", e)
             # 채권수익률 수집 실패해도 계속 진행 (기본값 사용)
         
         # 필터 적용
         try:
             CompanyFilter.apply_all_filters(company_data)
         except Exception as e:
-            print(f"경고: 필터 적용 실패: {e}")
+            logger.warning("필터 적용 실패: %s", e)
             # 필터 실패 시에도 수집된 데이터는 반환
         
         # DB 저장 로직 (save_to_db가 True일 때만 실행) -> 동시 쓰기 회피 용도
@@ -94,7 +97,7 @@ class DataOrchestrator:
             try:
                 save_company_to_db(company_data)
             except Exception as e:
-                print(f"경고: DB 저장 실패: {e}")
+                logger.warning("DB 저장 실패: %s", e)
                 # DB 저장 실패 시에도 수집된 데이터는 반환
         
         return company_data

@@ -10,6 +10,7 @@
 import os
 import sys
 import time
+import logging
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -28,11 +29,13 @@ from apps.ecos.client import EcosClient
 from apps.service.db import should_collect_company, save_company_to_db
 from apps.service.passed_json import save_passed_companies_json
 
+logger = logging.getLogger(__name__)
+
 
 def parse_stock_codes_file(stock_codes_file: Path) -> list:
     """종목코드.md 파일 파싱 (모든 종목코드 반환)"""
     if not stock_codes_file.exists():
-        print(f'[ERROR] 파일을 찾을 수 없습니다: {stock_codes_file}')
+        logger.error('파일을 찾을 수 없습니다: %s', stock_codes_file)
         return []
     
     stock_codes = []
@@ -93,15 +96,11 @@ def filter_stock_codes_by_db(stock_codes: list, dart_client: DartClient, limit: 
     
     # 스킵 통계 출력
     total_skipped = skip_stats['no_corp_code'] + skip_stats['already_collected'] + skip_stats['conversion_error']
-    print(f'\n[필터링 통계]')
-    print(f'  확인한 종목코드: {skip_stats["total_checked"]}개')
-    print(f'  수집 대상: {len(filtered)}개')
-    print(f'  스킵: {total_skipped}개')
-    print(f'    - 종목코드 변환 실패: {skip_stats["no_corp_code"]}개')
-    print(f'    - 이미 수집됨 (4월 1일 기준): {skip_stats["already_collected"]}개')
-    print(f'    - 변환 예외 발생: {skip_stats["conversion_error"]}개')
+    logger.info('필터링 통계: 확인 %s개, 수집 대상 %s개, 스킵 %s개', skip_stats['total_checked'], len(filtered), total_skipped)
+    logger.info('스킵 상세: 종목코드 변환 실패 %s개, 이미 수집됨 %s개, 변환 예외 %s개',
+                skip_stats['no_corp_code'], skip_stats['already_collected'], skip_stats['conversion_error'])
     if skip_stats['total_checked'] < len(stock_codes):
-        print(f'  미확인: {len(stock_codes) - skip_stats["total_checked"]}개 (limit 도달로 중단)')
+        logger.info('미확인: %s개 (limit 도달로 중단)', len(stock_codes) - skip_stats['total_checked'])
     
     return filtered, skip_stats
 
@@ -157,33 +156,33 @@ def main(limit: int = None, max_workers: int = None):
     all_stock_codes = parse_stock_codes_file(stock_codes_file)
     
     if not all_stock_codes:
-        print('[WARNING] 종목코드 파일이 비어있거나 찾을 수 없습니다.')
+        logger.warning('종목코드 파일이 비어있거나 찾을 수 없습니다.')
         return
     
-    print(f'총 {len(all_stock_codes)}개 종목코드 확인 중...')
+    logger.info('총 %s개 종목코드 확인 중...', len(all_stock_codes))
     
     # 초기화
     dart_client = DartClient()
     
     # XML 캐시 미리 로드 (한 번만 다운로드)
-    print('기업 고유번호 XML 파일 로딩 중...')
+    logger.info('기업 고유번호 XML 파일 로딩 중...')
     dart_client.load_corp_code_xml()
-    print(f'[SUCCESS] XML 로드 완료 (총 {len(dart_client._corp_code_mapping_cache)}개 매핑)')
+    logger.info('XML 로드 완료 (총 %s개 매핑)', len(dart_client._corp_code_mapping_cache))
     
     # DB 체크로 수집 필요한 종목코드만 필터링
-    print('DB 체크로 수집 필요한 종목코드 필터링 중...')
+    logger.info('DB 체크로 수집 필요한 종목코드 필터링 중...')
     stock_code_to_corp_code, skip_stats = filter_stock_codes_by_db(all_stock_codes, dart_client, limit)
     
     if not stock_code_to_corp_code:
-        print('[INFO] 수집할 종목코드가 없습니다. (모두 최근에 수집되었거나 DB에 존재)')
+        logger.info('수집할 종목코드가 없습니다. (모두 최근에 수집되었거나 DB에 존재)')
         return
     
     total_skipped = skip_stats['no_corp_code'] + skip_stats['already_collected'] + skip_stats['conversion_error']
-    print(f'\n수집 대상: {len(stock_code_to_corp_code)}개 (limit: {limit})')
-    print(f'스킵: {total_skipped}개 (확인한 {skip_stats["total_checked"]}개 중)')
+    logger.info('수집 대상: %s개 (limit: %s)', len(stock_code_to_corp_code), limit)
+    logger.info('스킵: %s개 (확인한 %s개 중)', total_skipped, skip_stats['total_checked'])
     if skip_stats['total_checked'] < len(all_stock_codes):
-        print(f'미확인: {len(all_stock_codes) - skip_stats["total_checked"]}개 (limit 도달로 중단)')
-    print(f'병렬 처리: {max_workers}개 스레드 사용\n')
+        logger.info('미확인: %s개 (limit 도달로 중단)', len(all_stock_codes) - skip_stats['total_checked'])
+    logger.info('병렬 처리: %s개 스레드 사용', max_workers)
     
     orchestrator = DataOrchestrator()
     
@@ -222,19 +221,19 @@ def main(limit: int = None, max_workers: int = None):
                 if result['status'] == 'success':
                     success_count += 1
                     company_name = result.get('company_name', '')
-                    print(f'[{completed}/{total_count}] {stock_code} → [SUCCESS] 성공 ({company_name})')
+                    logger.info('[%s/%s] %s 성공 (%s)', completed, total_count, stock_code, company_name)
                     
                     if result.get('passed_all_filters', False):
                         passed_filter_stock_codes.append(stock_code)
-                        print(f'   [필터 통과] {stock_code} ({company_name})')
+                        logger.info('필터 통과: %s (%s)', stock_code, company_name)
                 else:
                     fail_count += 1
                     error = result.get('error', '알 수 없는 오류')
-                    print(f'[{completed}/{total_count}] {stock_code} → [ERROR] {error}')
+                    logger.error('[%s/%s] %s 실패: %s', completed, total_count, stock_code, error)
                     
             except Exception as e:
                 fail_count += 1
-                print(f'[{completed}/{total_count}] {stock_code} → [ERROR] 예외 발생: {str(e)}')
+                logger.error('[%s/%s] %s 예외 발생: %s', completed, total_count, stock_code, e)
                 results.append({
                     'stock_code': stock_code,
                     'status': 'failed',
@@ -242,7 +241,7 @@ def main(limit: int = None, max_workers: int = None):
                 })
     
     # 성공한 기업 데이터를 순차적으로 DB에 저장 (SQLite 동시 쓰기 문제 방지)
-    print('\nDB 저장 중...')
+    logger.info('DB 저장 중...')
     db_save_success = 0
     db_save_fail = 0
     for result in results:
@@ -252,12 +251,12 @@ def main(limit: int = None, max_workers: int = None):
                 db_save_success += 1
             except Exception as e:
                 db_save_fail += 1
-                print(f'경고: {result["stock_code"]} DB 저장 실패: {e}')
+                logger.warning('%s DB 저장 실패: %s', result['stock_code'], e)
     
     if db_save_success > 0:
-        print(f'[SUCCESS] DB 저장 완료: {db_save_success}개')
+        logger.info('DB 저장 완료: %s개', db_save_success)
     if db_save_fail > 0:
-        print(f'[WARNING] DB 저장 실패: {db_save_fail}개')
+        logger.warning('DB 저장 실패: %s개', db_save_fail)
     
     # 필터 통과 기업 저장 (JSON 형식)
     if passed_filter_stock_codes:
@@ -277,7 +276,7 @@ def main(limit: int = None, max_workers: int = None):
                         saved_count += 1
         
         if saved_count > 0:
-            print(f'[SUCCESS] 필터 통과 기업 {saved_count}개 저장 완료: {passed_filters_file.name}')
+            logger.info('필터 통과 기업 %s개 저장 완료: %s', saved_count, passed_filters_file.name)
     
     # 전체 처리 시간 계산
     total_time = time.time() - start_time
@@ -311,32 +310,21 @@ def main(limit: int = None, max_workers: int = None):
     avg_time_per_success = total_time / success_count if success_count > 0 else 0
     
     # 최종 결과 출력
-    print('\n' + '=' * 60)
-    print('[SUCCESS] 수집 완료!')
-    print(f'  성공: {success_count}개')
-    print(f'  실패: {fail_count}개')
-    print(f'  필터 통과: {len(passed_filter_stock_codes)}개')
-    print(f'  처리 총계: {success_count + fail_count}개')
-    print('=' * 60)
-    
-    # 상세 통계 출력
-    print('\n' + '=' * 60)
-    print('[상세 통계]')
-    print(f'  전체 처리 시간: {total_time:.2f}초 ({total_time/60:.2f}분)')
-    print(f'  기업당 평균 처리 시간: {avg_time_per_company:.2f}초')
+    logger.info('=' * 60)
+    logger.info('수집 완료! 성공 %s개, 실패 %s개, 필터 통과 %s개, 처리 총계 %s개',
+                success_count, fail_count, len(passed_filter_stock_codes), success_count + fail_count)
+    logger.info('=' * 60)
+    logger.info('상세 통계: 전체 처리 시간 %.2f초 (%.2f분), 기업당 평균 %.2f초',
+                total_time, total_time / 60, avg_time_per_company)
     if success_count > 0:
-        print(f'  성공 기업당 평균 처리 시간: {avg_time_per_success:.2f}초')
-    print(f'\n  API 호출 횟수 (이번 실행):')
-    print(f'    DART API: {dart_api_calls}회')
-    print(f'    ECOS API: {ecos_api_calls}회')
-    print(f'    총 API 호출: {total_api_calls}회')
+        logger.info('성공 기업당 평균 처리 시간 %.2f초', avg_time_per_success)
+    logger.info('API 호출 (이번 실행): DART %s회, ECOS %s회, 총 %s회',
+                dart_api_calls, ecos_api_calls, total_api_calls)
     if success_count > 0:
-        print(f'    성공 기업당 평균 API 호출: {total_api_calls/success_count:.1f}회')
-    print(f'\n  일별 API 호출 통계 (오늘):')
-    print(f'    DART API: {daily_dart_calls}회')
-    print(f'    ECOS API: {daily_ecos_calls}회')
-    print(f'    총 API 호출: {daily_total_calls}회')
-    print('=' * 60)
+        logger.info('성공 기업당 평균 API 호출 %.1f회', total_api_calls / success_count)
+    logger.info('일별 API 호출 (오늘): DART %s회, ECOS %s회, 총 %s회',
+                daily_dart_calls, daily_ecos_calls, daily_total_calls)
+    logger.info('=' * 60)
 
 
 if __name__ == '__main__':

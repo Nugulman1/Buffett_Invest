@@ -1,6 +1,7 @@
 """
 DART OpenDART API 클라이언트
 """
+import logging
 import re
 import time
 import requests
@@ -11,6 +12,8 @@ import json
 from datetime import date
 from django.conf import settings
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 class DartClient:
@@ -475,10 +478,7 @@ class DartClient:
             return None
             
         except Exception as e:
-            print(f"경고: {year}년 사업보고서 접수번호 조회 실패: {e}")
-            print(f"  에러 타입: {type(e).__name__}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("%s년 사업보고서 접수번호 조회 실패: %s", year, e)
             return None
     
     def get_latest_annual_report_date(self, corp_code: str) -> str | None:
@@ -616,7 +616,7 @@ class DartClient:
             return quarterly_reports
             
         except Exception as e:
-            print(f"경고: 분기보고서 목록 조회 실패: {e}")
+            logger.warning("분기보고서 목록 조회 실패: %s", e)
             return []
 
     def get_financial_indicators(self, corp_code, bsns_year, reprt_code='11011', idx_cl_code='M210000'):

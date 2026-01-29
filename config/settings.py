@@ -158,3 +158,24 @@ CALCULATOR_DEFAULTS = {
     'EQUITY_RISK_PREMIUM': float(os.getenv('CALCULATOR_EQUITY_RISK_PREMIUM', '10.0')),  # 주주기대수익률 (%)
 }
 
+# 로깅: formatter, console handler, root logger 통일
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'console': {
+            'format': '%(levelname)s [%(name)s] %(message)s',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'console',
+        },
+    },
+    'root': {
+        'level': DATA_COLLECTION['LOGGING_LEVEL'],
+        'handlers': ['console'],
+    },
+}
+
