@@ -156,7 +156,7 @@ class CompanyFilter:
             return False
         
         # 최신 연도 총자산으로 기업 규모 분류
-        from apps.utils.utils import classify_company_size
+        from apps.utils import classify_company_size
         sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
         latest_total_assets = sorted_data[-1].total_assets
         company_size = classify_company_size(latest_total_assets)

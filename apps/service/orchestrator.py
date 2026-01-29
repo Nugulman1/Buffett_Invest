@@ -7,7 +7,7 @@ from apps.service.calculator import IndicatorCalculator
 from apps.service.filter import CompanyFilter
 from apps.models import CompanyFinancialObject, YearlyFinancialDataObject
 from apps.dart.client import DartClient
-from apps.utils.utils import save_company_to_db
+from apps.service.db import save_company_to_db
 
 
 class DataOrchestrator:

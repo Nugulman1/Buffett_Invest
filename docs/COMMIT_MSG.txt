@@ -1,0 +1,15 @@
+refactor: utils 분리·의존성 이전, 뷰 패키지화, 서비스/DB 레이어 정리
+
+- utils: 순수 함수만 유지 (normalize, format_, classify), utils.py 삭제
+- 의존성 함수 → 담당 모듈 이전
+  - corp_code / get_stock_code_by_corp_code → apps.service.corp_code
+  - get_bond_yield_5y → apps.service.bond_yield
+  - should_collect_company, load_company_from_db, save_company_to_db → apps.service.db
+  - load/save_passed_companies_json → apps.service.passed_json
+  - backup/restore_company_memos → apps.service.memo
+- migrate_txt_to_json → mgmt command migrate_passed_txt_to_json
+- print_latest_year_indicators 제거 (미사용)
+- companies views → views/ 패키지 (pages, api_financial, api_favorites, api_misc)
+- XBRL → apps/xbrl/ (parser, disabled, download, extract, acode_utils)
+- db.py 확장: 연간 저장/조회, 분기 save/load/get_company
+- docs: 코드 구조 요약 반영

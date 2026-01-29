@@ -190,7 +190,7 @@ class FinancialStatementData:
             raw_data: 원본 재무제표 데이터 리스트 (인덱싱용, 저장하지 않음)
         """
         # 순환 import 방지를 위해 함수 내부에서 lazy import
-        from apps.utils.utils import normalize_account_name
+        from apps.utils import normalize_account_name
         
         self.year = year
         self.reprt_code = reprt_code

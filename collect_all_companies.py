@@ -25,7 +25,8 @@ from django.apps import apps as django_apps
 from apps.service.orchestrator import DataOrchestrator
 from apps.dart.client import DartClient
 from apps.ecos.client import EcosClient
-from apps.utils.utils import should_collect_company, save_company_to_db, save_passed_companies_json
+from apps.service.db import should_collect_company, save_company_to_db
+from apps.service.passed_json import save_passed_companies_json
 
 
 def parse_stock_codes_file(stock_codes_file: Path) -> list:

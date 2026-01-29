@@ -7,7 +7,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from apps.dart.client import DartClient
 from apps.models import FinancialStatementData, YearlyFinancialDataObject, CompanyFinancialObject
-from apps.utils.utils import normalize_account_name
+from apps.utils import normalize_account_name
 
 
 class DartDataService:
@@ -318,12 +318,51 @@ class DartDataService:
                     result = future.result()
                     if result:
                         quarterly_data_list.append(result)
-                except Exception as e:
+                except Exception:
                     # 보고서가 없어서 실패하는 경우이므로 출력하지 않음
                     pass
-        
+
         return quarterly_data_list
-    
+
+    def collect_quarterly_data_for_save(
+        self, corp_code: str, after_date: str
+    ) -> list[tuple]:
+        """
+        분기보고서 수집 및 DB 저장용 데이터 반환 (비율 계산 포함)
+
+        Args:
+            corp_code: 고유번호 (8자리)
+            after_date: 기준일 (YYYYMMDD, 이 날짜 이후 분기보고서)
+
+        Returns:
+            [(year, quarter, quarterly_data, rcept_no, reprt_code), ...]
+        """
+        from apps.service.calculator import IndicatorCalculator
+
+        quarterly_reports = self.client.get_quarterly_reports_after_date(
+            corp_code, after_date
+        )
+        if not quarterly_reports:
+            return []
+
+        raw_list = self.collect_quarterly_financial_data(
+            corp_code, quarterly_reports
+        )
+        raw_list.sort(key=lambda x: (-x[0], -x[1]))
+
+        rcept_no_to_reprt = {
+            r.get("rcept_no"): r.get("reprt_code", "") for r in quarterly_reports
+        }
+
+        result = []
+        for year, quarter, quarterly_data, rcept_no in raw_list:
+            IndicatorCalculator.calculate_basic_financial_ratios_for_quarterly(
+                quarterly_data
+            )
+            reprt_code = rcept_no_to_reprt.get(rcept_no, "")
+            result.append((year, quarter, quarterly_data, rcept_no, reprt_code))
+        return result
+
     def _process_single_year_financial(self, corp_code: str, year: int, indicator_mappings: dict):
         """
         단일 연도의 재무지표 처리 (병렬 처리용)

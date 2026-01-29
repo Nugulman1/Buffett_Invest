@@ -418,32 +418,7 @@ class DartClient:
             'total_page': result.get('total_page', 1),
             'total_count': result.get('total_count', 0)
         }
-    
-    def download_xbrl(self, rcept_no, save_path=None):
-        """
-        XBRL 파일 다운로드
-        
-        Args:
-            rcept_no: 접수번호 (14자리)
-            save_path: 저장 경로 (None이면 바이너리 데이터 반환)
-            
-        Returns:
-            저장 경로 또는 바이너리 데이터
-        """
-        params = {
-            'rcept_no': rcept_no
-        }
-        
-        # XBRL 파일은 ZIP 형식으로 다운로드됨
-        binary_data = self._make_request("document.xml", params=params, return_binary=True)
-        
-        if save_path:
-            with open(save_path, 'wb') as f:
-                f.write(binary_data)
-            return save_path
-        else:
-            return binary_data
-    
+
     def get_annual_report_rcept_no(self, corp_code: str, year: str) -> str:
         """
         해당 연도의 사업보고서 접수번호 조회
@@ -643,28 +618,7 @@ class DartClient:
         except Exception as e:
             print(f"경고: 분기보고서 목록 조회 실패: {e}")
             return []
-    
-    def download_xbrl_and_extract_annual_report(self, rcept_no: str) -> bytes:
-        """
-        XBRL 파일 다운로드 및 사업보고서 XML 추출
-        
-        Args:
-            rcept_no: 접수번호 (14자리)
-            
-        Returns:
-            사업보고서 XML 파일 바이너리 데이터
-        """
-        from apps.service.xbrl_parser import XbrlParser
-        
-        # ZIP 파일 다운로드
-        zip_data = self.download_xbrl(rcept_no)
-        
-        # 사업보고서 XML 추출
-        parser = XbrlParser()
-        xml_content = parser.extract_annual_report_file(zip_data)
-        
-        return xml_content
-    
+
     def get_financial_indicators(self, corp_code, bsns_year, reprt_code='11011', idx_cl_code='M210000'):
         """
         재무지표 조회 (계산된 비율 지표)

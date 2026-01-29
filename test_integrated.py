@@ -20,7 +20,7 @@ django.setup()
 
 from apps.dart.client import DartClient
 from apps.service.orchestrator import DataOrchestrator
-from apps.utils.utils import format_amount_korean
+from apps.utils import format_amount_korean
 
 
 def print_all_years_data(company_data):
