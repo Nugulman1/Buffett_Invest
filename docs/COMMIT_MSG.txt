@@ -1,5 +1,0 @@
-docs: API URL 경로 순서 반영 및 코드 구조 요약 정리
-
-- config/urls.py: api/companies/ 경로를 고정 경로(passed, search, favorites, favorite-groups) 우선, corp_code 경로 후순으로 재배치
-- docs/코드 구조 요약.md: 위 URL 라우팅 순서 설명 추가
-- 버전 업그레이드 전 복구용 커밋

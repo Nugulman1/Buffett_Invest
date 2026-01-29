@@ -4,9 +4,10 @@
 
 ## 기술 스택
 
-- Django
-- Django REST Framework
-- Python
+- Django 6.0.x
+- Django REST Framework 3.16.x
+- Python 3.12–3.14 (권장: 3.13)
+- SQLite, python-dotenv 1.2.x
 
 ## 데이터 소스
 
