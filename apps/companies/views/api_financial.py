@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from apps.service.orchestrator import DataOrchestrator
-from apps.service.db import should_collect_company, load_company_from_db
+from apps.service.db import should_collect_company_from_company, load_company_from_db
 from apps.service.bond_yield import get_bond_yield_5y
 from apps.service.corp_code import resolve_corp_code, get_stock_code_by_corp_code
 from apps.service.passed_json import save_passed_companies_json
@@ -15,6 +15,7 @@ from apps.service.passed_json import save_passed_companies_json
 def _process_single_year_indicators(year_data, corp_code, company):
     """단일 년도 지표 계산 및 저장."""
     from django.apps import apps as django_apps
+    from django.conf import settings
     from apps.service.calculator import IndicatorCalculator
     from apps.models import YearlyFinancialDataObject
 
@@ -50,9 +51,10 @@ def _process_single_year_indicators(year_data, corp_code, company):
     )
     yearly_data_obj.interest_expense = year_data.get("interest_expense", 0) or 0
 
-    tax_rate = float(year_data.get("tax_rate", 25.0)) / 100.0
+    defaults = settings.CALCULATOR_DEFAULTS
+    tax_rate = float(year_data.get("tax_rate", defaults["TAX_RATE"])) / 100.0
     bond_yield = float(year_data.get("bond_yield", 3.5))
-    equity_risk_premium = float(year_data.get("equity_risk_premium", 5.0))
+    equity_risk_premium = float(year_data.get("equity_risk_premium", defaults["EQUITY_RISK_PREMIUM"]))
 
     fcf = IndicatorCalculator.calculate_fcf(yearly_data_obj)
     roic = IndicatorCalculator.calculate_roic(yearly_data_obj, tax_rate)
@@ -90,24 +92,19 @@ def get_financial_data(request, corp_code):
             return Response({"error": err}, status=status.HTTP_404_NOT_FOUND)
         corp_code = resolved
 
-        company_data = load_company_from_db(corp_code)
+        company_data, company = load_company_from_db(corp_code)
         if (
             company_data
             and company_data.yearly_data
-            and not should_collect_company(corp_code)
+            and company
+            and not should_collect_company_from_company(company)
         ):
-            try:
-                company = CompanyModel.objects.get(corp_code=corp_code)
-                memo = company.memo
-                memo_updated_at = (
-                    company.memo_updated_at.isoformat()
-                    if company.memo_updated_at
-                    else None
-                )
-            except CompanyModel.DoesNotExist:
-                memo = None
-                memo_updated_at = None
-
+            memo = company.memo
+            memo_updated_at = (
+                company.memo_updated_at.isoformat()
+                if company.memo_updated_at
+                else None
+            )
             data = {
                 "corp_code": company_data.corp_code,
                 "company_name": company_data.company_name,
@@ -142,7 +139,7 @@ def get_financial_data(request, corp_code):
         orchestrator = DataOrchestrator()
         company_data = orchestrator.collect_company_data(corp_code)
 
-        company_data_from_db = load_company_from_db(corp_code)
+        company_data_from_db, company_from_db = load_company_from_db(corp_code)
         if company_data_from_db:
             if company_data_from_db.passed_all_filters:
                 stock_code = get_stock_code_by_corp_code(corp_code)
@@ -152,15 +149,14 @@ def get_financial_data(request, corp_code):
                         company_data_from_db.company_name or "",
                         corp_code,
                     )
-            try:
-                company = CompanyModel.objects.get(corp_code=corp_code)
-                memo = company.memo
+            if company_from_db:
+                memo = company_from_db.memo
                 memo_updated_at = (
-                    company.memo_updated_at.isoformat()
-                    if company.memo_updated_at
+                    company_from_db.memo_updated_at.isoformat()
+                    if company_from_db.memo_updated_at
                     else None
                 )
-            except CompanyModel.DoesNotExist:
+            else:
                 memo = None
                 memo_updated_at = None
 

@@ -140,30 +140,37 @@ def should_collect_company(corp_code: str) -> bool:
 
     try:
         company = CompanyModel.objects.get(corp_code=corp_code)
-
-        if not company.last_collected_at:
-            return True
-
-        last_collected_date = company.last_collected_at.date()
-        current_date = datetime.now().date()
-
-        if last_collected_date.month >= 4:
-            last_april = date(last_collected_date.year, 4, 1)
-        else:
-            last_april = date(last_collected_date.year - 1, 4, 1)
-
-        if current_date.month >= 4:
-            current_april = date(current_date.year, 4, 1)
-        else:
-            current_april = date(current_date.year - 1, 4, 1)
-
-        return current_april > last_april
-
+        return should_collect_company_from_company(company)
     except CompanyModel.DoesNotExist:
         return True
 
 
-def load_company_from_db(corp_code: str) -> CompanyFinancialObject | None:
+def should_collect_company_from_company(company) -> bool:
+    """
+    Company 모델 인스턴스로 수집 필요 여부 확인 (4월 1일 기준).
+
+    last_collected_at이 없거나, 4월 1일 기준으로 1년이 지났으면 수집 필요.
+    """
+    if not company.last_collected_at:
+        return True
+
+    last_collected_date = company.last_collected_at.date()
+    current_date = datetime.now().date()
+
+    if last_collected_date.month >= 4:
+        last_april = date(last_collected_date.year, 4, 1)
+    else:
+        last_april = date(last_collected_date.year - 1, 4, 1)
+
+    if current_date.month >= 4:
+        current_april = date(current_date.year, 4, 1)
+    else:
+        current_april = date(current_date.year - 1, 4, 1)
+
+    return current_april > last_april
+
+
+def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None, object | None]:
     """
     DB에서 Company 및 YearlyFinancialData 모델을 조회하여 CompanyFinancialObject로 변환
 
@@ -171,7 +178,7 @@ def load_company_from_db(corp_code: str) -> CompanyFinancialObject | None:
         corp_code: 고유번호 (8자리)
 
     Returns:
-        CompanyFinancialObject 객체 (데이터가 없으면 None)
+        (CompanyFinancialObject, Company) 또는 (None, None). Company는 memo/수집여부 판단용.
     """
     CompanyModel = django_apps.get_model('apps', 'Company')
     YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
@@ -206,10 +213,10 @@ def load_company_from_db(corp_code: str) -> CompanyFinancialObject | None:
 
             company_data.yearly_data.append(yearly_data_obj)
 
-        return company_data
+        return (company_data, company)
 
     except CompanyModel.DoesNotExist:
-        return None
+        return (None, None)
 
 
 def save_company_to_db(company_data: CompanyFinancialObject) -> None:

@@ -1,6 +1,7 @@
 """
 기업 API: 즐겨찾기
 """
+from django.db.models import Prefetch
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -27,14 +28,17 @@ def get_favorites(request):
     """
     try:
         FavoriteGroupModel, FavoriteModel, _ = _get_favorite_models()
-        groups = FavoriteGroupModel.objects.all().order_by("name")
+        groups = FavoriteGroupModel.objects.prefetch_related(
+            Prefetch(
+                "favorites",
+                queryset=FavoriteModel.objects.select_related("company").order_by(
+                    "company__company_name"
+                ),
+            )
+        ).order_by("name")
         result = []
         for group in groups:
-            favorites = (
-                FavoriteModel.objects.filter(group=group)
-                .select_related("company")
-                .order_by("company__company_name")
-            )
+            favorites = group.favorites.all()
             result.append({
                 "group_id": group.id,
                 "group_name": group.name,

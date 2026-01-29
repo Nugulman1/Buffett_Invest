@@ -72,10 +72,14 @@
 
             async init() {
                 await this.fetchCompanyData();
-                await this.fetchAnnualReportLink();
-                await this.fetchQuarterlyData();
-                await this.loadFavoriteGroups();
-                await this.loadFavorites();
+                await Promise.all([
+                    this.fetchAnnualReportLink(),
+                    this.fetchQuarterlyData()
+                ]);
+                await Promise.all([
+                    this.loadFavoriteGroups(),
+                    this.loadFavorites()
+                ]);
 
                 // 메모 변경 추적
                 this.$watch('memoText', (newVal, oldVal) => {
@@ -387,8 +391,8 @@
             <p class="mb-0" x-text="error"></p>
         </div>
 
-        <!-- 데이터 표시 -->
-        <template x-if="!loading && !error && companyData">
+        <!-- 데이터 표시 (x-show로 첫 로드 시에도 DOM에 있어 분기보고서 버튼 등이 바로 표시됨) -->
+        <div x-show="!loading && !error && companyData" x-cloak>
             <div class="row g-4">
                 <!-- 첫 번째 행: 기업정보 + 필터 통과 여부 -->
                 <div class="col-md-6">
@@ -626,7 +630,7 @@
                     </div>
                 </div>
             </div>
-        </template>
+        </div>
 
         <!-- 즐겨찾기 추가 모달 -->
         <div x-show="showAddFavoriteModal"

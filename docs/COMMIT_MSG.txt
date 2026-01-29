@@ -1,15 +1,8 @@
-refactor: utils 분리·의존성 이전, 뷰 패키지화, 서비스/DB 레이어 정리
+fix: 상세 첫 로드 사업보고서 버튼 + 즐겨찾기 API N+1 제거
 
-- utils: 순수 함수만 유지 (normalize, format_, classify), utils.py 삭제
-- 의존성 함수 → 담당 모듈 이전
-  - corp_code / get_stock_code_by_corp_code → apps.service.corp_code
-  - get_bond_yield_5y → apps.service.bond_yield
-  - should_collect_company, load_company_from_db, save_company_to_db → apps.service.db
-  - load/save_passed_companies_json → apps.service.passed_json
-  - backup/restore_company_memos → apps.service.memo
-- migrate_txt_to_json → mgmt command migrate_passed_txt_to_json
-- print_latest_year_indicators 제거 (미사용)
-- companies views → views/ 패키지 (pages, api_financial, api_favorites, api_misc)
-- XBRL → apps/xbrl/ (parser, disabled, download, extract, acode_utils)
-- db.py 확장: 연간 저장/조회, 분기 save/load/get_company
-- docs: 코드 구조 요약 반영
+- detail.html: init()에서 fetchCompanyData() 완료 후 사업보고서/분기 API 병렬 호출
+  → 첫 진입 시에도 사업보고서 링크 버튼 정상 표시 (DB 준비 후 요청)
+- api_favorites: get_favorites에 prefetch_related(Prefetch('favorites', ...)) 적용
+  → 그룹·즐겨찾기·회사 2쿼리로 고정, N+1 제거
+- 대규모 리팩 후 기능 테스트 완료
+- docs: 코드 구조 요약·TODO 참고사항 반영

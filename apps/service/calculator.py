@@ -2,18 +2,26 @@
 재무 지표 계산 서비스
 """
 import logging
+from django.conf import settings
+
 from apps.models import YearlyFinancialDataObject, CompanyFinancialObject
 
 logger = logging.getLogger(__name__)
 
 
+def _get_calculator_tax_rate_decimal():
+    """설정의 법인세율(%) → 소수 (0.25)"""
+    return settings.CALCULATOR_DEFAULTS['TAX_RATE'] / 100.0
+
+
+def _get_calculator_equity_risk_premium():
+    """설정의 주주기대수익률(%) (5.0 등)"""
+    return settings.CALCULATOR_DEFAULTS['EQUITY_RISK_PREMIUM']
+
+
 class IndicatorCalculator:
     """재무 지표 계산 서비스"""
-    
-    # 클래스 상수
-    DEFAULT_TAX_RATE = 0.25  # 법인세율 (25%)
-    DEFAULT_EQUITY_RISK_PREMIUM = 10.0  # 주주기대수익률 (10%)
-    
+
     @staticmethod
     def calculate_cagr(start_value: float, end_value: float, years: int) -> float:
         """
@@ -114,7 +122,7 @@ class IndicatorCalculator:
         return icr
     
     @staticmethod
-    def calculate_roic(yearly_data: YearlyFinancialDataObject, tax_rate: float = DEFAULT_TAX_RATE) -> float:
+    def calculate_roic(yearly_data: YearlyFinancialDataObject, tax_rate: float = None) -> float:
         """
         ROIC (Return on Invested Capital, 투하자본수익률) 계산
         
@@ -122,11 +130,13 @@ class IndicatorCalculator:
         
         Args:
             yearly_data: YearlyFinancialDataObject 객체
-            tax_rate: 법인세율 (기본값: 0.25)
+            tax_rate: 법인세율 소수 (기본값: settings.CALCULATOR_DEFAULTS)
         
         Returns:
             ROIC 값 (소수 형태, float, 예: 0.10 = 10%)
         """
+        if tax_rate is None:
+            tax_rate = _get_calculator_tax_rate_decimal()
         # 이자부채 (통합 필드 사용)
         interest_bearing_debt = yearly_data.interest_bearing_debt
         
@@ -152,8 +162,8 @@ class IndicatorCalculator:
     def calculate_wacc(
         yearly_data: YearlyFinancialDataObject,
         bond_yield: float,
-        tax_rate: float = DEFAULT_TAX_RATE,
-        equity_risk_premium: float = DEFAULT_EQUITY_RISK_PREMIUM
+        tax_rate: float = None,
+        equity_risk_premium: float = None
     ) -> float:
         """
         WACC (Weighted Average Cost of Capital, 가중평균자본비용) 계산
@@ -169,11 +179,16 @@ class IndicatorCalculator:
             yearly_data: YearlyFinancialDataObject 객체
             bond_yield: 국채수익률 (퍼센트 형태, 예: 3.5 = 3.5%)
             tax_rate: 법인세율 (기본값: 0.25)
-            equity_risk_premium: 주주기대수익률 (퍼센트 형태, 기본값: 5.0)
+            equity_risk_premium: 주주기대수익률 (퍼센트 형태, 기본값: settings)
         
         Returns:
             WACC 값 (소수 형태, float, 예: 0.10 = 10%)
         """
+        if tax_rate is None:
+            tax_rate = _get_calculator_tax_rate_decimal()
+        if equity_risk_premium is None:
+            equity_risk_premium = _get_calculator_equity_risk_premium()
+
         # E = 자기자본
         equity = yearly_data.equity
         
@@ -215,8 +230,8 @@ class IndicatorCalculator:
     def calculate_all_indicators(
         cls,
         company_data: CompanyFinancialObject,
-        tax_rate: float = DEFAULT_TAX_RATE,
-        equity_risk_premium: float = DEFAULT_EQUITY_RISK_PREMIUM
+        tax_rate: float = None,
+        equity_risk_premium: float = None
     ) -> None:
         """
         모든 계산 지표 채우기
@@ -227,9 +242,13 @@ class IndicatorCalculator:
         
         Args:
             company_data: CompanyFinancialObject 객체
-            tax_rate: 법인세율 (기본값: 0.25)
-            equity_risk_premium: 주주기대수익률 (기본값: 5.0)
+            tax_rate: 법인세율 소수 (기본값: settings.CALCULATOR_DEFAULTS)
+            equity_risk_premium: 주주기대수익률 % (기본값: settings.CALCULATOR_DEFAULTS)
         """
+        if tax_rate is None:
+            tax_rate = _get_calculator_tax_rate_decimal()
+        if equity_risk_premium is None:
+            equity_risk_premium = _get_calculator_equity_risk_premium()
         if not company_data.yearly_data:
             return
     

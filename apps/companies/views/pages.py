@@ -34,4 +34,9 @@ def calculator(request):
     재무 지표 계산기 페이지
     GET /companies/calculator/
     """
-    return render(request, "companies/calculator.html")
+    from django.conf import settings
+    return render(
+        request,
+        "companies/calculator.html",
+        {"calculator_defaults": settings.CALCULATOR_DEFAULTS},
+    )

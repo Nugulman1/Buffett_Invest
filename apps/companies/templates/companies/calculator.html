@@ -3,7 +3,8 @@
 {% block title %}재무 지표 계산기 - 장기 투자 분석{% endblock %}
 
 {% block content %}
-<div x-data="financialCalculator()" class="row">
+<div x-data="financialCalculator()" class="row" data-tax-rate="{{ calculator_defaults.TAX_RATE|default:25 }}"
+    data-equity-risk-premium="{{ calculator_defaults.EQUITY_RISK_PREMIUM|default:10.0 }}">
     <div class="col-12">
         <div class="card mb-4">
             <div class="card-body p-4">
@@ -38,9 +39,10 @@
                                 <label for="tax_rate" class="form-label">법인세율 <span
                                         class="text-muted">(%)</span></label>
                                 <input type="number" id="tax_rate" x-model.number="commonFields.tax_rate"
-                                    @input="calculateAllForAllYears()" class="form-control" placeholder="25" step="0.1"
-                                    min="0" max="100">
-                                <div class="form-text">기본값: 25%</div>
+                                    @input="calculateAllForAllYears()" class="form-control"
+                                    placeholder="{{ calculator_defaults.TAX_RATE|default:25 }}" step="0.1" min="0"
+                                    max="100">
+                                <div class="form-text">기본값: {{ calculator_defaults.TAX_RATE|default:25 }}%</div>
                             </div>
                             <div class="col-md-4">
                                 <label for="bond_yield" class="form-label">국채수익률 <span
@@ -54,8 +56,11 @@
                                         class="text-muted">(%)</span></label>
                                 <input type="number" id="equity_risk_premium"
                                     x-model.number="commonFields.equity_risk_premium" @input="calculateAllForAllYears()"
-                                    class="form-control" placeholder="5.0" step="0.1" min="0" max="100">
-                                <div class="form-text">기본값: 5%</div>
+                                    class="form-control"
+                                    placeholder="{{ calculator_defaults.EQUITY_RISK_PREMIUM|default:5.0 }}" step="0.1"
+                                    min="0" max="100">
+                                <div class="form-text">기본값: {{ calculator_defaults.EQUITY_RISK_PREMIUM|default:5.0 }}%
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -247,7 +252,13 @@
             loadingFromDB: {},
 
             init() {
-                // 기본으로 년도 하나 추가
+                var el = this.$el;
+                if (el && el.dataset) {
+                    var tr = el.dataset.taxRate;
+                    var erp = el.dataset.equityRiskPremium;
+                    if (tr != null && tr !== '') this.commonFields.tax_rate = parseFloat(tr) || 25;
+                    if (erp != null && erp !== '') this.commonFields.equity_risk_premium = parseFloat(erp) || 5.0;
+                }
                 this.addYearForm();
             },
 
@@ -375,7 +386,7 @@
 
                 const taxRateDecimal = taxRate / 100;
                 const numerator = operatingIncome * (1 - taxRateDecimal);
-                form.roicResult = (numerator / denominator) * 100;
+                form.roicResult = numerator / denominator;
             },
 
             // WACC 계산
@@ -411,7 +422,7 @@
                 const debtWeight = interestBearingDebt / totalCapital;
                 const taxRateDecimal = taxRate / 100;
 
-                form.waccResult = ((equityWeight * costOfEquity) + (debtWeight * costOfDebt * (1 - taxRateDecimal))) * 100;
+                form.waccResult = (equityWeight * costOfEquity) + (debtWeight * costOfDebt * (1 - taxRateDecimal));
             },
 
             // 이자부채 복붙 시 자동 더하기
@@ -623,11 +634,12 @@
                 }
             },
 
+            // 백분율: 내부는 소수(0.10=10%), 표시 시 *100 (상세 페이지와 통일)
             formatPercent(value) {
                 if (value === null || value === undefined) {
                     return '-';
                 }
-                return value.toFixed(2) + '%';
+                return (value * 100).toFixed(2) + '%';
             }
         }
     }

@@ -152,3 +152,9 @@ DATA_COLLECTION = {
     'LOGGING_LEVEL': os.getenv('LOGGING_LEVEL', 'INFO'),  # 로깅 레벨
 }
 
+# 재무 지표 계산기 기본값 (환경변수로 오버라이드 가능)
+CALCULATOR_DEFAULTS = {
+    'TAX_RATE': int(os.getenv('CALCULATOR_TAX_RATE', '25')),  # 법인세율 (%)
+    'EQUITY_RISK_PREMIUM': float(os.getenv('CALCULATOR_EQUITY_RISK_PREMIUM', '10.0')),  # 주주기대수익률 (%)
+}
+
