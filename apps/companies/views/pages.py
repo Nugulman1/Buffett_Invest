@@ -32,7 +32,7 @@ def company_detail(request, corp_code):
 def calculator(request):
     """
     재무 지표 계산기 페이지
-    GET /companies/calculator/
+    GET /companies/calculator/?corp_code=XXXXX (기업 상세에서만 진입)
     """
     from django.conf import settings
     return render(

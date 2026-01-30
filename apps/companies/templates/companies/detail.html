@@ -414,6 +414,10 @@
                                 </div>
                                 <div class="mt-3">
                                     <div class="d-flex gap-2 flex-wrap">
+                                        <a href="{% url 'calculator' %}?corp_code={{ corp_code }}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-calculator me-2"></i>
+                                            재무 지표 계산기
+                                        </a>
                                         <div x-show="annualReportLink">
                                             <a :href="annualReportLink" target="_blank" class="btn btn-sm btn-primary">
                                                 <i class="bi bi-box-arrow-up-right me-2"></i>

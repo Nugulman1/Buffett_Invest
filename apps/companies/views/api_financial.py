@@ -362,6 +362,158 @@ def save_memo(request, corp_code):
 
 
 @api_view(["POST"])
+def parse_and_calculate(request, corp_code):
+    """
+    복붙 재무제표 파싱 및 FCF/ROIC/WACC 계산·저장 API
+    POST /api/companies/{corp_code}/parse-paste/
+
+    Request Body:
+        balance_sheet: 연결 재무상태표 텍스트
+        cash_flow: 연결 현금흐름표 텍스트
+        tax_rate, bond_yield, equity_risk_premium: 선택 (기본값 사용)
+
+    자본총계(equity)는 DB 기존 데이터 사용. 해당 연도 데이터가 없으면 해당 연도는 건너뜀.
+    """
+    try:
+        from django.apps import apps as django_apps
+        from django.conf import settings
+        from apps.service.paste_parser import (
+            parse_balance_sheet,
+            parse_cash_flow,
+            merge_parsed_balance_and_cash_flow,
+        )
+        from apps.service.calculator import IndicatorCalculator
+        from apps.models import YearlyFinancialDataObject
+
+        CompanyModel = django_apps.get_model("apps", "Company")
+        YearlyFinancialDataModel = django_apps.get_model("apps", "YearlyFinancialData")
+
+        resolved, err = resolve_corp_code(corp_code)
+        if err:
+            return Response({"error": err}, status=status.HTTP_404_NOT_FOUND)
+        corp_code = resolved
+
+        try:
+            company = CompanyModel.objects.get(corp_code=corp_code)
+        except CompanyModel.DoesNotExist:
+            return Response(
+                {"error": f"기업을 찾을 수 없습니다. (corp_code: {corp_code})"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        balance_sheet = (request.data.get("balance_sheet") or "").strip()
+        cash_flow = (request.data.get("cash_flow") or "").strip()
+        if not balance_sheet or not cash_flow:
+            return Response(
+                {"error": "balance_sheet와 cash_flow를 모두 입력해주세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        defaults = settings.CALCULATOR_DEFAULTS
+        tax_rate_pct = float(request.data.get("tax_rate", defaults["TAX_RATE"]))
+        bond_yield = float(request.data.get("bond_yield", 3.5))
+        equity_risk_premium = float(
+            request.data.get("equity_risk_premium", defaults["EQUITY_RISK_PREMIUM"])
+        )
+        tax_rate = tax_rate_pct / 100.0
+
+        bs_result = parse_balance_sheet(balance_sheet)
+        cf_result = parse_cash_flow(cash_flow)
+        merged = merge_parsed_balance_and_cash_flow(bs_result, cf_result)
+
+        if not merged["years"]:
+            return Response(
+                {"error": "연도를 추출할 수 없습니다. '제 N 기 YYYY.MM.DD' 형태가 있는지 확인해주세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        results = []
+        errors = []
+        yearly_data_list = list(
+            YearlyFinancialDataModel.objects.filter(company=company).order_by("-year")
+        )
+        db_by_year = {yd.year: yd for yd in yearly_data_list}
+
+        for year in merged["years"]:
+            row = merged["data"].get(year, {})
+            yearly_data_db = db_by_year.get(year)
+            if not yearly_data_db:
+                errors.append({"year": year, "error": "해당 연도 DB 데이터가 없습니다. 먼저 재무 데이터를 수집해주세요."})
+                continue
+
+            # 이자부채 = 단기차입금 + 유동성장기부채 + 유동리스부채 + 장기차입금 + 비유동리스부채
+            interest_bearing_debt = (
+                row.get("short_term_borrowings", 0)
+                + row.get("current_portion_of_long_term_debt", 0)
+                + row.get("current_lease_liabilities", 0)
+                + row.get("long_term_borrowings", 0)
+                + row.get("non_current_lease_liabilities", 0)
+            )
+
+            yearly_data_obj = YearlyFinancialDataObject(year=year)
+            yearly_data_obj.revenue = yearly_data_db.revenue or 0
+            yearly_data_obj.operating_income = yearly_data_db.operating_income or 0
+            yearly_data_obj.net_income = yearly_data_db.net_income or 0
+            yearly_data_obj.total_assets = yearly_data_db.total_assets or 0
+            yearly_data_obj.total_equity = yearly_data_db.total_equity or 0
+            yearly_data_obj.equity = yearly_data_db.total_equity or 0
+            yearly_data_obj.operating_margin = yearly_data_db.operating_margin or 0.0
+            yearly_data_obj.roe = yearly_data_db.roe or 0.0
+            yearly_data_obj.cfo = row.get("cfo", 0) or 0
+            yearly_data_obj.tangible_asset_acquisition = row.get("tangible_asset_acquisition", 0) or 0
+            yearly_data_obj.intangible_asset_acquisition = row.get("intangible_asset_acquisition", 0) or 0
+            yearly_data_obj.cash_and_cash_equivalents = row.get("cash_and_cash_equivalents", 0) or 0
+            yearly_data_obj.interest_bearing_debt = interest_bearing_debt
+            yearly_data_obj.interest_expense = row.get("interest_expense", 0) or 0
+
+            fcf = IndicatorCalculator.calculate_fcf(yearly_data_obj)
+            roic = IndicatorCalculator.calculate_roic(yearly_data_obj, tax_rate)
+            wacc = IndicatorCalculator.calculate_wacc(
+                yearly_data_obj, bond_yield, tax_rate, equity_risk_premium
+            )
+
+            yearly_data_db.interest_bearing_debt = interest_bearing_debt
+            yearly_data_db.fcf = fcf
+            yearly_data_db.roic = roic
+            yearly_data_db.wacc = wacc
+            yearly_data_db.save()
+
+            results.append({
+                "year": year,
+                "fcf": fcf,
+                "roic": roic,
+                "wacc": wacc,
+                "parsed_accounts": {k: v for k, v in row.items() if v},
+            })
+
+        if not results:
+            return Response(
+                {
+                    "success": False,
+                    "results": [],
+                    "errors": errors,
+                    "error": "저장된 연도가 없습니다. 해당 기업의 재무 데이터를 먼저 수집해주세요.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "success": True,
+                "results": results,
+                "errors": errors if errors else None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
 def save_calculated_indicators(request, corp_code):
     """
     계산 지표 저장 API

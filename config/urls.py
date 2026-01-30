@@ -26,6 +26,7 @@ urlpatterns = [
         path('<str:corp_code>/calculator-data/', companies_views.get_calculator_data, name='get_calculator_data'),
         path('<str:corp_code>/annual-report-link/', companies_views.get_annual_report_link, name='get_annual_report_link'),
         path('<str:corp_code>/memo/', companies_views.save_memo, name='save_memo'),
+        path('<str:corp_code>/parse-paste/', companies_views.parse_and_calculate, name='parse_and_calculate'),
         path('<str:corp_code>/calculated-indicators/', companies_views.save_calculated_indicators, name='save_calculated_indicators'),
         path('<str:corp_code>/favorites/', companies_views.favorite, name='favorite'),
         path('<str:corp_code>/quarterly-reports/collect/', companies_views.collect_quarterly_reports, name='collect_quarterly_reports'),
