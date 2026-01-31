@@ -3,8 +3,7 @@
 {% block title %}재무 지표 계산기 - 장기 투자 분석{% endblock %}
 
 {% block content %}
-<div class="row" x-data="pasteCalculator()"
-    data-tax-rate="{{ calculator_defaults.TAX_RATE|default:25 }}"
+<div class="row" x-data="pasteCalculator()" data-tax-rate="{{ calculator_defaults.TAX_RATE|default:25 }}"
     data-equity-risk-premium="{{ calculator_defaults.EQUITY_RISK_PREMIUM|default:5.0 }}">
     <div class="col-12">
         <div class="card mb-4">
@@ -23,7 +22,8 @@
                         <h4 class="card-title mb-3">기업 선택</h4>
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label for="corp_code" class="form-label">기업코드 / 종목코드 <span class="text-danger">*</span></label>
+                                <label for="corp_code" class="form-label">기업코드 / 종목코드 <span
+                                        class="text-danger">*</span></label>
                                 <input type="text" id="corp_code" x-model="corpCode" class="form-control"
                                     placeholder="예: 00126380 또는 005930">
                             </div>
@@ -82,7 +82,8 @@
                                 <label for="equity_risk_premium" class="form-label">주주기대수익률 (%)</label>
                                 <input type="number" id="equity_risk_premium" x-model.number="equityRiskPremium"
                                     class="form-control" step="0.1" min="0" max="100" placeholder="5.0">
-                                <div class="form-text">기본값: {{ calculator_defaults.EQUITY_RISK_PREMIUM|default:5.0 }}%</div>
+                                <div class="form-text">기본값: {{ calculator_defaults.EQUITY_RISK_PREMIUM|default:5.0 }}%
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -90,7 +91,8 @@
 
                 <!-- 실행 버튼 -->
                 <div class="mb-4">
-                    <button type="button" class="btn btn-primary btn-lg" @click="parseAndCalculate()" :disabled="loading">
+                    <button type="button" class="btn btn-primary btn-lg" @click="parseAndCalculate()"
+                        :disabled="loading">
                         <span x-show="!loading"><i class="bi bi-play-fill me-2"></i>파싱 및 계산 실행</span>
                         <span x-show="loading"><span class="spinner-border spinner-border-sm me-2"></span>처리 중...</span>
                     </button>
@@ -98,7 +100,8 @@
 
                 <!-- 메시지 -->
                 <div x-show="message" class="mb-3">
-                    <div :class="messageType === 'success' ? 'alert alert-success' : 'alert alert-danger'" x-text="message"></div>
+                    <div :class="messageType === 'success' ? 'alert alert-success' : 'alert alert-danger'"
+                        x-text="message"></div>
                 </div>
 
                 <!-- 결과 표시 -->

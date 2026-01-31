@@ -1,9 +1,12 @@
 """
 기업 API: 재무/계산기/분기/메모
 """
+import logging
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
+
+logger = logging.getLogger(__name__)
 
 from apps.service.orchestrator import DataOrchestrator
 from apps.service.db import should_collect_company_from_company, load_company_from_db
@@ -377,11 +380,7 @@ def parse_and_calculate(request, corp_code):
     try:
         from django.apps import apps as django_apps
         from django.conf import settings
-        from apps.service.paste_parser import (
-            parse_balance_sheet,
-            parse_cash_flow,
-            merge_parsed_balance_and_cash_flow,
-        )
+        from apps.service.paste_parser import parse_balance_sheet, parse_cash_flow
         from apps.service.calculator import IndicatorCalculator
         from apps.models import YearlyFinancialDataObject
 
@@ -419,11 +418,13 @@ def parse_and_calculate(request, corp_code):
 
         bs_result = parse_balance_sheet(balance_sheet)
         cf_result = parse_cash_flow(cash_flow)
-        merged = merge_parsed_balance_and_cash_flow(bs_result, cf_result)
-
-        if not merged["years"]:
+        years = sorted(
+            set(bs_result["years"]) | set(cf_result["years"]),
+            reverse=True,
+        )
+        if not years:
             return Response(
-                {"error": "연도를 추출할 수 없습니다. '제 N 기 YYYY.MM.DD' 형태가 있는지 확인해주세요."},
+                {"error": "연도를 추출할 수 없습니다. 텍스트에 2020~2029 형식이 있는지 확인해주세요."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -434,8 +435,11 @@ def parse_and_calculate(request, corp_code):
         )
         db_by_year = {yd.year: yd for yd in yearly_data_list}
 
-        for year in merged["years"]:
-            row = merged["data"].get(year, {})
+        for year in years:
+            row = {
+                **bs_result["data"].get(year, {}),
+                **cf_result["data"].get(year, {}),
+            }
             yearly_data_db = db_by_year.get(year)
             if not yearly_data_db:
                 errors.append({"year": year, "error": "해당 연도 DB 데이터가 없습니다. 먼저 재무 데이터를 수집해주세요."})
@@ -507,6 +511,7 @@ def parse_and_calculate(request, corp_code):
         )
 
     except Exception as e:
+        logger.exception("[parse_and_calculate] 오류: %s", e)
         return Response(
             {"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

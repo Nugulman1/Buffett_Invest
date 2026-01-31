@@ -3,226 +3,210 @@
 
 사업보고서에서 복사한 연결 재무상태표/현금흐름표 텍스트를 파싱하여
 FCF/ROIC/WACC 계산에 필요한 계정 값을 추출합니다.
-계정 매핑은 차차 추가해 나갑니다.
+연도 추출 + 표 본문 분리(자산/영업) + 한글(지표명)·숫자(금액) 분리 → rows JSON.
 """
+import logging
 import re
-from apps.utils import normalize_account_name
+
+logger = logging.getLogger(__name__)
+
+# 공백·쉼표 제거 후 금액: 숫자만 또는 (숫자)
+_AMOUNT_RE = re.compile(r"^(\d+|\(\d+\))$")
 
 
-# 계정 매핑: (표시명 변형 목록, 내부 필드명)
-# 정규화 함수로 매칭하므로 표시명은 정규화 후 비교됩니다.
-BALANCE_SHEET_MAPPING = [
-    (["현금및현금성자산"], "cash_and_cash_equivalents"),
-    (["단기차입금"], "short_term_borrowings"),
-    (["유동성장기부채"], "current_portion_of_long_term_debt"),
-    (["유동 리스부채", "유동리스부채"], "current_lease_liabilities"),
-    (["장기차입금"], "long_term_borrowings"),
-    (["비유동 리스부채", "비유동리스부채"], "non_current_lease_liabilities"),
-]
-
-CASH_FLOW_MAPPING = [
-    (["영업활동현금흐름"], "cfo"),
-    (["유형자산의 취득"], "tangible_asset_acquisition"),
-    (["무형자산의 취득"], "intangible_asset_acquisition"),
-    (["이자의 지급"], "interest_expense"),
-]
+def _is_amount_token(s: str) -> bool:
+    """공백·쉼표 제거된 문자열이 금액(숫자만 또는 (숫자))이면 True."""
+    return bool(s and _AMOUNT_RE.match(s.strip()))
 
 
-def _build_normalized_mapping(mapping_list):
-    """(표시명 목록, 필드명) 리스트 -> 정규화된 표시명 -> 필드명 딕셔너리"""
-    result = {}
-    for display_names, field in mapping_list:
-        for name in display_names:
-            key = normalize_account_name(name)
-            if key not in result:
-                result[key] = field
-    return result
-
-
-def _strip_footnote(label: str) -> str:
-    """괄호 주석 (주5,6,7) 등 제거"""
-    return re.sub(r"\s*\(주[^)]*\)\s*", "", label).strip()
-
-
-def _normalize_amount_token(s: str) -> str:
-    """전각 숫자/쉼표를 반각으로 변환 (PDF·DART 복사 시 전각으로 붙여넣어지는 경우 대비)."""
+def _parse_amount(s: str) -> int | None:
+    """금액 문자열을 정수로. (숫자)면 음수. 비금액이면 None."""
     if not s:
-        return s
-    # 전각 숫자 ０-９ (U+FF10–U+FF19) → 반각
-    for i, c in enumerate("０１２３４５６７８９"):
-        s = s.replace(c, str(i))
-    # 전각 쉼표 ， (U+FF0C) → 반각
-    s = s.replace("，", ",")
-    return s
+        return None
+    t = s.strip()
+    if not _AMOUNT_RE.match(t):
+        return None
+    neg = t.startswith("(") and t.endswith(")")
+    num_str = t.strip("()")
+    return -int(num_str) if neg else int(num_str)
 
 
-def _looks_like_amount(token: str) -> bool:
-    """토큰이 금액(숫자, 쉼표, 괄호) 형태인지 판별"""
-    t = _normalize_amount_token(token.strip()).replace(",", "").replace(" ", "")
-    if not t:
-        return False
-    if t.startswith("(") and t.endswith(")"):
-        t = t[1:-1]
-    return t.isdigit() or (t.startswith("-") and t[1:].isdigit())
+def _normalize_label(s: str) -> str:
+    """지표명 앞뒤 공백·전각 공백 제거."""
+    return s.replace("\u3000", " ").strip()
 
 
-def _extract_label_before_numbers(line: str) -> str:
-    """줄에서 첫 금액 컬럼 이전의 라벨 부분만 반환"""
-    stripped = line.strip()
-    tokens = re.split(r"[\s　]+", stripped)
-    label_parts = []
-    for t in tokens:
-        if _looks_like_amount(t):
-            break
-        label_parts.append(t)
-    return " ".join(label_parts).strip()
+def _is_whitespace_only(s: str) -> bool:
+    """줄이 공백·전각 공백만 있으면 True (빈 칸 자리 보존용)."""
+    return not s or s.replace("\u3000", " ").strip() == ""
 
 
-def _parse_amount_cell(cell: str) -> int:
-    """쉼표 구분 숫자 또는 (123) 형태를 정수로. 빈 칸/공백은 0. 전각 숫자 지원."""
-    cell = _normalize_amount_token((cell or "").strip()).replace(",", "").replace(" ", "").replace("　", "")
-    if not cell:
-        return 0
-    if cell.startswith("(") and cell.endswith(")"):
-        return -abs(int(cell[1:-1]))
-    try:
-        return int(cell)
-    except ValueError:
-        return 0
+def _cells_from_trimmed(trimmed_text: str) -> list[str]:
+    """
+    표 본문을 줄 단위로 나눈 뒤, 각 줄을 셀으로 추가.
+    공백만 있는 줄은 빈 셀 '' 로 넣어 연도 순서(자리)를 유지.
+    내용 있는 줄은 공백·쉼표 제거한 문자열로 넣음.
+    """
+    cells = []
+    for line in trimmed_text.splitlines():
+        if _is_whitespace_only(line):
+            cells.append("")
+        else:
+            cells.append(re.sub(r"[\s\u3000,]+", "", line))
+    return cells
 
 
-def _extract_amounts_from_line(line: str, max_columns: int = 3) -> list[int]:
-    """한 줄에서 금액 컬럼들 추출 (당기/전기/전전기 순). 탭 구분 컬럼 지원."""
-    tokens = re.split(r"[\s　\t]+", line.strip())
-    amounts = []
-    for t in tokens:
-        if _looks_like_amount(t):
-            amounts.append(_parse_amount_cell(t))
-            if len(amounts) >= max_columns:
+def _row_cells_to_slots(row_cells: list[str], empty_value: int | str | None) -> list:
+    """
+    숫자 값 개수 + 연속 공백 수로 [2024, 2023, 2022] 슬롯 매핑.
+    - 3개: 순서대로 [V1, V2, V3].
+    - 2개: 연속 공백(2개 이상)이 나오는 연도 = null, 나머지에 값 순서대로.
+    - 1개: 앞에 연속 공백 2개 이상 → 2022, 뒤에 2개 이상 → 2024, 나머지(앞뒤 각 2개) → 2023.
+    """
+    n = len(row_cells)
+    if n == 0:
+        return [empty_value, empty_value, empty_value]
+
+    values = []
+    value_indices = []
+    for i, c in enumerate(row_cells):
+        if c != "" and _is_amount_token(c):
+            values.append(_parse_amount(c))
+            value_indices.append(i)
+
+    num_values = len(values)
+    if num_values == 0:
+        return [empty_value, empty_value, empty_value]
+
+    if num_values == 3:
+        return [values[0], values[1], values[2]]
+
+    if num_values == 2:
+        # 연속 공백(2개 이상)이 나오는 위치 → 해당 연도 null
+        i0, i1 = value_indices[0], value_indices[1]
+        leading = i0
+        middle = i1 - i0 - 1
+        trailing = n - i1 - 1
+        if leading >= 2:
+            return [empty_value, values[0], values[1]]
+        if middle >= 2:
+            return [values[0], empty_value, values[1]]
+        if trailing >= 2:
+            return [values[0], values[1], empty_value]
+        return [values[0], values[1], empty_value]
+
+    # num_values == 1
+    idx = value_indices[0]
+    leading = idx
+    trailing = n - idx - 1
+    if leading >= 2 and trailing < 2:
+        return [empty_value, empty_value, values[0]]
+    if trailing >= 2 and leading < 2:
+        return [values[0], empty_value, empty_value]
+    return [empty_value, values[0], empty_value]
+
+
+def parse_table_body_to_rows(trimmed_text: str, years: list[int], empty_value: int | str | None = 0) -> list[dict]:
+    """
+    표 본문(trimmed)을 한글(지표명)·숫자(금액)로 분리해 행 단위 JSON 리스트 반환.
+    라벨 다음 셀들을 한 행으로 모은 뒤, 길이에 따라 3개 연도 슬롯으로 매핑.
+    (값 사이 빈 줄=구분자 6개 → 1,3,5가 값 / 빈 칸 포함 4개 → 0,1,3 등)
+    빈 값은 empty_value. 기본 0, None이면 null.
+    """
+    cells = _cells_from_trimmed(trimmed_text)
+    rows = []
+    i = 0
+    while i < len(cells):
+        cell = cells[i]
+        if cell == "" or _is_amount_token(cell):
+            i += 1
+            continue
+        label = _normalize_label(cell)
+        j = i + 1
+        row_cells = []
+        while j < len(cells):
+            c = cells[j]
+            if c != "" and not _is_amount_token(c):
                 break
-    while len(amounts) < max_columns:
-        amounts.append(0)
-    return amounts[:max_columns]
+            row_cells.append(c)
+            j += 1
+        values = _row_cells_to_slots(row_cells, empty_value)
+        row = {"label": label}
+        for idx, y in enumerate(years):
+            row[y] = values[idx] if idx < len(values) else empty_value
+        rows.append(row)
+        i = j
+    logger.info("[paste_parser] parse_table_body_to_rows: %s rows", len(rows))
+    return rows
 
 
 def _extract_years_from_text(text: str) -> list[int]:
     """
-    텍스트에서 '제 N 기 YYYY.MM.DD' 형태를 찾아 연도(YYYY) 리스트 반환.
-    중복 제거, 순서 유지.
+    텍스트에서 처음 나오는 2020~2029 연도를 당기로 하고,
+    [당기, 전기, 전전기] 3개 반환.
     """
-    # 제 23 기 2024.12.31 현재 / 제 23 기 2024.01.01 부터 ...
-    pattern = r"제\s*(\d+)\s*기\s*(\d{4})\.\d{1,2}\.\d{1,2}"
-    seen = {}
-    order = []
-    for m in re.finditer(pattern, text):
-        period, year_str = m.group(1), m.group(2)
-        year = int(year_str)
-        key = (year, period)
-        if key not in seen:
-            seen[key] = year
-            order.append(year)
-    if not order:
-        # 대안: 2024.12.31 형태만 검색
-        for m in re.finditer(r"20\d{2}\.\d{1,2}\.\d{1,2}", text):
-            y = int(m.group()[:4])
-            if y not in seen:
-                seen[y] = y
-                order.append(y)
-    # 당기(최신) 먼저 오도록 내림차순
-    order.sort(reverse=True)
-    return order[:10]
+    m = re.search(r"202[0-9]", text)
+    if not m:
+        logger.error("[paste_parser] 연도 추출 실패: 텍스트에 2020~2029 형식이 없음")
+        raise ValueError(
+            "연도를 찾을 수 없습니다. 텍스트에 2020~2029 형식이 있는지 확인해주세요."
+        )
+    report_year = int(m.group())
+    years = [report_year, report_year - 1, report_year - 2]
+    logger.info("[paste_parser] 연도 추출: 첫 202X=%s -> years=%s", report_year, years)
+    return years
 
 
-def _parse_table_by_mapping(text: str, mapping_list: list, max_columns: int = 3) -> dict:
+def _trim_from_first_marker(
+    text: str, marker: str, exact_line: bool = True, contains: bool = False
+) -> str:
     """
-    텍스트와 매핑을 받아 연도별 계정 값 딕셔너리 반환.
-
-    Returns:
-        {
-            "years": [2024, 2023, 2022],
-            "data": {
-                2024: { "cfo": 60126008213, "cash_and_cash_equivalents": 86017437082, ... },
-                2023: { ... },
-                2022: { ... },
-            }
-        }
+    텍스트에서 첫 번째 마커가 나오는 줄부터 끝까지 반환.
+    재무상태표: marker='자산', exact_line=True (줄 전체가 '자산'인 경우만)
+    현금흐름표: marker='영업', contains=True (줄에 '영업'이 포함되면, 표기 변형 대응)
     """
-    years = _extract_years_from_text(text)
-    if not years:
-        return {"years": [], "data": {}}
-
-    normalized_map = _build_normalized_mapping(mapping_list)
-    # 연도별로 채울 딕셔너리 (컬럼 순서 = years 순서)
-    data_by_year = {y: {} for y in years}
     lines = text.splitlines()
-
-    for idx, line in enumerate(lines):
-        line_stripped = line.strip()
-        if not line_stripped:
-            continue
-        label_part = _extract_label_before_numbers(line_stripped)
-        label_clean = _strip_footnote(label_part)
-        label_normalized = normalize_account_name(label_clean)
-        if not label_normalized:
-            continue
-        field = normalized_map.get(label_normalized)
-        if not field:
-            continue
-        amounts = _extract_amounts_from_line(line_stripped, max_columns=max_columns)
-        # 계정명만 있고 금액이 같은 줄에 없으면 다음 줄에서 금액 추출 (붙여넣기 형식: 계정 한 줄, 숫자 다음 줄)
-        if not any(amounts) and idx + 1 < len(lines):
-            next_line = lines[idx + 1].strip()
-            if next_line:
-                amounts = _extract_amounts_from_line(next_line, max_columns=max_columns)
-        for i, year in enumerate(years):
-            if i < len(amounts):
-                data_by_year[year][field] = amounts[i]
-
-    return {"years": years, "data": data_by_year}
+    for i, line in enumerate(lines):
+        # 전각 공백(\u3000)도 일반 공백으로 정규화 후 비교
+        stripped = line.replace("\u3000", " ").strip()
+        if exact_line:
+            if stripped == marker:
+                result = "\n".join(lines[i:])
+                logger.info("[paste_parser] _trim_from_first_marker: marker=%r, exact_line=True, 시작 줄=%s", marker, i + 1)
+                return result
+        elif contains:
+            if marker in stripped:
+                result = "\n".join(lines[i:])
+                logger.info("[paste_parser] _trim_from_first_marker: marker=%r, contains=True, 시작 줄=%s", marker, i + 1)
+                return result
+        else:
+            if stripped.startswith(marker):
+                result = "\n".join(lines[i:])
+                logger.info("[paste_parser] _trim_from_first_marker: marker=%r, startswith, 시작 줄=%s", marker, i + 1)
+                return result
+    logger.error("[paste_parser] _trim_from_first_marker: 마커 %r 를 찾을 수 없음", marker)
+    raise ValueError(f"표 시작을 찾을 수 없습니다. '{marker}' 가 있는지 확인해주세요.")
 
 
 def parse_balance_sheet(text: str) -> dict:
     """
-    연결 재무상태표 텍스트 파싱.
-
-    Returns:
-        {"years": [2024, 2023, 2022], "data": { 2024: {...}, ... }}
+    연결 재무상태표 텍스트: 연도 추출 + '자산' 줄부터 표 본문 분리 + rows(지표명·금액 JSON).
+    반환: {"years": [...], "data": {연도: {}}, "rows": [{"label": ..., 연도: 값}, ...]}
     """
-    return _parse_table_by_mapping(text, BALANCE_SHEET_MAPPING)
+    years = _extract_years_from_text(text)
+    trimmed = _trim_from_first_marker(text, "자산", exact_line=True)
+    rows = parse_table_body_to_rows(trimmed, years)
+    logger.info("[paste_parser] parse_balance_sheet: years=%s, rows=%s", years, len(rows))
+    return {"years": years, "data": {y: {} for y in years}, "rows": rows}
 
 
 def parse_cash_flow(text: str) -> dict:
     """
-    연결 현금흐름표 텍스트 파싱.
-
-    유형/무형자산 취득은 보통 괄호로 음수 표기되므로 절댓값으로 저장 (capex 양수).
-    이자의 지급은 절댓값으로 저장.
-
-    Returns:
-        {"years": [2024, 2023, 2022], "data": { 2024: {...}, ... }}
+    연결 현금흐름표 텍스트: 연도 추출 + '영업' 포함 첫 줄부터 표 본문 분리 + rows(지표명·금액 JSON).
+    반환: {"years": [...], "data": {연도: {}}, "rows": [{"label": ..., 연도: 값}, ...]}
     """
-    raw = _parse_table_by_mapping(text, CASH_FLOW_MAPPING)
-    for year, row in raw["data"].items():
-        if "tangible_asset_acquisition" in row and row["tangible_asset_acquisition"] < 0:
-            row["tangible_asset_acquisition"] = abs(row["tangible_asset_acquisition"])
-        if "intangible_asset_acquisition" in row and row["intangible_asset_acquisition"] < 0:
-            row["intangible_asset_acquisition"] = abs(row["intangible_asset_acquisition"])
-        if "interest_expense" in row and row["interest_expense"] < 0:
-            row["interest_expense"] = abs(row["interest_expense"])
-    return raw
-
-
-def merge_parsed_balance_and_cash_flow(bs_result: dict, cf_result: dict) -> dict:
-    """
-    재무상태표 파싱 결과와 현금흐름표 파싱 결과를 연도별로 병합.
-    연도는 두 결과의 교집합 또는 BS/CF 중 하나라도 있는 연도 모두 사용.
-    """
-    years_bs = set(bs_result.get("years", []))
-    years_cf = set(cf_result.get("years", []))
-    years = sorted(years_bs | years_cf, reverse=True)
-    data_bs = bs_result.get("data", {})
-    data_cf = cf_result.get("data", {})
-    merged = {}
-    for y in years:
-        merged[y] = {**(data_bs.get(y, {})), **(data_cf.get(y, {}))}
-    return {"years": years, "data": merged}
+    years = _extract_years_from_text(text)
+    trimmed = _trim_from_first_marker(text, "영업", exact_line=False, contains=True)
+    rows = parse_table_body_to_rows(trimmed, years)
+    logger.info("[paste_parser] parse_cash_flow: years=%s, rows=%s", years, len(rows))
+    return {"years": years, "data": {y: {} for y in years}, "rows": rows}
