@@ -139,7 +139,7 @@ def should_collect_company(corp_code: str) -> bool:
     CompanyModel = django_apps.get_model('apps', 'Company')
 
     try:
-        company = CompanyModel.objects.get(corp_code=corp_code)
+        company = CompanyModel.objects.prefetch_related('yearly_data').get(corp_code=corp_code)
         return should_collect_company_from_company(company)
     except CompanyModel.DoesNotExist:
         return True
@@ -149,8 +149,15 @@ def should_collect_company_from_company(company) -> bool:
     """
     Company 모델 인스턴스로 수집 필요 여부 확인 (4월 1일 기준).
 
-    last_collected_at이 없거나, 4월 1일 기준으로 1년이 지났으면 수집 필요.
+    - yearly_data가 없거나 모든 연도 매출액이 0이면 수집 필요.
+    - last_collected_at이 없거나, 4월 1일 기준으로 1년이 지났으면 수집 필요.
     """
+    yearly_data_list = list(company.yearly_data.all())
+    if not yearly_data_list:
+        return True
+    if all(yd.revenue == 0 for yd in yearly_data_list):
+        return True
+
     if not company.last_collected_at:
         return True
 

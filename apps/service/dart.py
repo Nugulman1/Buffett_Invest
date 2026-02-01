@@ -100,54 +100,69 @@ class DartDataService:
             DartDataService._indicator_mappings_cache = mappings
             return mappings
     
-    def _process_single_year_basic(self, corp_code: str, year: int, mappings: dict):
+    def _process_single_year_basic(
+        self, corp_code: str, year: int, years: list[int], mappings: dict
+    ):
         """
-        단일 연도의 기본 지표 처리 (병렬 처리용)
+        단일 사업보고서의 기본 지표 처리 (병렬 처리용).
+        당기·전기·전전기(thstrm, frmtrm, bfefrmtrm) 3개 연도 데이터를 추출한다.
         
         Args:
             corp_code: 고유번호 (8자리)
-            year: 연도
+            year: 사업보고서 연도 (예: 2024)
+            years: 수집 대상 연도 집합 (예: [2020, 2021, 2022, 2023, 2024])
             mappings: 지표 매핑 테이블
             
         Returns:
-            (year, yearly_data) 튜플 또는 None (실패 시)
+            [(target_year, yearly_data), ...] 리스트 (실패 시 빈 리스트)
         """
         year_str = str(year)
         
-        # 단일 연도 재무제표 데이터 수집
         fs_data = self.collect_financial_data(corp_code, year_str)
         if not fs_data:
-            return None  # 수집 실패 시 None 반환
+            return []
         
-        # YearlyFinancialData 객체 생성
-        yearly_data = YearlyFinancialDataObject(year=year)
-        yearly_data.rcept_no = (fs_data.rcept_no or '').strip() or None
-
+        rcept_no = (fs_data.rcept_no or '').strip() or None
+        
         # 역매핑 생성: "정규화된 계정명" -> "YearlyFinancialDataObject 필드명"
-        # (매핑표를 1회만 순회)
         reverse_mapping: dict[str, str] = {}
         for mapping_config in mappings.values():
             internal_field = mapping_config.get('internal_field')
             if not internal_field:
                 continue
-
-            dart_variants = mapping_config.get('dart_variants', [])
-            for variant in dart_variants:
+            for variant in mapping_config.get('dart_variants', []):
                 normalized_variant = normalize_account_name(variant)
-                # 이미 등록된 키는 유지 (첫 매핑 우선)
                 reverse_mapping.setdefault(normalized_variant, internal_field)
 
-        # DART에서 가져온 계정을 1회만 순회하며 매핑/저장
-        for normalized_account_name, account_data in fs_data.normalized_account_index.items():
-            internal_field = reverse_mapping.get(normalized_account_name)
-            if not internal_field or not hasattr(yearly_data, internal_field):
-                continue
-
-            amount = account_data.get('thstrm_amount', '0')
-            value = int(amount.replace(',', '')) if amount else 0
-            setattr(yearly_data, internal_field, value)
+        # 당기·전기·전전기 매핑 (bsns_year 기준)
+        # 2024 보고서 → thstrm=2024, frmtrm=2023, bfefrmtrm=2022
+        year_amount_pairs = [
+            (year, 'thstrm_amount'),
+            (year - 1, 'frmtrm_amount'),
+            (year - 2, 'bfefrmtrm_amount'),
+        ]
         
-        return (year, yearly_data)
+        results = []
+        for target_year, amount_type in year_amount_pairs:
+            if target_year not in years:
+                continue
+            
+            yearly_data = YearlyFinancialDataObject(year=target_year)
+            yearly_data.rcept_no = rcept_no
+            
+            for normalized_account_name, account_data in fs_data.normalized_account_index.items():
+                internal_field = reverse_mapping.get(normalized_account_name)
+                if not internal_field or not hasattr(yearly_data, internal_field):
+                    continue
+                amount = account_data.get(amount_type, '0')
+                try:
+                    value = int(amount.replace(',', '')) if amount else 0
+                except (ValueError, AttributeError):
+                    value = 0
+                setattr(yearly_data, internal_field, value)
+            
+            results.append((target_year, yearly_data))
+        return results
     
     def fill_basic_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
         """
@@ -163,36 +178,32 @@ class DartDataService:
         # 매핑표 로드
         mappings = self._load_indicator_mappings()
         
-        # 병렬 처리로 각 연도별 데이터 수집
-        yearly_data_list = []
+        # 병렬 처리로 각 연도별 데이터 수집 (보고서 1건당 당기·전기·전전기 3개 연도 추출)
+        year_to_data: dict[int, YearlyFinancialDataObject] = {}
         with ThreadPoolExecutor(max_workers=len(years)) as executor:
-            # 모든 연도에 대한 작업 제출
             future_to_year = {
-                executor.submit(self._process_single_year_basic, corp_code, year, mappings): year
+                executor.submit(self._process_single_year_basic, corp_code, year, years, mappings): year
                 for year in years
             }
-            
-            # 완료된 작업 처리
             for future in as_completed(future_to_year):
                 try:
-                    result = future.result()
-                    if result:
-                        yearly_data_list.append(result)
-                except Exception as e:
-                    # 보고서가 없어서 실패하는 경우이므로 출력하지 않음
+                    results = future.result()
+                    for y, data in results:
+                        # 이미 존재하면 스킵 (먼저 수집된 값 유지)
+                        if y not in year_to_data:
+                            year_to_data[y] = data
+                except Exception:
                     pass
         
         # 연도 순서대로 정렬하여 추가
-        yearly_data_list.sort(key=lambda x: x[0])
-        for year, yearly_data in yearly_data_list:
+        sorted_items = sorted(year_to_data.items(), key=lambda x: x[0])
+        for year, yearly_data in sorted_items:
             company_data.yearly_data.append(yearly_data)
-
-        # 정렬된 값에서 가장 최근 연도만 꺼내 Company에 저장.
-        # 사업보고서 링크 API에서 DB 조회만으로 응답하기 위함 (DART 연도별 재조회 방지).
-        if yearly_data_list:
-            latest = yearly_data_list[-1]
-            company_data.latest_annual_rcept_no = latest[1].rcept_no
-            company_data.latest_annual_report_year = latest[0]
+        
+        if sorted_items:
+            latest_year, latest_data = sorted_items[-1]
+            company_data.latest_annual_rcept_no = latest_data.rcept_no
+            company_data.latest_annual_report_year = latest_year
         else:
             company_data.latest_annual_rcept_no = None
             company_data.latest_annual_report_year = None
