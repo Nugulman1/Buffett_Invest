@@ -36,6 +36,19 @@ def _process_single_year_indicators(year_data, corp_code, company):
             f"{year}년도 데이터를 찾을 수 없습니다. 먼저 재무 데이터를 수집해주세요."
         )
 
+    if yearly_data_db.operating_income is None or yearly_data_db.total_equity is None:
+        yearly_data_db.fcf = None
+        yearly_data_db.roic = None
+        yearly_data_db.wacc = None
+        yearly_data_db.save()
+        return {
+            "corp_code": corp_code,
+            "year": year,
+            "fcf": None,
+            "roic": None,
+            "wacc": None,
+        }
+
     yearly_data_obj = YearlyFinancialDataObject(year=year)
     yearly_data_obj.cfo = year_data.get("cfo", 0) or 0
     yearly_data_obj.tangible_asset_acquisition = (
@@ -469,6 +482,14 @@ def parse_and_calculate(request, corp_code):
             )
             if labels:
                 logger.info("  [%s년] 이자부채 합산에 사용한 계정: %s", year, labels)
+            breakdown = row.get("_interest_bearing_debt_breakdown", {})
+            if breakdown:
+                for label, val in breakdown.items():
+                    try:
+                        amt = int(val) if val is not None else 0
+                        logger.info("    [이자부채 디버깅] %s -> %s", label, format_amount_korean(amt) if amt else "0")
+                    except (TypeError, ValueError):
+                        logger.info("    [이자부채 디버깅] %s -> %s", label, val)
         logger.info("=" * 60)
 
         results = []
@@ -483,6 +504,20 @@ def parse_and_calculate(request, corp_code):
             yearly_data_db = db_by_year.get(year)
             if not yearly_data_db:
                 errors.append({"year": year, "error": "해당 연도 DB 데이터가 없습니다. 먼저 재무 데이터를 수집해주세요."})
+                continue
+
+            if yearly_data_db.operating_income is None or yearly_data_db.total_equity is None:
+                yearly_data_db.fcf = None
+                yearly_data_db.roic = None
+                yearly_data_db.wacc = None
+                yearly_data_db.save()
+                results.append({
+                    "year": year,
+                    "fcf": None,
+                    "roic": None,
+                    "wacc": None,
+                    "parsed_accounts": {k: v for k, v in row.items() if not k.startswith("_") and v},
+                })
                 continue
 
             interest_bearing_debt = row.get("interest_bearing_debt", 0) or 0
