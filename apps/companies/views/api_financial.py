@@ -381,6 +381,7 @@ def parse_and_calculate(request, corp_code):
         from django.apps import apps as django_apps
         from django.conf import settings
         from apps.service.paste_parser import parse_balance_sheet, parse_cash_flow
+        from apps.service.llm_extractor import extract_financial_indicators
         from apps.service.calculator import IndicatorCalculator
         from apps.models import YearlyFinancialDataObject
 
@@ -428,6 +429,48 @@ def parse_and_calculate(request, corp_code):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if not settings.OPENAI_API_KEY:
+            return Response(
+                {"error": "OPENAI_API_KEY가 설정되지 않았습니다. .env를 확인해주세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        all_rows = bs_result["rows"] + cf_result["rows"]
+        try:
+            extracted = extract_financial_indicators(all_rows, years)
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            logger.exception("[parse_and_calculate] LLM 추출 실패: %s", e)
+            return Response(
+                {"error": f"지표 추출 실패: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        from apps.utils.format_ import format_amount_korean
+
+        logger.info("=" * 60)
+        logger.info("[parse_and_calculate] LLM 추출 지표 (수집 결과)")
+        logger.info("=" * 60)
+        for year in years:
+            row = extracted.get(year, {})
+            labels = row.get("_interest_bearing_debt_labels", [])
+            logger.info("  [%s년] cfo=%s, 유형자산취득=%s, 무형자산취득=%s, 기말현금=%s, 이자비용=%s, 이자부채=%s",
+                year,
+                format_amount_korean(row.get("cfo", 0) or 0),
+                format_amount_korean(row.get("tangible_asset_acquisition", 0) or 0),
+                format_amount_korean(row.get("intangible_asset_acquisition", 0) or 0),
+                format_amount_korean(row.get("cash_and_cash_equivalents", 0) or 0),
+                format_amount_korean(row.get("interest_expense", 0) or 0),
+                format_amount_korean(row.get("interest_bearing_debt", 0) or 0),
+            )
+            if labels:
+                logger.info("  [%s년] 이자부채 합산에 사용한 계정: %s", year, labels)
+        logger.info("=" * 60)
+
         results = []
         errors = []
         yearly_data_list = list(
@@ -436,23 +479,13 @@ def parse_and_calculate(request, corp_code):
         db_by_year = {yd.year: yd for yd in yearly_data_list}
 
         for year in years:
-            row = {
-                **bs_result["data"].get(year, {}),
-                **cf_result["data"].get(year, {}),
-            }
+            row = extracted.get(year, {})
             yearly_data_db = db_by_year.get(year)
             if not yearly_data_db:
                 errors.append({"year": year, "error": "해당 연도 DB 데이터가 없습니다. 먼저 재무 데이터를 수집해주세요."})
                 continue
 
-            # 이자부채 = 단기차입금 + 유동성장기부채 + 유동리스부채 + 장기차입금 + 비유동리스부채
-            interest_bearing_debt = (
-                row.get("short_term_borrowings", 0)
-                + row.get("current_portion_of_long_term_debt", 0)
-                + row.get("current_lease_liabilities", 0)
-                + row.get("long_term_borrowings", 0)
-                + row.get("non_current_lease_liabilities", 0)
-            )
+            interest_bearing_debt = row.get("interest_bearing_debt", 0) or 0
 
             yearly_data_obj = YearlyFinancialDataObject(year=year)
             yearly_data_obj.revenue = yearly_data_db.revenue or 0
@@ -476,6 +509,35 @@ def parse_and_calculate(request, corp_code):
                 yearly_data_obj, bond_yield, tax_rate, equity_risk_premium
             )
 
+            # 계산 과정 콘솔 출력
+            capex = yearly_data_obj.tangible_asset_acquisition + yearly_data_obj.intangible_asset_acquisition
+            logger.info("")
+            logger.info("[%s년] 계산 과정 (DB: 영업이익=%s, 자본=%s)",
+                year,
+                format_amount_korean(yearly_data_obj.operating_income),
+                format_amount_korean(yearly_data_obj.equity),
+            )
+            logger.info("  FCF: CFO(%s) - |유형+무형취득(%s)| = %s",
+                format_amount_korean(yearly_data_obj.cfo),
+                format_amount_korean(capex),
+                format_amount_korean(fcf),
+            )
+            denom = yearly_data_obj.equity + interest_bearing_debt - yearly_data_obj.cash_and_cash_equivalents
+            numer = yearly_data_obj.operating_income * (1 - tax_rate)
+            logger.info("  ROIC: 영업이익(1-세율)(%s) / (자본+이자부채-현금)(%s) = %.2f%%",
+                format_amount_korean(int(numer)),
+                format_amount_korean(denom),
+                roic * 100,
+            )
+            total_cap = yearly_data_obj.equity + interest_bearing_debt
+            eq_w = yearly_data_obj.equity / total_cap if total_cap else 0
+            debt_w = interest_bearing_debt / total_cap if total_cap else 0
+            re = (bond_yield + equity_risk_premium) / 100.0
+            rd = yearly_data_obj.interest_expense / interest_bearing_debt if interest_bearing_debt else 0
+            logger.info("  WACC: E/(E+D)=%.1f%%, D/(E+D)=%.1f%%, Re=%.2f%%, Rd=%.2f%% -> WACC=%.2f%%",
+                eq_w * 100, debt_w * 100, re * 100, rd * 100, wacc * 100,
+            )
+
             yearly_data_db.interest_bearing_debt = interest_bearing_debt
             yearly_data_db.fcf = fcf
             yearly_data_db.roic = roic
@@ -487,8 +549,11 @@ def parse_and_calculate(request, corp_code):
                 "fcf": fcf,
                 "roic": roic,
                 "wacc": wacc,
-                "parsed_accounts": {k: v for k, v in row.items() if v},
+                "parsed_accounts": {k: v for k, v in row.items() if not k.startswith("_") and v},
             })
+
+        logger.info("")
+        logger.info("[parse_and_calculate] DB 저장 완료: %s개 연도", len(results))
 
         if not results:
             return Response(

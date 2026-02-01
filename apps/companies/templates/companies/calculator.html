@@ -4,7 +4,8 @@
 
 {% block content %}
 <div class="row" x-data="pasteCalculator()" data-tax-rate="{{ calculator_defaults.TAX_RATE|default:25 }}"
-    data-equity-risk-premium="{{ calculator_defaults.EQUITY_RISK_PREMIUM|default:5.0 }}">
+    data-equity-risk-premium="{{ calculator_defaults.EQUITY_RISK_PREMIUM|default:5.0 }}"
+    data-bond-yield-default="{{ bond_yield_default|default:3.5 }}">
     <div class="col-12">
         <div class="card mb-4">
             <div class="card-body p-4">
@@ -154,13 +155,14 @@
         const el = document.querySelector('[x-data="pasteCalculator()"]');
         const taxRateDefault = el && el.dataset.taxRate != null ? parseFloat(el.dataset.taxRate) : 25;
         const erpDefault = el && el.dataset.equityRiskPremium != null ? parseFloat(el.dataset.equityRiskPremium) : 5.0;
+        const bondYieldDefault = el && el.dataset.bondYieldDefault != null ? parseFloat(el.dataset.bondYieldDefault) : 3.5;
 
         return {
             corpCode: '',
             balanceSheet: '',
             cashFlow: '',
             taxRate: taxRateDefault,
-            bondYield: 3.5,
+            bondYield: bondYieldDefault,
             equityRiskPremium: erpDefault,
             loading: false,
             results: [],

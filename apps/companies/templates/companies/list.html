@@ -256,14 +256,14 @@
                         <i class="bi bi-building me-2"></i>기업 재무 데이터 조회
                     </h2>
                     <p class="text-muted mb-4">
-                        기업명 또는 종목코드(6자리)를 입력하세요.
+                        기업명, 종목코드(6자리) 또는 기업번호(8자리)를 입력하세요.
                     </p>
 
                     <div class="mb-3" style="position: relative;">
-                        <label for="corpCodeInput" class="form-label">기업명 또는 종목코드</label>
+                        <label for="corpCodeInput" class="form-label">기업명 / 종목코드 / 기업번호</label>
                         <input type="text" id="corpCodeInput" x-model="corpCode" @input="handleInput()"
                             @keyup.enter="handleEnter()" @focus="handleFocus()" @blur="handleBlur()"
-                            class="form-control" placeholder="예: 삼성전자 또는 005930">
+                            class="form-control" placeholder="예: 삼성전자, 005930 또는 00126380">
                         <div class="form-text">
                             <i class="bi bi-info-circle me-1"></i>
                             기업명을 입력하면 자동완성 목록이 표시됩니다.
@@ -692,13 +692,12 @@
                         return;
                     }
 
-                    // 숫자만 입력된 경우 종목코드(6자리)로 처리
+                    // 숫자만 입력된 경우 종목코드(6자리) 또는 기업번호(8자리)로 처리
                     if (/^\d+$/.test(code)) {
-                        if (code.length === 6) {
-                            // 종목코드로 이동
+                        if (code.length === 6 || code.length === 8) {
                             window.location.href = '/companies/' + code + '/';
                         } else {
-                            alert('종목코드는 6자리 숫자입니다.');
+                            alert('종목코드는 6자리, 기업번호는 8자리 숫자입니다.');
                         }
                     }
                 },
@@ -707,18 +706,16 @@
                     const code = this.corpCode.trim();
 
                     if (!code) {
-                        alert('기업명 또는 종목코드를 입력해주세요.');
+                        alert('기업명, 종목코드 또는 기업번호를 입력해주세요.');
                         return;
                     }
 
-                    // 입력값이 숫자만 있는지 확인 (종목코드인 경우)
+                    // 입력값이 숫자만 있는지 확인 (종목코드/기업번호인 경우)
                     if (/^\d+$/.test(code)) {
-                        // 종목코드(6자리)만 허용
-                        if (code.length === 6) {
-                            // 종목코드로 이동 (백엔드에서 변환 처리)
+                        if (code.length === 6 || code.length === 8) {
                             window.location.href = '/companies/' + code + '/';
                         } else {
-                            alert('종목코드는 6자리 숫자입니다.');
+                            alert('종목코드는 6자리, 기업번호는 8자리 숫자입니다.');
                         }
                     } else {
                         // 기업명인 경우 검색 결과에서 선택하도록 안내

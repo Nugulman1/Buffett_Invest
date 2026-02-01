@@ -106,12 +106,18 @@ def _row_cells_to_slots(row_cells: list[str], empty_value: int | str | None) -> 
     return [empty_value, values[0], empty_value]
 
 
-def parse_table_body_to_rows(trimmed_text: str, years: list[int], empty_value: int | str | None = 0) -> list[dict]:
+def parse_table_body_to_rows(
+    trimmed_text: str,
+    years: list[int],
+    empty_value: int | str | None = 0,
+    unit_multiplier: int = 1,
+) -> list[dict]:
     """
     표 본문(trimmed)을 한글(지표명)·숫자(금액)로 분리해 행 단위 JSON 리스트 반환.
     라벨 다음 셀들을 한 행으로 모은 뒤, 길이에 따라 3개 연도 슬롯으로 매핑.
     (값 사이 빈 줄=구분자 6개 → 1,3,5가 값 / 빈 칸 포함 4개 → 0,1,3 등)
     빈 값은 empty_value. 기본 0, None이면 null.
+    unit_multiplier: 금액을 원 단위로 변환할 배수 (천원=1000, 백만원=1000000).
     """
     cells = _cells_from_trimmed(trimmed_text)
     rows = []
@@ -133,7 +139,11 @@ def parse_table_body_to_rows(trimmed_text: str, years: list[int], empty_value: i
         values = _row_cells_to_slots(row_cells, empty_value)
         row = {"label": label}
         for idx, y in enumerate(years):
-            row[y] = values[idx] if idx < len(values) else empty_value
+            val = values[idx] if idx < len(values) else empty_value
+            if isinstance(val, int):
+                row[y] = val * unit_multiplier
+            else:
+                row[y] = val
         rows.append(row)
         i = j
     logger.info("[paste_parser] parse_table_body_to_rows: %s rows", len(rows))
@@ -155,6 +165,26 @@ def _extract_years_from_text(text: str) -> list[int]:
     years = [report_year, report_year - 1, report_year - 2]
     logger.info("[paste_parser] 연도 추출: 첫 202X=%s -> years=%s", report_year, years)
     return years
+
+
+def _extract_unit_from_text(text: str) -> int:
+    """
+    텍스트에서 처음 나오는 '단위' 문자열을 찾아 원 단위 배수 반환.
+    원→1, 천원→1_000, 백만원→1_000_000. 못 찾으면 1.
+    """
+    m = re.search(r"단위\s*:\s*([^),]+)", text)
+    if not m:
+        logger.warning("[paste_parser] 단위 추출 실패: '단위'를 찾을 수 없음 -> 1(원)으로 처리")
+        return 1
+    unit_str = m.group(1).strip().replace(" ", "")
+    if "백만원" in unit_str:
+        return 1_000_000
+    if "천원" in unit_str:
+        return 1_000
+    if "원" in unit_str:
+        return 1
+    logger.warning("[paste_parser] 알 수 없는 단위 %r -> 1(원)으로 처리", unit_str)
+    return 1
 
 
 def _trim_from_first_marker(
@@ -194,8 +224,9 @@ def parse_balance_sheet(text: str) -> dict:
     반환: {"years": [...], "data": {연도: {}}, "rows": [{"label": ..., 연도: 값}, ...]}
     """
     years = _extract_years_from_text(text)
+    unit_multiplier = _extract_unit_from_text(text)
     trimmed = _trim_from_first_marker(text, "자산", exact_line=True)
-    rows = parse_table_body_to_rows(trimmed, years)
+    rows = parse_table_body_to_rows(trimmed, years, unit_multiplier=unit_multiplier)
     logger.info("[paste_parser] parse_balance_sheet: years=%s, rows=%s", years, len(rows))
     return {"years": years, "data": {y: {} for y in years}, "rows": rows}
 
@@ -206,7 +237,8 @@ def parse_cash_flow(text: str) -> dict:
     반환: {"years": [...], "data": {연도: {}}, "rows": [{"label": ..., 연도: 값}, ...]}
     """
     years = _extract_years_from_text(text)
+    unit_multiplier = _extract_unit_from_text(text)
     trimmed = _trim_from_first_marker(text, "영업", exact_line=False, contains=True)
-    rows = parse_table_body_to_rows(trimmed, years)
+    rows = parse_table_body_to_rows(trimmed, years, unit_multiplier=unit_multiplier)
     logger.info("[paste_parser] parse_cash_flow: years=%s, rows=%s", years, len(rows))
     return {"years": years, "data": {y: {} for y in years}, "rows": rows}

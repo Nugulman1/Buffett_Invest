@@ -1,9 +1,13 @@
 # TODO 리스트
 
 ## [최우선]
-- 재무지표 계산 코드 확인 && 오류 수정 && 개선할 부분 개선
-- **완료**: paste_parser — 연도 추출, 표 본문(자산/영업) 분리, 빈 줄=빈 셀 보존·값 개수+앞/가운데/뒤 빈 칸으로 3연도 슬롯 매핑, rows JSON. 테스트 스크립트(debug_paste_parser_balance/cash)로 balance.txt·cash.txt 검증.
-- **할 일**: 단위 처리, 지표들 모아서 계산해 DB 저장하는 로직
+- **완료**: paste_parser — 연도·단위 추출, 표 본문 분리, rows JSON, 원 단위 정규화
+- **완료**: 단위 처리 (_extract_unit_from_text, unit_multiplier)
+- **완료**: 지표 추출·계산·DB 저장 — LLM(llm_extractor)로 rows에서 cfo/이자부채 등 추출 → IndicatorCalculator → DB
+
+- 디버깅용 LLM 프롬포트 정리 (보류)
+- **완료**: 기업 분석 홈페이지 기업번호(8자리) 조회 지원
+- **완료**: 재무지표 계산기 국채수익률 페이지 로드 시 ECOS 데이터로 자동 채우기
 
 ## [보류]
 - 실제 사용 영상 제작 (포트폴리오)

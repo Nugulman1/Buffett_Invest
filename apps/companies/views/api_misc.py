@@ -59,10 +59,13 @@ def get_passed_companies(request):
 @api_view(["GET"])
 def search_companies(request):
     """
-    기업명 검색 API
+    기업 검색 API (기업명, 종목코드 6자리, 기업번호 8자리)
     GET /api/companies/search/?q=검색어&limit=10
     """
     from django.apps import apps as django_apps
+    from django.db.models import Q
+
+    from apps.service.corp_code import resolve_corp_code
 
     CompanyModel = django_apps.get_model("apps", "Company")
 
@@ -72,9 +75,16 @@ def search_companies(request):
     if not search_query:
         return Response({"companies": [], "total": 0})
 
-    companies = CompanyModel.objects.filter(
-        company_name__icontains=search_query
-    )[:limit]
+    q_filter = Q(company_name__icontains=search_query)
+    if search_query.isdigit():
+        if len(search_query) == 8:
+            q_filter |= Q(corp_code=search_query)
+        elif len(search_query) == 6:
+            resolved, _ = resolve_corp_code(search_query)
+            if resolved:
+                q_filter |= Q(corp_code=resolved)
+
+    companies = CompanyModel.objects.filter(q_filter)[:limit]
 
     results = []
     for company in companies:
