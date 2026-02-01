@@ -155,7 +155,8 @@ def should_collect_company_from_company(company) -> bool:
     yearly_data_list = list(company.yearly_data.all())
     if not yearly_data_list:
         return True
-    if all(yd.revenue == 0 for yd in yearly_data_list):
+    # 데이터 없음(None) 또는 0이면 수집 필요
+    if all(yd.revenue is None or yd.revenue == 0 for yd in yearly_data_list):
         return True
 
     if not company.last_collected_at:
@@ -206,13 +207,14 @@ def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None,
 
         for yearly_data_db in yearly_data_list:
             yearly_data_obj = YearlyFinancialDataObject(year=yearly_data_db.year)
-            yearly_data_obj.revenue = yearly_data_db.revenue or 0
-            yearly_data_obj.operating_income = yearly_data_db.operating_income or 0
-            yearly_data_obj.net_income = yearly_data_db.net_income or 0
-            yearly_data_obj.total_assets = yearly_data_db.total_assets or 0
-            yearly_data_obj.total_equity = yearly_data_db.total_equity or 0
-            yearly_data_obj.operating_margin = yearly_data_db.operating_margin or 0.0
-            yearly_data_obj.roe = yearly_data_db.roe or 0.0
+            # None(데이터 없음) 보존, DB NULL -> None
+            yearly_data_obj.revenue = yearly_data_db.revenue
+            yearly_data_obj.operating_income = yearly_data_db.operating_income
+            yearly_data_obj.net_income = yearly_data_db.net_income
+            yearly_data_obj.total_assets = yearly_data_db.total_assets
+            yearly_data_obj.total_equity = yearly_data_db.total_equity
+            yearly_data_obj.operating_margin = yearly_data_db.operating_margin
+            yearly_data_obj.roe = yearly_data_db.roe
             yearly_data_obj.interest_bearing_debt = yearly_data_db.interest_bearing_debt or 0
             yearly_data_obj.fcf = yearly_data_db.fcf
             yearly_data_obj.roic = yearly_data_db.roic

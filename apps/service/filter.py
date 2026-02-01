@@ -34,10 +34,11 @@ class CompanyFilter:
         # 최근 5년 또는 모든 데이터 사용 (5년 미만인 경우)
         data_to_check = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
         
-        # 영업이익 ≤ 0 인 연도 개수 계산
-        negative_count = sum(1 for data in data_to_check if data.operating_income <= 0)
-        
-        # 영업이익 ≤ 0 인 연도가 1회 이하인지 확인
+        # 데이터 없음(None)인 연도는 제외
+        valid_data = [d for d in data_to_check if d.operating_income is not None]
+        if not valid_data:
+            return False
+        negative_count = sum(1 for d in valid_data if d.operating_income <= 0)
         return negative_count <= 1
     
     @staticmethod
@@ -61,10 +62,11 @@ class CompanyFilter:
         # 최근 5년 또는 모든 데이터 사용 (5년 미만인 경우)
         data_to_check = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
         
-        # 당기순이익 합계 계산
-        total_net_income = sum(data.net_income for data in data_to_check)
-        
-        # 합계가 0보다 큰지 확인
+        # 데이터 없음(None)인 연도는 제외
+        valid_data = [d for d in data_to_check if d.net_income is not None]
+        if not valid_data:
+            return False
+        total_net_income = sum(d.net_income for d in valid_data)
         return total_net_income > 0
     
     @staticmethod
@@ -85,19 +87,14 @@ class CompanyFilter:
         # 데이터 정렬 (오름차순)
         sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
         
-        # 최소 2년 데이터 필요 (CAGR 계산을 위해)
-        if len(sorted_data) < 2:
+        # 데이터 없음(None) 또는 0인 연도 제외, revenue > 0인 연도만 사용
+        valid_data = [d for d in sorted_data if d.revenue is not None and d.revenue > 0]
+        if len(valid_data) < 2:
             return True
-        
-        # 시작값 (첫 년도)과 최종값 (마지막 년도)
-        start_value = sorted_data[0].revenue
-        end_value = sorted_data[-1].revenue
-        years_span = len(sorted_data) - 1  # 첫 년도와 마지막 년도 사이의 간격
-        
-        # CAGR 계산
+        start_value = valid_data[0].revenue
+        end_value = valid_data[-1].revenue
+        years_span = valid_data[-1].year - valid_data[0].year
         cagr = IndicatorCalculator.calculate_cagr(start_value, end_value, years_span)
-        
-        # CAGR ≥ 10% 인지 확인 (소수 형태: 0.10 = 10%)
         return cagr >= 0.10
     
     @staticmethod
@@ -121,11 +118,11 @@ class CompanyFilter:
         # 최근 5년 또는 모든 데이터 사용 (5년 미만인 경우)
         data_to_check = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
         
-        # 영업이익률 평균 계산
-        ratios = [data.operating_margin for data in data_to_check]
-        average_ratio = sum(ratios) / len(ratios) if ratios else 0.0
-        
-        # 평균이 10% 이상인지 확인
+        # 데이터 없음(None)인 연도는 제외
+        ratios = [d.operating_margin for d in data_to_check if d.operating_margin is not None]
+        if not ratios:
+            return False
+        average_ratio = sum(ratios) / len(ratios)
         return average_ratio >= 0.10
     
     @staticmethod
@@ -152,38 +149,26 @@ class CompanyFilter:
         if not company_data.yearly_data:
             return False
         
-        # 최신 연도 총자산으로 기업 규모 분류
+        # 최신 연도 총자산으로 기업 규모 분류 (total_assets가 None이 아닌 연도 사용)
         from apps.utils import classify_company_size
         sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
-        latest_total_assets = sorted_data[-1].total_assets
+        valid_for_assets = [d for d in reversed(sorted_data) if d.total_assets is not None]
+        if not valid_for_assets:
+            return False
+        latest_total_assets = valid_for_assets[0].total_assets
         company_size = classify_company_size(latest_total_assets)
         
-        # 규모별 ROE 임계값 (소수 형태: 0.08 = 8%)
-        roe_thresholds = {
-            'large': 0.08,   # 대기업: 8%
-            'medium': 0.10,  # 중견기업: 10%
-            'small': 0.12    # 중소기업: 12%
-        }
+        roe_thresholds = {'large': 0.08, 'medium': 0.10, 'small': 0.12}
         threshold = roe_thresholds[company_size]
         
-        # 데이터 정렬 (오름차순)
-        # 최근 5년 또는 모든 데이터 사용 (5년 미만인 경우)
         data_to_check = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
-        
-        # 자본총계가 양수인 연도만 ROE 계산
         roe_values = []
-        for data in data_to_check:
-            if data.total_equity > 0:
-                roe_values.append(data.roe)
-        
-        # 계산 가능한 ROE가 없으면 필터 실패
+        for d in data_to_check:
+            if d.total_equity is not None and d.total_equity > 0 and d.roe is not None:
+                roe_values.append(d.roe)
         if not roe_values:
             return False
-        
-        # ROE 평균 계산
         average_roe = sum(roe_values) / len(roe_values)
-        
-        # 평균이 임계값 이상인지 확인
         return average_roe >= threshold
     
     @classmethod

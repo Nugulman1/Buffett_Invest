@@ -75,13 +75,13 @@ class YearlyFinancialData(models.Model):
     """년도별 재무 데이터를 저장하는 Django 모델"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='yearly_data', verbose_name='회사')
     year = models.IntegerField(verbose_name='사업연도')
-    revenue = models.BigIntegerField(default=0, verbose_name='매출액')
-    operating_income = models.BigIntegerField(default=0, verbose_name='영업이익')
-    net_income = models.BigIntegerField(default=0, verbose_name='당기순이익')
-    total_assets = models.BigIntegerField(default=0, verbose_name='자산총계')
-    total_equity = models.BigIntegerField(default=0, verbose_name='자본총계')
-    operating_margin = models.FloatField(default=0.0, verbose_name='영업이익률')  # 계산 방식 (영업이익/매출액)
-    roe = models.FloatField(default=0.0, verbose_name='ROE')  # 계산 방식 (당기순이익/자본총계)
+    revenue = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='매출액')
+    operating_income = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='영업이익')
+    net_income = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='당기순이익')
+    total_assets = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자산총계')
+    total_equity = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자본총계')
+    operating_margin = models.FloatField(default=0.0, null=True, blank=True, verbose_name='영업이익률')
+    roe = models.FloatField(default=0.0, null=True, blank=True, verbose_name='ROE')
     interest_bearing_debt = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='이자부채')
     fcf = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자유현금흐름')
     roic = models.FloatField(default=0.0, null=True, blank=True, verbose_name='투하자본수익률')
@@ -255,13 +255,14 @@ class YearlyFinancialDataObject:
         self.year: int = year
         
         # === 기본 지표 (DART API) ===
-        self.revenue: int = 0  # 매출액 (5Y)
-        self.operating_income: int = 0  # 영업이익 (5Y)
-        self.net_income: int = 0  # 당기순이익 (5Y)
-        self.total_assets: int = 0  # 자산총계
-        self.total_equity: int = 0  # 자본총계
-        self.operating_margin: float = 0.0  # 영업이익률 (%) - 계산 방식 (영업이익/매출액)
-        self.roe: float = 0.0  # ROE (%) - 계산 방식 (당기순이익/자본총계)
+        # None = 데이터 없음 (DART "-"), API/UI에서 "-" 표시
+        self.revenue: int | None = 0  # 매출액 (5Y)
+        self.operating_income: int | None = 0  # 영업이익 (5Y)
+        self.net_income: int | None = 0  # 당기순이익 (5Y)
+        self.total_assets: int | None = 0  # 자산총계
+        self.total_equity: int | None = 0  # 자본총계
+        self.operating_margin: float | None = 0.0  # 영업이익률 (%) - 계산 방식 (영업이익/매출액)
+        self.roe: float | None = 0.0  # ROE (%) - 계산 방식 (당기순이익/자본총계)
         
         # === 계산에 사용하는 기본 지표 ===
         self.tangible_asset_acquisition: int = 0  # 유형자산 취득

@@ -253,7 +253,7 @@ class IndicatorCalculator:
             return
     
     @staticmethod
-    def calculate_operating_margin(yearly_data: YearlyFinancialDataObject) -> float:
+    def calculate_operating_margin(yearly_data: YearlyFinancialDataObject) -> float | None:
         """
         영업이익률 계산
         
@@ -266,14 +266,17 @@ class IndicatorCalculator:
             yearly_data: YearlyFinancialDataObject 객체
         
         Returns:
-            영업이익률 (소수 형태, float, 예: 0.105 = 10.5%)
+            영업이익률 (소수 형태, float, 예: 0.105 = 10.5%). 데이터 없으면 None
         """
-        if yearly_data.revenue > 0:
-            return yearly_data.operating_income / yearly_data.revenue
-        return 0.0
+        if yearly_data.revenue is None or yearly_data.revenue <= 0:
+            return None
+        oi = yearly_data.operating_income
+        if oi is None:
+            return None
+        return oi / yearly_data.revenue
     
     @staticmethod
-    def calculate_roe(yearly_data: YearlyFinancialDataObject) -> float:
+    def calculate_roe(yearly_data: YearlyFinancialDataObject) -> float | None:
         """
         ROE (Return on Equity, 자기자본수익률) 계산
         
@@ -286,11 +289,14 @@ class IndicatorCalculator:
             yearly_data: YearlyFinancialDataObject 객체
         
         Returns:
-            ROE (소수 형태, float, 예: 0.155 = 15.5%)
+            ROE (소수 형태, float, 예: 0.155 = 15.5%). 데이터 없으면 None
         """
-        if yearly_data.total_equity > 0:
-            return yearly_data.net_income / yearly_data.total_equity
-        return 0.0
+        if yearly_data.total_equity is None or yearly_data.total_equity <= 0:
+            return None
+        ni = yearly_data.net_income
+        if ni is None:
+            return None
+        return ni / yearly_data.total_equity
     
     @staticmethod
     def calculate_basic_financial_ratios(company_data: CompanyFinancialObject) -> None:

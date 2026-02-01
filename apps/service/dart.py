@@ -156,9 +156,9 @@ class DartDataService:
                     continue
                 amount = account_data.get(amount_type, '0')
                 try:
-                    value = int(amount.replace(',', '')) if amount else 0
+                    value = int(amount.replace(',', '')) if amount else None
                 except (ValueError, AttributeError):
-                    value = 0
+                    value = None
                 setattr(yearly_data, internal_field, value)
             
             results.append((target_year, yearly_data))
