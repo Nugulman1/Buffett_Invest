@@ -1,26 +1,6 @@
 {
-  "last_updated": "2026-02-02T12:33:41.082801",
+  "last_updated": "2026-02-02T17:40:45.807192",
   "companies": [
-    {
-      "stock_code": "257720",
-      "company_name": "주식회사 실리콘투",
-      "corp_code": "00982023"
-    },
-    {
-      "stock_code": "214150",
-      "company_name": "(주)클래시스",
-      "corp_code": "01061327"
-    },
-    {
-      "stock_code": "353810",
-      "company_name": "(주)이지바이오",
-      "corp_code": "01480568"
-    },
-    {
-      "stock_code": "140860",
-      "company_name": "(주)파크시스템스",
-      "corp_code": "00244747"
-    },
     {
       "stock_code": "483650",
       "company_name": "(주)달바글로벌",
@@ -32,14 +12,14 @@
       "corp_code": "01803927"
     },
     {
-      "stock_code": "226590",
-      "company_name": "엠디바이스 주식회사",
-      "corp_code": "01022142"
-    },
-    {
       "stock_code": "489500",
       "company_name": "(주)엘케이켐",
       "corp_code": "01747977"
+    },
+    {
+      "stock_code": "240550",
+      "company_name": "(주)동방메디컬",
+      "corp_code": "01073261"
     },
     {
       "stock_code": "450950",
@@ -52,19 +32,9 @@
       "corp_code": "01718407"
     },
     {
-      "stock_code": "176750",
-      "company_name": "(주)듀켐바이오",
-      "corp_code": "00867034"
-    },
-    {
       "stock_code": "484870",
       "company_name": "주식회사 엠앤씨솔루션",
       "corp_code": "01519790"
-    },
-    {
-      "stock_code": "473980",
-      "company_name": "(주)노머스",
-      "corp_code": "01703849"
     },
     {
       "stock_code": "457370",
@@ -72,14 +42,19 @@
       "corp_code": "01016309"
     },
     {
+      "stock_code": "465480",
+      "company_name": "인스피언(주)",
+      "corp_code": "01284876"
+    },
+    {
       "stock_code": "461300",
       "company_name": "(주)아이스크림미디어",
       "corp_code": "00657224"
     },
     {
-      "stock_code": "079900",
-      "company_name": "전진건설로봇(주)",
-      "corp_code": "00372129"
+      "stock_code": "460940",
+      "company_name": "(주)피앤에스로보틱스",
+      "corp_code": "01419205"
     },
     {
       "stock_code": "062040",
@@ -97,6 +72,11 @@
       "corp_code": "01194689"
     },
     {
+      "stock_code": "451250",
+      "company_name": "(주)삐아",
+      "corp_code": "01283974"
+    },
+    {
       "stock_code": "420570",
       "company_name": "주식회사 제이투케이바이오",
       "corp_code": "01553129"
@@ -107,14 +87,34 @@
       "corp_code": "01190568"
     },
     {
+      "stock_code": "457550",
+      "company_name": "(주)우진엔텍",
+      "corp_code": "01030503"
+    },
+    {
+      "stock_code": "453860",
+      "company_name": "(주)에이에스텍",
+      "corp_code": "01538528"
+    },
+    {
+      "stock_code": "452280",
+      "company_name": "한선엔지니어링(주)",
+      "corp_code": "00958451"
+    },
+    {
+      "stock_code": "111380",
+      "company_name": "(주)동인기연",
+      "corp_code": "00367710"
+    },
+    {
       "stock_code": "352090",
       "company_name": "(주)스톰테크",
       "corp_code": "01226270"
     },
     {
-      "stock_code": "418470",
-      "company_name": "(주)케이티밀리의서재",
-      "corp_code": "01467451"
+      "stock_code": "443250",
+      "company_name": "(주)레뷰코퍼레이션",
+      "corp_code": "01468061"
     },
     {
       "stock_code": "448710",
@@ -132,9 +132,14 @@
       "corp_code": "01134216"
     },
     {
-      "stock_code": "372170",
-      "company_name": "주식회사 윤성에프앤씨",
-      "corp_code": "00925374"
+      "stock_code": "356680",
+      "company_name": "(주)엑스게이트",
+      "corp_code": "01372782"
+    },
+    {
+      "stock_code": "425040",
+      "company_name": "티이엠씨 주식회사",
+      "corp_code": "01301252"
     },
     {
       "stock_code": "108320",
@@ -142,14 +147,39 @@
       "corp_code": "00525934"
     },
     {
+      "stock_code": "417500",
+      "company_name": "(주)제이아이테크",
+      "corp_code": "01367586"
+    },
+    {
+      "stock_code": "419120",
+      "company_name": "(주)산돌",
+      "corp_code": "01516368"
+    },
+    {
+      "stock_code": "368970",
+      "company_name": "주식회사 오에스피",
+      "corp_code": "01491607"
+    },
+    {
+      "stock_code": "403870",
+      "company_name": "주식회사 에이치피에스피",
+      "corp_code": "01288827"
+    },
+    {
+      "stock_code": "399720",
+      "company_name": "(주)가온칩스",
+      "corp_code": "01364747"
+    },
+    {
+      "stock_code": "366030",
+      "company_name": "주식회사 공구우먼",
+      "corp_code": "01307335"
+    },
+    {
       "stock_code": "251120",
       "company_name": "주식회사 바이오에프디엔씨",
       "corp_code": "01160974"
-    },
-    {
-      "stock_code": "136410",
-      "company_name": "주식회사 아셈스",
-      "corp_code": "00922304"
     },
     {
       "stock_code": "382800",
@@ -162,6 +192,16 @@
       "corp_code": "00692254"
     },
     {
+      "stock_code": "382480",
+      "company_name": "주식회사 지아이텍",
+      "corp_code": "01311310"
+    },
+    {
+      "stock_code": "257720",
+      "company_name": "주식회사 실리콘투",
+      "corp_code": "00982023"
+    },
+    {
       "stock_code": "260970",
       "company_name": "(주)에스앤디",
       "corp_code": "00560849"
@@ -172,9 +212,19 @@
       "corp_code": "00636656"
     },
     {
+      "stock_code": "273640",
+      "company_name": "(주)와이엠텍",
+      "corp_code": "01215618"
+    },
+    {
       "stock_code": "099390",
       "company_name": "브레인즈컴퍼니(주)",
       "corp_code": "00642897"
+    },
+    {
+      "stock_code": "259960",
+      "company_name": "주식회사 크래프톤",
+      "corp_code": "00760971"
     },
     {
       "stock_code": "383310",
@@ -187,9 +237,19 @@
       "corp_code": "01568413"
     },
     {
+      "stock_code": "252990",
+      "company_name": "(주)샘씨엔에스",
+      "corp_code": "01199727"
+    },
+    {
       "stock_code": "352480",
       "company_name": "(주)씨앤씨인터내셔널",
       "corp_code": "01226410"
+    },
+    {
+      "stock_code": "357230",
+      "company_name": "주식회사 에이치피오",
+      "corp_code": "01068737"
     },
     {
       "stock_code": "333620",
@@ -205,6 +265,11 @@
       "stock_code": "262840",
       "company_name": "(주)아이퀘스트",
       "corp_code": "01146822"
+    },
+    {
+      "stock_code": "368770",
+      "company_name": "(주)파이버프로",
+      "corp_code": "01513440"
     },
     {
       "stock_code": "357550",
@@ -235,6 +300,11 @@
       "stock_code": "298540",
       "company_name": "(주)더네이쳐홀딩스",
       "corp_code": "01214743"
+    },
+    {
+      "stock_code": "353810",
+      "company_name": "(주)이지바이오",
+      "corp_code": "01480568"
     },
     {
       "stock_code": "336570",
@@ -307,11 +377,6 @@
       "corp_code": "00526599"
     },
     {
-      "stock_code": "241520",
-      "company_name": "디에스씨인베스트먼트(주)",
-      "corp_code": "01109715"
-    },
-    {
       "stock_code": "241790",
       "company_name": "티이엠씨씨엔에스(주)",
       "corp_code": "01113754"
@@ -342,6 +407,11 @@
       "corp_code": "01124653"
     },
     {
+      "stock_code": "140860",
+      "company_name": "(주)파크시스템스",
+      "corp_code": "00244747"
+    },
+    {
       "stock_code": "217950",
       "company_name": "(주)파마리서치바이오",
       "corp_code": "01066058"
@@ -365,6 +435,11 @@
       "stock_code": "215000",
       "company_name": "(주)골프존",
       "corp_code": "01067516"
+    },
+    {
+      "stock_code": "214150",
+      "company_name": "(주)클래시스",
+      "corp_code": "01061327"
     },
     {
       "stock_code": "213420",
@@ -410,6 +485,11 @@
       "stock_code": "082920",
       "company_name": "(주)비츠로셀",
       "corp_code": "00154718"
+    },
+    {
+      "stock_code": "039490",
+      "company_name": "키움증권(주)",
+      "corp_code": "00296290"
     },
     {
       "stock_code": "058630",
@@ -527,11 +607,6 @@
       "corp_code": "00150536"
     },
     {
-      "stock_code": "041190",
-      "company_name": "우리기술투자(주)",
-      "corp_code": "00231664"
-    },
-    {
       "stock_code": "036830",
       "company_name": "솔브레인홀딩스(주)",
       "corp_code": "00247975"
@@ -565,6 +640,11 @@
       "stock_code": "031980",
       "company_name": "피에스케이홀딩스(주)",
       "corp_code": "00208444"
+    },
+    {
+      "stock_code": "018310",
+      "company_name": "삼목에스폼(주)",
+      "corp_code": "00125646"
     },
     {
       "stock_code": "011200",

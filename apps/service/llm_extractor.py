@@ -35,9 +35,10 @@ def _build_prompt(years: list[int]) -> str:
 
 ## 필드별 지표 가이드
 
-1. cfo (영업활동현금흐름)
-   - 재무상태: 영업활동으로 인한 현금의 유입·유출 합계.
-   - 현금흐름표: "영업활동으로 인한 현금흐름" 또는 "영업활동현금흐름" 계정. 보통 표 하단 합계 행.
+1. cfo (영업활동현금흐름) [중요: 부호 유지]
+   - 현금흐름표: "영업활동현금흐름" 또는 "영업활동으로 인한 현금흐름" 계정(표 하단 합계 행).
+   - rows에 금액이 음수(유출)로 되어 있으면 반드시 음수 그대로 넣고, 양수(유입)면 양수 그대로 넣으세요. 절대 절대값으로 바꾸지 마세요.
+   - 예: rows에 "2024": -39859428111 이면 cfo에는 -39859428111 (음수 유지).
 
 2. tangible_asset_acquisition (유형자산 취득)
    - 투자활동에서 유형자산 구입에 지출한 현금. "유형자산의취득", "유형자산취득" 등.
@@ -55,20 +56,16 @@ def _build_prompt(years: list[int]) -> str:
    - 금액이 음수로 나오면 절대값으로 저장.
 
 6. interest_bearing_debt (이자부채)
-   - 재무상태표(부채)에서 이자부담이 있는 차입금·사채·리스부채의 합계.
-   - 반드시 아래 5개 계정을 모두 찾아 합산하세요 (없는 계정은 0으로):
-     * 단기차입금
-     * 장기차입금
-     * 유동성장기차입금 (당기 1년 이내 상환 구간)
-     * 사채 (장기사채, 유동사채 등 사채 계정 전부)
-     * 리스부채
-   - interest_bearing_debt_labels에는 위 합산에 사용한 label 전체를 배열로 나열.
-   - interest_bearing_debt_breakdown: 디버깅용. 연도별로 "어떤 계정명을 어떤 금액으로 가져왔는지" 객체. 예: {{"{first_year}": {{"단기차입금": 100, "장기차입금": 200}}, ...}}
+   - 재무상태표(부채)에서 이자부담이 있는 차입금·사채·리스부채 계정을 찾아, 연도별 금액을 interest_bearing_debt_breakdown에 넣으세요.
+   - 반드시 아래 6개 계정을 모두 찾아 breakdown에 포함 (없는 계정은 0):
+     * 단기차입금, 장기차입금, 유동성장기차입금, 사채, 리스부채, 비유동 리스부채
+   - interest_bearing_debt_breakdown: 연도별 {{계정명: 금액}} 객체. 이 값들의 합계가 실제 이자부채로 사용됩니다. 각 연도마다 위 6개 계정을 키로, 해당 금액(정수)을 값으로 넣으세요. 예: {{"{first_year}": {{"단기차입금": 10000000000, "장기차입금": 0, "유동성리스부채": 229384282, ...}}, ...}}
+   - interest_bearing_debt_labels: breakdown에 사용한 label(계정명) 목록을 배열로.
+   - 각 연도 블록의 interest_bearing_debt 필드는 0으로 두어도 됨 (코드에서 breakdown 합으로 계산함).
 
 ## 규칙
-- 금액은 정수, 양수로. 없으면 0.
-- interest_bearing_debt_labels: 이자부채 합산에 사용한 label 목록을 배열로.
-- interest_bearing_debt_breakdown: 연도별 {{계정명: 금액}} 객체 (디버깅용).
+- 금액은 정수, 없으면 0.
+- interest_bearing_debt_breakdown이 핵심입니다. 연도별로 계정명→금액을 정확히 채우세요.
 
 반드시 아래 JSON 형식으로만 응답하세요 (다른 텍스트 없이). 연도 키는 반드시 {years_str} 를 사용하세요:
 {{{year_blocks}, "interest_bearing_debt_labels": [], "interest_bearing_debt_breakdown": {{{breakdown_blocks}}}}}
@@ -77,6 +74,17 @@ rows:
 """
 
 
+def _sum_breakdown(breakdown: dict) -> int:
+    """이자부채 breakdown(계정명→금액)의 금액 합계. LLM 총합 대신 사용."""
+    total = 0
+    for v in breakdown.values():
+        if v is None:
+            continue
+        try:
+            total += int(v)
+        except (TypeError, ValueError):
+            continue
+    return total
 
 
 def extract_financial_indicators(rows: list[dict], years: list[int]) -> dict[int, dict]:
@@ -143,6 +151,9 @@ def extract_financial_indicators(rows: list[dict], years: list[int]) -> dict[int
         if not isinstance(breakdown_for_year, dict):
             breakdown_for_year = {}
         row["_interest_bearing_debt_breakdown"] = breakdown_for_year
+        # 이자부채는 LLM 총합 대신 breakdown 합으로 덮어써서 합산 오류 방지
+        if breakdown_for_year:
+            row["interest_bearing_debt"] = _sum_breakdown(breakdown_for_year)
         result[year] = row
 
     return result
