@@ -19,8 +19,17 @@ _EXTRACT_FIELDS = [
     "interest_bearing_debt",  # 이자부채
 ]
 
-_PROMPT = """다음은 연결 재무상태표와 연결 현금흐름표에서 파싱한 rows JSON입니다.
-각 row는 label(계정명)과 연도별 금액(2024, 2023, 2022 등)을 가집니다.
+def _build_prompt(years: list[int]) -> str:
+    """연도 리스트에 맞춰 프롬프트와 응답 형식 예시를 동적으로 생성."""
+    years_str = ", ".join(str(y) for y in years)
+    year_blocks = ", ".join(
+        f'"{y}": {{"cfo": 0, "tangible_asset_acquisition": 0, "intangible_asset_acquisition": 0, "cash_and_cash_equivalents": 0, "interest_expense": 0, "interest_bearing_debt": 0}}'
+        for y in years
+    )
+    breakdown_blocks = ", ".join(f'"{y}": {{}}' for y in years)
+    first_year = years[0] if years else 2024
+    return f"""다음은 연결 재무상태표와 연결 현금흐름표에서 파싱한 rows JSON입니다.
+각 row는 label(계정명)과 연도별 금액({years_str})을 가집니다.
 
 아래 6개 필드에 해당하는 label을 찾아 연도별 값을 추출해주세요. (정확한 label명 일치 또는 유사 표현)
 
@@ -54,18 +63,20 @@ _PROMPT = """다음은 연결 재무상태표와 연결 현금흐름표에서 �
      * 사채 (장기사채, 유동사채 등 사채 계정 전부)
      * 리스부채
    - interest_bearing_debt_labels에는 위 합산에 사용한 label 전체를 배열로 나열.
-   - interest_bearing_debt_breakdown: 디버깅용. 연도별로 "어떤 계정명을 어떤 금액으로 가져왔는지" 객체. 예: {"2024": {"단기차입금": 100, "장기차입금": 200}, "2023": {...}}
+   - interest_bearing_debt_breakdown: 디버깅용. 연도별로 "어떤 계정명을 어떤 금액으로 가져왔는지" 객체. 예: {{"{first_year}": {{"단기차입금": 100, "장기차입금": 200}}, ...}}
 
 ## 규칙
 - 금액은 정수, 양수로. 없으면 0.
 - interest_bearing_debt_labels: 이자부채 합산에 사용한 label 목록을 배열로.
-- interest_bearing_debt_breakdown: 연도별 {계정명: 금액} 객체 (디버깅용).
+- interest_bearing_debt_breakdown: 연도별 {{계정명: 금액}} 객체 (디버깅용).
 
-반드시 아래 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
-{"2024": {"cfo": 0, "tangible_asset_acquisition": 0, "intangible_asset_acquisition": 0, "cash_and_cash_equivalents": 0, "interest_expense": 0, "interest_bearing_debt": 0}, "2023": {...}, "2022": {...}, "interest_bearing_debt_labels": [], "interest_bearing_debt_breakdown": {"2024": {"단기차입금": 0, "장기차입금": 0}, "2023": {}, "2022": {}}}
+반드시 아래 JSON 형식으로만 응답하세요 (다른 텍스트 없이). 연도 키는 반드시 {years_str} 를 사용하세요:
+{{{year_blocks}, "interest_bearing_debt_labels": [], "interest_bearing_debt_breakdown": {{{breakdown_blocks}}}}}
 
 rows:
 """
+
+
 
 
 def extract_financial_indicators(rows: list[dict], years: list[int]) -> dict[int, dict]:
@@ -87,7 +98,7 @@ def extract_financial_indicators(rows: list[dict], years: list[int]) -> dict[int
     client = OpenAI(api_key=api_key)
 
     rows_json = json.dumps(rows, ensure_ascii=False, indent=2)
-    prompt = _PROMPT + rows_json
+    prompt = _build_prompt(years) + rows_json
 
     try:
         response = client.chat.completions.create(

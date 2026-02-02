@@ -5,6 +5,7 @@
 FCF/ROIC/WACC 계산에 필요한 계정 값을 추출합니다.
 연도 추출 + 표 본문 분리(자산/영업) + 한글(지표명)·숫자(금액) 분리 → rows JSON.
 """
+import json
 import logging
 import re
 
@@ -228,7 +229,9 @@ def parse_balance_sheet(text: str) -> dict:
     trimmed = _trim_from_first_marker(text, "자산", exact_line=True)
     rows = parse_table_body_to_rows(trimmed, years, unit_multiplier=unit_multiplier)
     logger.info("[paste_parser] parse_balance_sheet: years=%s, rows=%s", years, len(rows))
-    return {"years": years, "data": {y: {} for y in years}, "rows": rows}
+    result = {"years": years, "data": {y: {} for y in years}, "rows": rows}
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return result
 
 
 def parse_cash_flow(text: str) -> dict:
@@ -241,4 +244,6 @@ def parse_cash_flow(text: str) -> dict:
     trimmed = _trim_from_first_marker(text, "영업", exact_line=False, contains=True)
     rows = parse_table_body_to_rows(trimmed, years, unit_multiplier=unit_multiplier)
     logger.info("[paste_parser] parse_cash_flow: years=%s, rows=%s", years, len(rows))
-    return {"years": years, "data": {y: {} for y in years}, "rows": rows}
+    result = {"years": years, "data": {y: {} for y in years}, "rows": rows}
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return result
