@@ -336,23 +336,22 @@ class DartDataService:
         return quarterly_data_list
 
     def collect_quarterly_data_for_save(
-        self, corp_code: str, after_date: str
+        self, corp_code: str, limit: int = 3
     ) -> list[tuple]:
         """
-        분기보고서 수집 및 DB 저장용 데이터 반환 (비율 계산 포함)
+        분기보고서 수집 및 DB 저장용 데이터 반환 (비율 계산 포함).
+        현재 날짜 기준 최근 limit개 분기보고서만 수집 (사업보고서 접수일 무관).
 
         Args:
             corp_code: 고유번호 (8자리)
-            after_date: 기준일 (YYYYMMDD, 이 날짜 이후 분기보고서)
+            limit: 수집할 분기보고서 건수 (기본 3)
 
         Returns:
             [(year, quarter, quarterly_data, rcept_no, reprt_code), ...]
         """
         from apps.service.calculator import IndicatorCalculator
 
-        quarterly_reports = self.client.get_quarterly_reports_after_date(
-            corp_code, after_date
-        )
+        quarterly_reports = self.client.get_recent_quarterly_reports(corp_code, limit=limit)
         if not quarterly_reports:
             return []
 

@@ -57,10 +57,8 @@ def _build_prompt(years: list[int]) -> str:
 
 6. interest_bearing_debt (이자부채)
    - 재무상태표(부채)에서 이자부담이 있는 차입금·사채·리스부채 계정을 찾아, 연도별 금액을 interest_bearing_debt_breakdown에 넣으세요.
-   - 반드시 아래 6개 계정을 모두 찾아 breakdown에 포함 (없는 계정은 0):
-     * 단기차입금, 장기차입금, 유동성장기차입금, 사채, 리스부채, 비유동 리스부채
-   - interest_bearing_debt_breakdown: 연도별 {{계정명: 금액}} 객체. 이 값들의 합계가 실제 이자부채로 사용됩니다. 각 연도마다 위 6개 계정을 키로, 해당 금액(정수)을 값으로 넣으세요. 예: {{"{first_year}": {{"단기차입금": 10000000000, "장기차입금": 0, "유동성리스부채": 229384282, ...}}, ...}}
-   - interest_bearing_debt_labels: breakdown에 사용한 label(계정명) 목록을 배열로.
+   - interest_bearing_debt_breakdown: 연도별 {{계정명: 금액}} 객체. rows에 나온 계정명(label)을 키로, 해당 금액(정수)을 값으로 넣으세요. 없으면 0.
+   - interest_bearing_debt_labels: breakdown에 사용한 label 목록을 배열로.
    - 각 연도 블록의 interest_bearing_debt 필드는 0으로 두어도 됨 (코드에서 breakdown 합으로 계산함).
 
 ## 규칙
@@ -102,7 +100,7 @@ def extract_financial_indicators(rows: list[dict], years: list[int]) -> dict[int
     if not api_key:
         raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. .env를 확인해주세요.")
 
-    model = getattr(settings, "OPENAI_MODEL", "gpt-4o-mini")
+    model = getattr(settings, "OPENAI_MODEL", "gpt-4o")
     client = OpenAI(api_key=api_key)
 
     rows_json = json.dumps(rows, ensure_ascii=False, indent=2)
@@ -156,4 +154,34 @@ def extract_financial_indicators(rows: list[dict], years: list[int]) -> dict[int
             row["interest_bearing_debt"] = _sum_breakdown(breakdown_for_year)
         result[year] = row
 
+    _log_extracted_indicators(result)
     return result
+
+
+def _log_extracted_indicators(result: dict) -> None:
+    """추출된 지표를 보기 쉽게 로그 출력."""
+    if not result:
+        return
+    lines = ["", "[llm_extractor] 추출 지표"]
+    field_labels = {
+        "cfo": "영업활동현금흐름",
+        "tangible_asset_acquisition": "유형자산취득",
+        "intangible_asset_acquisition": "무형자산취득",
+        "cash_and_cash_equivalents": "기말현금",
+        "interest_expense": "이자비용",
+        "interest_bearing_debt": "이자부채",
+    }
+    for year in sorted(result.keys(), reverse=True):
+        row = result[year]
+        lines.append(f"  [{year}]")
+        for f in _EXTRACT_FIELDS:
+            val = row.get(f, 0)
+            label = field_labels.get(f, f)
+            lines.append(f"    {label}: {val:,}" if isinstance(val, int) else f"    {label}: {val}")
+        bd = row.get("_interest_bearing_debt_breakdown") or {}
+        if bd:
+            lines.append("    이자부채(breakdown):")
+            for k, v in sorted(bd.items(), key=lambda x: x[0]):
+                lines.append(f"      {k}: {v:,}" if isinstance(v, int) else f"      {k}: {v}")
+        lines.append("")
+    logger.info("\n".join(lines))

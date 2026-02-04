@@ -14,30 +14,20 @@ from apps.models import CompanyFinancialObject, YearlyFinancialDataObject
 
 def get_company_for_quarterly_collect(corp_code: str):
     """
-    분기 수집용 기업·after_date 조회
+    분기 수집용 기업 조회 (사업보고서 날짜 무관, 최근 3개 분기만 수집)
 
     Args:
         corp_code: 고유번호 (8자리)
 
     Returns:
-        (company, after_date) 또는 (None, error_message)
+        (company,) 또는 (None, error_message)
     """
     CompanyModel = django_apps.get_model("apps", "Company")
     try:
         company = CompanyModel.objects.get(corp_code=corp_code)
     except CompanyModel.DoesNotExist:
         return (None, "기업을 찾을 수 없습니다. 먼저 연도별 데이터를 수집해주세요.")
-
-    after_date = None
-    if company.latest_annual_rcept_no and len(company.latest_annual_rcept_no) >= 8:
-        after_date = company.latest_annual_rcept_no[:8]
-    elif company.latest_annual_report_year is not None:
-        after_date = f"{company.latest_annual_report_year + 1}0430"
-
-    if not after_date:
-        return (None, "먼저 연간 재무 수집이 필요합니다.")
-
-    return (company, after_date)
+    return (company,)
 
 
 def save_quarterly_financial_data(company, quarterly_data_list: list) -> int:

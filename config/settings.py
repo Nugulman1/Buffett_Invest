@@ -137,7 +137,7 @@ REST_FRAMEWORK = {
 DART_API_KEY = os.getenv('DART_API_KEY', '')
 ECOS_API_KEY = os.getenv('ECOS_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')
 
 # 데이터 수집 설정 (환경변수 또는 기본값)
 DATA_COLLECTION = {

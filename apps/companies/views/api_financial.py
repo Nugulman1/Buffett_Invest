@@ -761,23 +761,21 @@ def collect_quarterly_reports(request, corp_code):
             return Response({"error": err}, status=status.HTTP_404_NOT_FOUND)
         corp_code = resolved
 
-        company, after_date_or_err = get_company_for_quarterly_collect(corp_code)
-        if company is None:
+        result = get_company_for_quarterly_collect(corp_code)
+        if result[0] is None:
             return Response(
-                {"error": after_date_or_err},
+                {"error": result[1]},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        after_date = after_date_or_err
+        company = result[0]
 
         dart_service = DartDataService()
-        quarterly_data_list = dart_service.collect_quarterly_data_for_save(
-            corp_code, after_date
-        )
+        quarterly_data_list = dart_service.collect_quarterly_data_for_save(corp_code)
 
         if not quarterly_data_list:
             return Response(
                 {
-                    "message": "최근 사업보고서 이후의 분기보고서가 없습니다.",
+                    "message": "분기보고서가 없습니다.",
                     "collected_count": 0,
                 },
                 status=status.HTTP_200_OK,
