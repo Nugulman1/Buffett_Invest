@@ -151,6 +151,7 @@ class YearlyFinancialIndicator(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='yearly_indicators', verbose_name='회사')
     year = models.IntegerField(verbose_name='사업연도')
     idx_code = models.CharField(max_length=20, verbose_name='지표코드')  # M211100 등
+    idx_nm = models.CharField(max_length=100, null=True, blank=True, verbose_name='지표명')  # ROE, 영업수익경비율 등
     idx_val = models.FloatField(null=True, blank=True, verbose_name='지표값')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
@@ -166,7 +167,8 @@ class YearlyFinancialIndicator(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.company.company_name} - {self.year}년 {self.idx_code}"
+        name = self.idx_nm or self.idx_code
+        return f"{self.company.company_name} - {self.year}년 {name}"
 
 
 class FavoriteGroup(models.Model):
@@ -337,6 +339,11 @@ class CompanyFinancialObject:
         
         # 년도별 데이터 리스트
         self.yearly_data: list[YearlyFinancialDataObject] = []
+        
+        # 연도별 주요재무지표 (DART fnlttCmpnyIndx): year -> { idx_code: value }
+        self.yearly_indicators: dict[int, dict[str, float]] = {}
+        # 연도별 지표명 (year -> { idx_code: idx_nm }) - DB 보기 편하게
+        self.yearly_indicator_names: dict[int, dict[str, str]] = {}
         
         # 최근 사업보고서 링크용 (5년 수집 정렬 직후 채움)
         self.latest_annual_rcept_no: str | None = None

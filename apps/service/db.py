@@ -271,3 +271,17 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                     'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
                 }
             )
+
+        yearly_indicators = getattr(company_data, 'yearly_indicators', None) or {}
+        yearly_indicator_names = getattr(company_data, 'yearly_indicator_names', None) or {}
+        YearlyFinancialIndicatorModel = django_apps.get_model('apps', 'YearlyFinancialIndicator')
+        for year, indicators in yearly_indicators.items():
+            names_by_code = yearly_indicator_names.get(year, {})
+            for idx_code, value in indicators.items():
+                idx_nm = names_by_code.get(idx_code)
+                YearlyFinancialIndicatorModel.objects.update_or_create(
+                    company=company,
+                    year=year,
+                    idx_code=idx_code,
+                    defaults={'idx_val': value, 'idx_nm': idx_nm},
+                )

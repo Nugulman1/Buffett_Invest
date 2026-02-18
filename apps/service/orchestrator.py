@@ -13,6 +13,10 @@ from apps.service.db import save_company_to_db
 logger = logging.getLogger(__name__)
 
 
+# DART 다중회사 주요재무지표 ROE 지표코드
+ROE_IDX_CODE = 'M211550'
+
+
 class DataOrchestrator:
     """DART와 ECOS 데이터 수집을 조율하는 오케스트레이터"""
     
@@ -20,6 +24,15 @@ class DataOrchestrator:
         self.dart_service = DartDataService()
         self.ecos_service = EcosDataService()
         self.dart_client = DartClient()
+    
+    @staticmethod
+    def _fill_roe_from_indicators(company_data: CompanyFinancialObject) -> None:
+        """yearly_indicators의 M211550(ROE) 값을 yearly_data.roe에 채움. 없으면 None 유지."""
+        indicators = getattr(company_data, 'yearly_indicators', None) or {}
+        for yearly_data in company_data.yearly_data:
+            year_indicators = indicators.get(yearly_data.year, {})
+            val = year_indicators.get(ROE_IDX_CODE)
+            yearly_data.roe = float(val) if val is not None else None
     
     def collect_company_data(self, corp_code: str, save_to_db: bool = True) -> CompanyFinancialObject:
         """
@@ -49,9 +62,12 @@ class DataOrchestrator:
         
         # DART 기본 지표 수집 (한 번의 호출로 모든 연도 처리)
         self.dart_service.fill_basic_indicators(corp_code, years, company_data)
-        
-        # 기본 재무지표 계산 (영업이익률, ROE)
-        # API 호출 최적화를 위해 재무지표 API 호출을 제거하고 계산 방식으로 변경
+        # DART 주요재무지표 수집 (ROE M211550 등) → yearly_data.roe 채움
+        indicators_map, indicator_names_map = self.dart_service.fill_financial_indicators_multi([corp_code], years)
+        company_data.yearly_indicators = indicators_map.get(corp_code, {})
+        company_data.yearly_indicator_names = indicator_names_map.get(corp_code, {})
+        self._fill_roe_from_indicators(company_data)
+        # 기본 재무지표 계산 (영업이익률만)
         IndicatorCalculator.calculate_basic_financial_ratios(company_data)
         
         # ECOS 데이터 수집 (채권수익률 - 하루 기준으로 캐싱)
@@ -117,6 +133,12 @@ class DataOrchestrator:
             return []
         years = self.dart_service._get_recent_years(5)
         company_data_map = self.dart_service.fill_basic_indicators_multi(corp_codes, years)
+        indicators_map, indicator_names_map = self.dart_service.fill_financial_indicators_multi(corp_codes, years)
+        for corp_code in corp_codes:
+            company_data = company_data_map.get(corp_code)
+            if company_data is not None:
+                company_data.yearly_indicators = indicators_map.get(corp_code, {})
+                company_data.yearly_indicator_names = indicator_names_map.get(corp_code, {})
 
         # 채권수익률 1회 조회/캐시 (기존과 동일)
         try:
@@ -158,6 +180,7 @@ class DataOrchestrator:
                         company_data.company_name = company_info.get('corp_name', '')
                 except Exception as e:
                     logger.warning("기업 정보 조회 실패 %s: %s", corp_code, e)
+                self._fill_roe_from_indicators(company_data)
                 IndicatorCalculator.calculate_basic_financial_ratios(company_data)
                 try:
                     CompanyFilter.apply_all_filters(company_data)

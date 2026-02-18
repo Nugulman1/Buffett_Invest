@@ -97,7 +97,7 @@ class DartClient:
         Args:
             endpoint: API 엔드포인트
             params: 요청 파라미터
-            return_binary: True면 바이너리 데이터 반환 (XBRL 다운로드용)
+            return_binary: True면 바이너리 데이터 반환
             max_retries: 최대 재시도 횟수 (None이면 settings에서 가져옴)
             timeout: API 요청 타임아웃 (None이면 settings에서 가져옴)
             
@@ -350,9 +350,9 @@ class DartClient:
         - 데이터 형태: 계정명(account_nm)과 금액(thstrm_amount) - 원 단위
         - 예시: {"account_nm": "매출액", "thstrm_amount": "100,000,000,000"} → 1000억원
         
-        get_financial_indicators()와의 차이:
+        get_financial_indicators_multi()와의 차이:
         - 이 메서드: 원시 금액 데이터 (매출액 1000억원, 영업이익 100억원 등)
-        - get_financial_indicators(): 계산된 비율 지표 (매출총이익률 20%, ROE 15% 등)
+        - get_financial_indicators_multi(): 계산된 비율 지표 (매출총이익률, ROE 등, 다중/단일 모두 지원)
         
         Args:
             corp_code: 기업 고유번호 (8자리)
@@ -423,6 +423,46 @@ class DartClient:
             raise Exception(f"다중회사 재무제표 조회 실패: {message}")
         financial_list = result.get('list', [])
         return financial_list if isinstance(financial_list, list) else []
+
+    def get_financial_indicators_multi(
+        self, corp_codes: list, bsns_year: str, reprt_code='11011', idx_cl_code='M210000'
+    ):
+        """
+        다중회사 주요재무지표 조회 (최대 100개 회사)
+
+        API: fnlttCmpnyIndx.json. _make_request 사용으로 재시도·일별 통계 적용.
+
+        Args:
+            corp_codes: 고유번호 8자리 리스트 (최대 100개)
+            bsns_year: 사업연도 (예: '2024')
+            reprt_code: 보고서 코드 ('11011': 사업보고서)
+            idx_cl_code: 지표분류코드 ('M210000': 수익성, 'M220000': 안정성, 'M230000': 성장성, 'M240000': 활동성)
+
+        Returns:
+            재무지표 행 리스트 (각 행에 corp_code, bsns_year, idx_code, idx_val 등 포함). 실패/데이터없음 시 빈 리스트.
+        """
+        if not corp_codes:
+            return []
+        corp_code_param = ','.join(str(c).strip() for c in corp_codes)
+        params = {
+            'corp_code': corp_code_param,
+            'bsns_year': bsns_year,
+            'reprt_code': reprt_code,
+            'idx_cl_code': idx_cl_code,
+        }
+        try:
+            result = self._make_request("fnlttCmpnyIndx.json", params=params)
+        except Exception as e:
+            raise e
+        if not isinstance(result, dict):
+            return []
+        if result.get('status') != '000':
+            message = result.get('message', '')
+            if '조회된 데이타가 없습니다' in message or '데이터가 없습니다' in message:
+                return []
+            raise Exception(f"다중회사 주요재무지표 조회 실패: {message}")
+        indicator_list = result.get('list', [])
+        return indicator_list if isinstance(indicator_list, list) else []
 
     def get_report_list(self, corp_code, bgn_de, end_de, last_reprt_at='N', page_no=1, page_count=1000):
         """
@@ -850,56 +890,6 @@ class DartClient:
             logger.warning("분기보고서 목록 조회 실패: %s", e)
             return []
 
-    def get_financial_indicators(self, corp_code, bsns_year, reprt_code='11011', idx_cl_code='M210000'):
-        """
-        재무지표 조회 (계산된 비율 지표)
-        
-        이미 계산된 재무 비율/지표를 조회합니다.
-        - API: fnlttCmpnyIndx.json (다중회사 주요재무지표)
-        - 데이터 형태: 지표 코드(idx_code)와 지표값(idx_val)
-        - 예시: {"idx_code": "M211300", "idx_val": "20.5"} → 매출총이익률 20.5%
-        
-        get_financial_statement()와의 차이:
-        - get_financial_statement(): 원시 금액 데이터 (매출액 1000억원, 영업이익 100억원 등)
-        - 이 메서드: 계산된 비율 지표 (매출총이익률 20%, ROE 15% 등)
-        
-        지표분류코드:
-        - M210000: 수익성지표 (매출총이익률, ROE, 판관비율, 총자산영업이익률 등)
-        - M220000: 안정성지표
-        - M230000: 성장성지표
-        - M240000: 활동성지표
-        
-        주요 지표 코드 (수익성지표):
-        - M211300: 매출총이익률
-        - M211800: 판관비율
-        - M212000: 총자산영업이익률
-        - M211550: ROE
-        
-        Args:
-            corp_code: 기업 고유번호 (8자리)
-            bsns_year: 사업연도 (예: '2024')
-            reprt_code: 보고서 코드 ('11011': 사업보고서)
-            idx_cl_code: 지표분류코드 (기본값: 'M210000' - 수익성지표)
-            
-        Returns:
-            재무지표 데이터 (list) - 각 항목은 지표 코드와 지표값을 포함
-        """
-        params = {
-            'corp_code': corp_code,
-            'bsns_year': bsns_year,
-            'reprt_code': reprt_code,
-            'idx_cl_code': idx_cl_code
-        }
-        
-        result = self._make_request("fnlttCmpnyIndx.json", params=params)
-        
-        # 응답 검증
-        if isinstance(result, dict) and result.get('status') != '000':
-            raise Exception(f"재무지표 조회 실패: {result.get('message', '알 수 없는 오류')}")
-        
-        # list 필드에서 재무지표 데이터 반환
-        return result.get('list', [])
-    
     # 향후 필요한 메서드들을 여기에 추가
     # 예: 공시 정보 조회 등
 

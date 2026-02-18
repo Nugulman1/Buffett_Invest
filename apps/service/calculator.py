@@ -236,9 +236,8 @@ class IndicatorCalculator:
         """
         모든 계산 지표 채우기
         
-        주의: XBRL 데이터 수집이 중단되어 계산 지표 계산도 중단되었습니다.
-        FCF, ICR, ROIC, WACC 계산에 필요한 데이터(CFO, 금융비용, 자기자본 등)는
-        XBRL에서만 수집 가능하며, 표본이 너무 적어서 데이터화를 못할듯하여 일단 중단했습니다.
+        주의: FCF, ROIC, WACC 등에 필요한 추가 데이터(CFO, 유형/무형자산취득 등)는
+        현재 수집하지 않아 해당 연도는 계산 생략.
         
         Args:
             company_data: CompanyFinancialObject 객체
@@ -276,47 +275,19 @@ class IndicatorCalculator:
         return oi / yearly_data.revenue
     
     @staticmethod
-    def calculate_roe(yearly_data: YearlyFinancialDataObject) -> float | None:
-        """
-        ROE (Return on Equity, 자기자본수익률) 계산
-        
-        공식: (당기순이익 / 자본총계)
-        
-        주의: 프론트엔드 formatPercent가 value * 100을 하므로 소수 형태로 저장해야 합니다.
-        예: 15.5% -> 0.155로 저장 (프론트에서 0.155 * 100 = 15.5%로 표시)
-        
-        Args:
-            yearly_data: YearlyFinancialDataObject 객체
-        
-        Returns:
-            ROE (소수 형태, float, 예: 0.155 = 15.5%). 데이터 없으면 None
-        """
-        if yearly_data.total_equity is None or yearly_data.total_equity <= 0:
-            return None
-        ni = yearly_data.net_income
-        if ni is None:
-            return None
-        return ni / yearly_data.total_equity
-    
-    @staticmethod
     def calculate_basic_financial_ratios(company_data: CompanyFinancialObject) -> None:
         """
-        기본 재무지표 계산 (영업이익률, ROE)
+        기본 재무지표 계산 (영업이익률만)
         
-        기본 지표 API(fnlttSinglAcnt.json)에서 수집한 데이터로 계산 가능한 재무지표를 계산합니다.
-        API 호출 최적화를 위해 재무지표 API 호출을 제거하고 계산 방식으로 변경되었습니다.
+        영업이익률은 기본 지표(매출액·영업이익)로 계산. ROE는 DART 주요재무지표 M211550에서 채움.
         
         Args:
             company_data: CompanyFinancialObject 객체 (in-place 수정)
         """
         for yearly_data in company_data.yearly_data:
-            # 영업이익률 계산
             yearly_data.operating_margin = (
                 IndicatorCalculator.calculate_operating_margin(yearly_data)
             )
-            
-            # ROE 계산
-            yearly_data.roe = IndicatorCalculator.calculate_roe(yearly_data)
     
     @staticmethod
     def calculate_basic_financial_ratios_for_quarterly(quarterly_data: 'YearlyFinancialDataObject') -> None:

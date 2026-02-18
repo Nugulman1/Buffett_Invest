@@ -336,6 +336,85 @@ class DartDataService:
             result[corp_code] = company_data
         return result
 
+    def fill_financial_indicators_multi(
+        self,
+        corp_codes: list[str],
+        years: list[int],
+        idx_cl_codes: list[str] | None = None,
+    ) -> tuple[dict[str, dict[int, dict[str, float]]], dict[str, dict[int, dict[str, str]]]]:
+        """
+        다중회사 주요재무지표 API로 연도·지표분류별 수집 후 (값 맵, 지표명 맵) 반환.
+
+        Args:
+            corp_codes: 고유번호 리스트 (최대 100개)
+            years: 사업연도 리스트
+            idx_cl_codes: 지표분류코드 리스트 (기본값: M210000 수익성지표)
+
+        Returns:
+            (values_map, names_map)
+            - values_map: corp_code -> year -> { idx_code: value } (value는 소수, 예: 0.256 = 25.6%)
+            - names_map: corp_code -> year -> { idx_code: idx_nm } (예: ROE, 영업수익경비율)
+        """
+        if not corp_codes:
+            return {}, {}
+        if idx_cl_codes is None:
+            idx_cl_codes = ['M210000']
+        corp_year_to_indicators: dict[str, dict[int, dict[str, float]]] = defaultdict(
+            lambda: defaultdict(dict)
+        )
+        corp_year_to_names: dict[str, dict[int, dict[str, str]]] = defaultdict(
+            lambda: defaultdict(dict)
+        )
+        for year in years:
+            year_str = str(year)
+            for idx_cl_code in idx_cl_codes:
+                try:
+                    raw_list = self.client.get_financial_indicators_multi(
+                        corp_codes, year_str, reprt_code='11011', idx_cl_code=idx_cl_code
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "다중회사 주요재무지표 API 실패 (배치 %s건, 연도 %s, 지표분류 %s): %s",
+                        len(corp_codes), year_str, idx_cl_code, e,
+                    )
+                    continue
+                if not raw_list:
+                    continue
+                for row in raw_list:
+                    corp_code = (row.get('corp_code') or '').strip()
+                    if not corp_code:
+                        continue
+                    try:
+                        year_val = int(row.get('bsns_year', year))
+                    except (ValueError, TypeError):
+                        year_val = year
+                    idx_code = (row.get('idx_code') or '').strip()
+                    if not idx_code:
+                        continue
+                    idx_nm = (row.get('idx_nm') or '').strip() or None
+                    raw_val = row.get('idx_val')
+                    if raw_val is None:
+                        raw_val = row.get('thstrm_amount')
+                    if raw_val is None or (isinstance(raw_val, str) and not raw_val.strip()):
+                        continue
+                    try:
+                        value_str = str(raw_val).replace(',', '').strip()
+                        if not value_str:
+                            continue
+                        value = float(value_str)
+                        # DART fnlttCmpnyIndx idx_val은 소수(예: 0.256)로 주므로 그대로 저장
+                        corp_year_to_indicators[corp_code][year_val][idx_code] = value
+                        if idx_nm:
+                            corp_year_to_names[corp_code][year_val][idx_code] = idx_nm
+                    except (ValueError, TypeError):
+                        continue
+        result_values: dict[str, dict[int, dict[str, float]]] = {}
+        result_names: dict[str, dict[int, dict[str, str]]] = {}
+        for corp_code in corp_year_to_indicators:
+            result_values[corp_code] = dict(corp_year_to_indicators[corp_code])
+            result_names[corp_code] = dict(corp_year_to_names.get(corp_code, {}))
+        return result_values, result_names
+
     def _process_single_quarter_basic(self, corp_code: str, rcept_no: str, reprt_code: str, quarter: int, mappings: dict):
         """
         단일 분기의 기본 지표 수집
@@ -501,74 +580,7 @@ class DartDataService:
             result.append((year, quarter, quarterly_data, rcept_no, reprt_code))
         return result
 
-    def _process_single_year_financial(self, corp_code: str, year: int, indicator_mappings: dict):
-        """
-        단일 연도의 재무지표 처리 (병렬 처리용)
-        
-        Args:
-            corp_code: 고유번호 (8자리)
-            year: 연도
-            indicator_mappings: 재무지표 코드 매핑
-            
-        Returns:
-            (year, results_dict) 튜플 또는 None (실패 시)
-            results_dict: {field_name: value} 형태의 딕셔너리
-        """
-        year_str = str(year)
-        
-        try:
-            # 재무지표 API 호출
-            indicators_data = self.client.get_financial_indicators(
-                corp_code=corp_code,
-                bsns_year=year_str,
-                reprt_code='11011'  # 사업보고서
-            )
-            
-            if not indicators_data:
-                return None
-            
-            # 각 지표 코드에 대해 매핑
-            results = {}
-            found_indicators = []
-            for idx_code, field_name in indicator_mappings.items():
-                # 해당 idx_code를 가진 지표 찾기
-                found = False
-                for indicator in indicators_data:
-                    if indicator.get('idx_code') == idx_code:
-                        found = True
-                        found_indicators.append(idx_code)
-                        # idx_val 값 추출 (API 문서에 따르면 idx_val 사용)
-                        # thstrm_amount도 확인 (하위 호환성)
-                        idx_val = indicator.get('idx_val')
-                        thstrm_amount = indicator.get('thstrm_amount')
-                        
-                        # idx_val 우선, 없으면 thstrm_amount 사용
-                        value_str = idx_val if idx_val is not None else thstrm_amount
-                        
-                        if value_str is not None and value_str != '' and str(value_str).strip() != '':
-                            try:
-                                # 문자열로 변환 후 쉼표 제거 및 float 변환
-                                value_str_clean = str(value_str).replace(',', '').strip()
-                                if value_str_clean:
-                                    value = float(value_str_clean)
-                                    # DART API는 백분율로 반환하므로 소수로 변환 (예: 30.335% -> 0.30335)
-                                    value = value / 100.0
-                                    results[field_name] = value
-                            except (ValueError, AttributeError):
-                                # 변환 실패 시 0으로 유지 (출력하지 않음)
-                                pass
-                        break
-                
-                # 지표를 찾지 못한 경우는 출력하지 않음 (보고서가 없어서 그런 경우)
-            
-            return (year, results)
-                        
-        except Exception as e:
-            # 예외 발생 시에도 계속 진행 (다른 연도 수집 계속)
-            # 보고서가 없어서 실패하는 경우이므로 출력하지 않음
-            return None
-    
-    # fill_financial_indicators() 메서드 제거됨
+    # fill_financial_indicators() / _process_single_year_financial() 제거됨 (다중 get_financial_indicators_multi 로 통합)
     # 재무지표 계산 로직은 IndicatorCalculator.calculate_basic_financial_ratios()로 이동됨
     # 
     # 제거 이유:
@@ -577,7 +589,7 @@ class DartDataService:
     #
     # 기존 재무지표 API 호출 코드 (주석처리):
     # - 매출총이익률, 판관비율은 기본 지표 API(fnlttSinglAcnt.json)에 해당 계정이 없어서 수집 불가
-    # - 영업이익률, ROE는 기본 지표에서 계산 가능하여 API 호출 제거
+    # - 영업이익률은 기본 지표에서 계산, ROE는 DART 주요재무지표 M211550 사용
     # - API 호출 50% 감소 효과 (5개 연도 × 1회 = 5회 감소)
 
 
