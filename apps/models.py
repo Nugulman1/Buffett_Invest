@@ -83,6 +83,7 @@ class YearlyFinancialData(models.Model):
     operating_margin = models.FloatField(default=0.0, null=True, blank=True, verbose_name='영업이익률')
     roe = models.FloatField(default=0.0, null=True, blank=True, verbose_name='ROE')
     interest_bearing_debt = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='이자부채')
+    dividend_paid = models.BigIntegerField(null=True, blank=True, verbose_name='배당금지급')
     fcf = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자유현금흐름')
     roic = models.FloatField(default=0.0, null=True, blank=True, verbose_name='투하자본수익률')
     wacc = models.FloatField(default=0.0, null=True, blank=True, verbose_name='가중평균자본비용')
@@ -316,6 +317,7 @@ class YearlyFinancialDataObject:
         self.cash_and_cash_equivalents: int = 0  # 현금및현금성자산
         self.interest_bearing_debt: int = 0  # 이자부채 (통합)
         self.interest_expense: int = 0  # 이자비용 (WACC 계산에 사용)
+        self.dividend_paid: int | None = None  # 배당금 지급 (LLM 추출)
         self.beta: float = 1.0  # 베타 (고정)
         self.mrp: float = 5.0  # MRP (고정)
         

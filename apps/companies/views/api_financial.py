@@ -146,6 +146,7 @@ def get_financial_data(request, corp_code):
                         "fcf": yd.fcf,
                         "roic": yd.roic,
                         "wacc": yd.wacc,
+                        "dividend_paid": getattr(yd, "dividend_paid", None),
                     }
                     for yd in company_data.yearly_data
                 ],
@@ -201,6 +202,7 @@ def get_financial_data(request, corp_code):
                         "fcf": yd.fcf,
                         "roic": yd.roic,
                         "wacc": yd.wacc,
+                        "dividend_paid": getattr(yd, "dividend_paid", None),
                     }
                     for yd in company_data_from_db.yearly_data
                 ],
@@ -243,6 +245,7 @@ def get_financial_data(request, corp_code):
                         "fcf": None,
                         "roic": None,
                         "wacc": None,
+                        "dividend_paid": getattr(yd, "dividend_paid", None),
                     }
                     for yd in company_data.yearly_data
                 ],
@@ -471,7 +474,8 @@ def parse_and_calculate(request, corp_code):
         for year in years:
             row = extracted.get(year, {})
             labels = row.get("_interest_bearing_debt_labels", [])
-            logger.info("  [%s년] cfo=%s, 유형자산취득=%s, 무형자산취득=%s, 기말현금=%s, 이자비용=%s, 이자부채=%s",
+            logger.info(
+                "  [%s년] cfo=%s, 유형자산취득=%s, 무형자산취득=%s, 기말현금=%s, 이자비용=%s, 이자부채=%s, 배당금지급=%s",
                 year,
                 format_amount_korean(row.get("cfo", 0) or 0),
                 format_amount_korean(row.get("tangible_asset_acquisition", 0) or 0),
@@ -479,6 +483,7 @@ def parse_and_calculate(request, corp_code):
                 format_amount_korean(row.get("cash_and_cash_equivalents", 0) or 0),
                 format_amount_korean(row.get("interest_expense", 0) or 0),
                 format_amount_korean(row.get("interest_bearing_debt", 0) or 0),
+                format_amount_korean(row.get("dividend_paid", 0) or 0),
             )
             if labels:
                 logger.info("  [%s년] 이자부채 합산에 사용한 계정: %s", year, labels)
@@ -573,6 +578,10 @@ def parse_and_calculate(request, corp_code):
                 eq_w * 100, debt_w * 100, re * 100, rd * 100, wacc * 100,
             )
 
+            dividend_val = row.get("dividend_paid")
+            yearly_data_db.dividend_paid = (
+                int(dividend_val) if dividend_val is not None and dividend_val != "" else None
+            )
             yearly_data_db.interest_bearing_debt = interest_bearing_debt
             yearly_data_db.fcf = fcf
             yearly_data_db.roic = roic

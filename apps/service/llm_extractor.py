@@ -17,13 +17,14 @@ _EXTRACT_FIELDS = [
     "cash_and_cash_equivalents",  # 기말현금및현금성자산
     "interest_expense",  # 이자비용/이자지급
     "interest_bearing_debt",  # 이자부채
+    "dividend_paid",  # 배당금 지급
 ]
 
 def _build_prompt(years: list[int]) -> str:
     """연도 리스트에 맞춰 프롬프트와 응답 형식 예시를 동적으로 생성."""
     years_str = ", ".join(str(y) for y in years)
     year_blocks = ", ".join(
-        f'"{y}": {{"cfo": 0, "tangible_asset_acquisition": 0, "intangible_asset_acquisition": 0, "cash_and_cash_equivalents": 0, "interest_expense": 0, "interest_bearing_debt": 0}}'
+        f'"{y}": {{"cfo": 0, "tangible_asset_acquisition": 0, "intangible_asset_acquisition": 0, "cash_and_cash_equivalents": 0, "interest_expense": 0, "interest_bearing_debt": 0, "dividend_paid": 0}}'
         for y in years
     )
     breakdown_blocks = ", ".join(f'"{y}": {{}}' for y in years)
@@ -31,7 +32,7 @@ def _build_prompt(years: list[int]) -> str:
     return f"""다음은 연결 재무상태표와 연결 현금흐름표에서 파싱한 rows JSON입니다.
 각 row는 label(계정명)과 연도별 금액({years_str})을 가집니다.
 
-아래 6개 필드에 해당하는 label을 찾아 연도별 값을 추출해주세요. (정확한 label명 일치 또는 유사 표현)
+아래 7개 필드에 해당하는 label을 찾아 연도별 값을 추출해주세요. (정확한 label명 일치 또는 유사 표현)
 
 ## 필드별 지표 가이드
 
@@ -60,6 +61,10 @@ def _build_prompt(years: list[int]) -> str:
    - interest_bearing_debt_breakdown: 연도별 {{계정명: 금액}} 객체. rows에 나온 계정명(label)을 키로, 해당 금액(정수)을 값으로 넣으세요. 없으면 0.
    - interest_bearing_debt_labels: breakdown에 사용한 label 목록을 배열로.
    - 각 연도 블록의 interest_bearing_debt 필드는 0으로 두어도 됨 (코드에서 breakdown 합으로 계산함).
+
+7. dividend_paid (배당금 지급)
+   - 현금흐름표의 재무활동으로 인한 현금흐름에서 "배당금의 지급", "주주에게 배당금 지급" 등 해당 label을 찾아 연도별 금액 추출.
+   - 금액이 음수(유출)로 나오면 절대값으로 저장.
 
 ## 규칙
 - 금액은 정수, 없으면 0.
@@ -170,6 +175,7 @@ def _log_extracted_indicators(result: dict) -> None:
         "cash_and_cash_equivalents": "기말현금",
         "interest_expense": "이자비용",
         "interest_bearing_debt": "이자부채",
+        "dividend_paid": "배당금지급",
     }
     for year in sorted(result.keys(), reverse=True):
         row = result[year]

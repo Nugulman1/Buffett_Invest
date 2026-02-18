@@ -206,6 +206,7 @@ def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None,
             yearly_data_obj.operating_margin = yearly_data_db.operating_margin
             yearly_data_obj.roe = yearly_data_db.roe
             yearly_data_obj.interest_bearing_debt = yearly_data_db.interest_bearing_debt or 0
+            yearly_data_obj.dividend_paid = getattr(yearly_data_db, "dividend_paid", None)
             yearly_data_obj.fcf = yearly_data_db.fcf
             yearly_data_obj.roic = yearly_data_db.roic
             yearly_data_obj.wacc = yearly_data_db.wacc
@@ -269,6 +270,7 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                     'capital_stock': getattr(yearly_data, 'capital_stock', None),
                     'retained_earnings': getattr(yearly_data, 'retained_earnings', None),
                     'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
+                    'dividend_paid': getattr(yearly_data, 'dividend_paid', None),
                 }
             )
 
