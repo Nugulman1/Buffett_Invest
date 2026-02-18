@@ -199,7 +199,7 @@ class IndicatorCalculator:
         
         - E = 자기자본 (equity)
         - D = 이자부채 (interest_bearing_debt)
-        - Re = 국채수익률 (bond_yield) + 주주기대수익률 (equity_risk_premium)
+        - Re = 국채수익률 (bond_yield) + 0.5%p(보수적 가산) + 주주기대수익률 (equity_risk_premium)
         - Rd = 이자비용 / 이자부채
         
         Args:
@@ -231,8 +231,8 @@ class IndicatorCalculator:
             )
             return 0.0
         
-        # Re = 국채수익률 + 주주기대수익률 (퍼센트를 소수점으로 변환)
-        cost_of_equity = (bond_yield + equity_risk_premium) / 100.0
+        # Re = 국채수익률 + 0.5%p(보수적 가산) + 주주기대수익률 (퍼센트를 소수점으로 변환)
+        cost_of_equity = (bond_yield + 0.5 + equity_risk_premium) / 100.0
         
         # Rd = 이자비용 / 이자부채 (비율 형태)
         if interest_bearing_debt == 0:

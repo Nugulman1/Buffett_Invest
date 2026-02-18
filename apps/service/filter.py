@@ -205,22 +205,20 @@ class CompanyFilter:
     @staticmethod
     def check_second_filter(corp_code: str) -> bool:
         """
-        2차 필터: 최신 연도 ROIC - WACC >= settings.SECOND_FILTER_ROIC_WACC_SPREAD 이면 True.
-        DB YearlyFinancialData에서 해당 기업의 최신 연도 roic, wacc 사용.
+        2차 필터: 최근 3년 평균 ROIC - 최근 3년 평균 WACC >= settings.SECOND_FILTER_ROIC_WACC_SPREAD 이면 True.
+        DB YearlyFinancialData에서 해당 기업의 최근 3년 roic, wacc 평균 사용.
         """
         spread = getattr(settings, 'SECOND_FILTER_ROIC_WACC_SPREAD', 0.02)
         YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
-        latest = (
+        latest_three = list(
             YearlyFinancialDataModel.objects.filter(company_id=corp_code)
             .order_by('-year')
-            .values('roic', 'wacc')
-            .first()
+            .values('roic', 'wacc')[:3]
         )
-        if not latest:
+        valid = [d for d in latest_three if d.get('roic') is not None and d.get('wacc') is not None]
+        if not valid:
             return False
-        roic = latest.get('roic')
-        wacc = latest.get('wacc')
-        if roic is None or wacc is None:
-            return False
-        return (roic - wacc) >= spread
+        avg_roic = sum(d['roic'] for d in valid) / len(valid)
+        avg_wacc = sum(d['wacc'] for d in valid) / len(valid)
+        return (avg_roic - avg_wacc) >= spread
 
