@@ -138,6 +138,9 @@ DART_API_KEY = os.getenv('DART_API_KEY', '')
 ECOS_API_KEY = os.getenv('ECOS_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')
+KRX_API_KEY = os.getenv('KRX_API_KEY', '')
+# KRX 시가총액 조회 서비스 URL (Spec.docx/개발명세서 기준으로 .env에서 오버라이드 가능)
+KRX_BASE_URL = os.getenv('KRX_BASE_URL', 'https://openapi.krx.co.kr')
 
 # 데이터 수집 설정 (환경변수 또는 기본값)
 DATA_COLLECTION = {
@@ -159,6 +162,9 @@ CALCULATOR_DEFAULTS = {
     'TAX_RATE': int(os.getenv('CALCULATOR_TAX_RATE', '25')),  # 법인세율 (%)
     'EQUITY_RISK_PREMIUM': float(os.getenv('CALCULATOR_EQUITY_RISK_PREMIUM', '10.0')),  # 주주기대수익률 (%)
 }
+
+# 2차 필터: ROIC - WACC >= 이 값(소수, 0.02 = 2%)이면 통과
+SECOND_FILTER_ROIC_WACC_SPREAD = float(os.getenv('SECOND_FILTER_ROIC_WACC_SPREAD', '0.02'))
 
 # 로깅: formatter, console handler, root logger 통일
 LOGGING = {

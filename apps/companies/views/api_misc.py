@@ -3,18 +3,17 @@
 """
 import math
 
-from django.conf import settings
+from django.apps import apps as django_apps
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework import status
 
-from apps.service.passed_json import load_passed_companies_json
+from apps.service.corp_code import get_stock_code_by_corp_code
 
 
 @api_view(["GET"])
 def get_passed_companies(request):
     """
-    필터 통과 기업 목록 조회 API
+    필터 통과 기업 목록 조회 API (1차+2차 통과만, DB 조회)
     GET /api/companies/passed/?page=1&page_size=10
     """
     page = int(request.GET.get("page", 1))
@@ -25,18 +24,13 @@ def get_passed_companies(request):
     if page_size < 1:
         page_size = 10
 
-    json_file = settings.BASE_DIR / "passed_filters_companies.json"
-    data = load_passed_companies_json(json_file)
+    CompanyModel = django_apps.get_model("apps", "Company")
+    qs = CompanyModel.objects.filter(
+        passed_all_filters=True,
+        passed_second_filter=True,
+    ).order_by("company_name")
 
-    all_companies = []
-    for company in data.get("companies", []):
-        all_companies.append({
-            "stock_code": company.get("stock_code", ""),
-            "company_name": company.get("company_name", ""),
-            "corp_code": company.get("corp_code", ""),
-        })
-
-    total = len(all_companies)
+    total = qs.count()
     total_pages = math.ceil(total / page_size) if total > 0 else 0
 
     if page > total_pages and total_pages > 0:
@@ -44,7 +38,23 @@ def get_passed_companies(request):
 
     start_idx = (page - 1) * page_size
     end_idx = start_idx + page_size
-    companies = all_companies[start_idx:end_idx]
+    page_queryset = qs[start_idx:end_idx]
+
+    companies = []
+    for company in page_queryset:
+        stock_code = get_stock_code_by_corp_code(company.corp_code) or ""
+        companies.append({
+            "stock_code": stock_code,
+            "company_name": company.company_name or "",
+            "corp_code": company.corp_code,
+        })
+
+    last_updated = None
+    if total > 0:
+        from django.db.models import Max
+        agg = qs.aggregate(Max("updated_at"))
+        if agg.get("updated_at__max"):
+            last_updated = agg["updated_at__max"].isoformat()
 
     return Response({
         "companies": companies,
@@ -52,7 +62,7 @@ def get_passed_companies(request):
         "page": page,
         "page_size": page_size,
         "total_pages": total_pages,
-        "last_updated": data.get("last_updated"),
+        "last_updated": last_updated,
     })
 
 

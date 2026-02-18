@@ -26,7 +26,6 @@ from apps.service.orchestrator import DataOrchestrator
 from apps.dart.client import DartClient
 from apps.ecos.client import EcosClient
 from apps.service.db import should_collect_company
-from apps.service.passed_json import save_passed_companies_json
 
 logger = logging.getLogger(__name__)
 
@@ -149,8 +148,7 @@ def main(limit: int = None, max_workers: int = None):
     
     # 파일 경로
     stock_codes_file = BASE_DIR / '종목코드.md'
-    passed_filters_file = BASE_DIR / 'passed_filters_companies.json'
-    
+
     # 종목코드.md 파일 파싱 (모든 종목코드)
     all_stock_codes = parse_stock_codes_file(stock_codes_file)
     
@@ -189,8 +187,7 @@ def main(limit: int = None, max_workers: int = None):
     success_count = 0
     fail_count = 0
     passed_filter_stock_codes = []
-    passed_for_json = []  # (stock_code, company_name, corp_code) for JSON 저장
-    
+
     # API 호출 횟수 초기화
     initial_dart_calls = DartClient._api_call_count
     initial_ecos_calls = EcosClient._api_call_count
@@ -222,7 +219,6 @@ def main(limit: int = None, max_workers: int = None):
                 logger.info('[배치 %s] %s 성공 (%s)', batch_num, stock_code or corp_code, r.get('company_name', ''))
                 if r.get('passed_all_filters', False):
                     passed_filter_stock_codes.append(stock_code or corp_code)
-                    passed_for_json.append((stock_code or corp_code, r.get('company_name', ''), corp_code))
                     logger.info('필터 통과: %s (%s)', stock_code or corp_code, r.get('company_name', ''))
             else:
                 fail_count += 1
@@ -233,15 +229,8 @@ def main(limit: int = None, max_workers: int = None):
                     sum(1 for r in batch_results if r['status'] == 'success'),
                     sum(1 for r in batch_results if r['status'] == 'failed'))
     
-    # 필터 통과 기업 저장 (JSON 형식)
-    if passed_for_json:
-        saved_count = 0
-        for stock_code, company_name, corp_code in passed_for_json:
-            if save_passed_companies_json(stock_code, company_name, corp_code, passed_filters_file):
-                saved_count += 1
-        if saved_count > 0:
-            logger.info('필터 통과 기업 %s개 저장 완료: %s', saved_count, passed_filters_file.name)
-    
+    # 필터 통과 기업은 DB Company.passed_all_filters로 이미 저장됨 (passed API는 DB 조회)
+
     # 전체 처리 시간 계산
     total_time = time.time() - start_time
     

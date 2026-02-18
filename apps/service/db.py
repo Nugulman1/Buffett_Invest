@@ -205,11 +205,17 @@ def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None,
             yearly_data_obj.total_equity = yearly_data_db.total_equity
             yearly_data_obj.operating_margin = yearly_data_db.operating_margin
             yearly_data_obj.roe = yearly_data_db.roe
+            yearly_data_obj.total_liabilities = getattr(yearly_data_db, 'total_liabilities', None)
+            yearly_data_obj.debt_ratio = getattr(yearly_data_db, 'debt_ratio', None)
             yearly_data_obj.interest_bearing_debt = yearly_data_db.interest_bearing_debt or 0
+            yearly_data_obj.cash_and_cash_equivalents = getattr(yearly_data_db, 'cash_and_cash_equivalents', None) or 0
+            yearly_data_obj.noncontrolling_interest = getattr(yearly_data_db, 'noncontrolling_interest', None) or 0
             yearly_data_obj.dividend_paid = getattr(yearly_data_db, "dividend_paid", None)
             yearly_data_obj.fcf = yearly_data_db.fcf
             yearly_data_obj.roic = yearly_data_db.roic
             yearly_data_obj.wacc = yearly_data_db.wacc
+            yearly_data_obj.ev = getattr(yearly_data_db, 'ev', None)
+            yearly_data_obj.invested_capital = getattr(yearly_data_db, 'invested_capital', None)
 
             company_data.yearly_data.append(yearly_data_obj)
 
@@ -261,7 +267,10 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                     'total_equity': yearly_data.total_equity,
                     'operating_margin': yearly_data.operating_margin,
                     'roe': yearly_data.roe,
+                    'debt_ratio': getattr(yearly_data, 'debt_ratio', None),
                     'interest_bearing_debt': yearly_data.interest_bearing_debt or 0,
+                    'cash_and_cash_equivalents': getattr(yearly_data, 'cash_and_cash_equivalents', None),
+                    'noncontrolling_interest': getattr(yearly_data, 'noncontrolling_interest', None),
                     'current_assets': getattr(yearly_data, 'current_assets', None),
                     'noncurrent_assets': getattr(yearly_data, 'noncurrent_assets', None),
                     'current_liabilities': getattr(yearly_data, 'current_liabilities', None),
@@ -271,6 +280,8 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                     'retained_earnings': getattr(yearly_data, 'retained_earnings', None),
                     'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
                     'dividend_paid': getattr(yearly_data, 'dividend_paid', None),
+                    'ev': getattr(yearly_data, 'ev', None),
+                    'invested_capital': getattr(yearly_data, 'invested_capital', None),
                 }
             )
 

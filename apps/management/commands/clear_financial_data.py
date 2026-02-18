@@ -129,7 +129,6 @@ class Command(BaseCommand):
                         f'연도별 데이터 기본 필드 초기화 및 분기 데이터 {total_quarterly_data}개 삭제.\n'
                         f'FCF, ROIC, WACC는 보존되며, Company 정보와 메모도 모두 유지됩니다.\n'
                         f'필터 필드는 초기화됩니다.\n'
-                        f'passed_filters_companies.json 파일도 초기화됩니다.\n'
                         f'계속하려면 --confirm 옵션을 추가하세요.'
                     )
                 )
@@ -153,6 +152,7 @@ class Command(BaseCommand):
                 CompanyModel.objects.all().update(
                     last_collected_at=None,
                     passed_all_filters=False,
+                    passed_second_filter=False,
                     filter_operating_income=False,
                     filter_net_income=False,
                     filter_revenue_cagr=False,
@@ -161,26 +161,7 @@ class Command(BaseCommand):
                     latest_annual_rcept_no=None,
                     latest_annual_report_year=None,
                 )
-            
-            # passed_filters_companies.json 파일 초기화 (전체 재수집 시)
-            import json
-            passed_filters_file = settings.BASE_DIR / 'passed_filters_companies.json'
-            if passed_filters_file.exists():
-                # JSON 파일을 빈 구조로 초기화
-                empty_data = {
-                    'last_updated': None,
-                    'companies': []
-                }
-                with open(passed_filters_file, 'w', encoding='utf-8') as f:
-                    json.dump(empty_data, f, ensure_ascii=False, indent=2)
-                self.stdout.write(
-                    self.style.SUCCESS(f'✓ 필터 통과 기업 목록 파일 초기화: {passed_filters_file.name}')
-                )
-            else:
-                self.stdout.write(
-                    self.style.WARNING(f'필터 통과 기업 목록 파일이 없습니다: {passed_filters_file}')
-                )
-            
+
             self.stdout.write(
                 self.style.SUCCESS(
                     f'\n✓ 전체 {total_companies}개 기업의 재무지표 기본 필드 {updated_count}개를 초기화하고 분기 데이터 {deleted_quarterly_count}개를 삭제했습니다.\n'

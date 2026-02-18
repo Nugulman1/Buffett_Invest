@@ -1,6 +1,9 @@
 """
 장기 투자 필터링 서비스
 """
+from django.apps import apps as django_apps
+from django.conf import settings
+
 from apps.models import CompanyFinancialObject
 from apps.service.calculator import IndicatorCalculator
 
@@ -184,7 +187,9 @@ class CompanyFilter:
         # 각 필터 적용
         company_data.filter_operating_income = cls.filter_operating_income(company_data)
         company_data.filter_net_income = cls.filter_net_income(company_data)
-        company_data.filter_revenue_cagr = cls.filter_revenue_cagr(company_data)
+        # 매출 CAGR 필터: 이번 기업 분석에서 미사용
+        # company_data.filter_revenue_cagr = cls.filter_revenue_cagr(company_data)
+        company_data.filter_revenue_cagr = True  # 미적용(통과로 간주)
         company_data.filter_operating_margin = cls.filter_operating_margin(company_data)
         company_data.filter_roe = cls.filter_roe(company_data)
         
@@ -192,8 +197,30 @@ class CompanyFilter:
         company_data.passed_all_filters = (
             company_data.filter_operating_income and
             company_data.filter_net_income and
-            company_data.filter_revenue_cagr and
+            company_data.filter_revenue_cagr and  # 현재 미적용(True 고정)
             company_data.filter_operating_margin and
             company_data.filter_roe
         )
+
+    @staticmethod
+    def check_second_filter(corp_code: str) -> bool:
+        """
+        2차 필터: 최신 연도 ROIC - WACC >= settings.SECOND_FILTER_ROIC_WACC_SPREAD 이면 True.
+        DB YearlyFinancialData에서 해당 기업의 최신 연도 roic, wacc 사용.
+        """
+        spread = getattr(settings, 'SECOND_FILTER_ROIC_WACC_SPREAD', 0.02)
+        YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+        latest = (
+            YearlyFinancialDataModel.objects.filter(company_id=corp_code)
+            .order_by('-year')
+            .values('roic', 'wacc')
+            .first()
+        )
+        if not latest:
+            return False
+        roic = latest.get('roic')
+        wacc = latest.get('wacc')
+        if roic is None or wacc is None:
+            return False
+        return (roic - wacc) >= spread
 

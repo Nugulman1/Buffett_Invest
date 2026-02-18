@@ -141,7 +141,8 @@ class IndicatorCalculator:
         interest_bearing_debt = yearly_data.interest_bearing_debt
         
         # 분모 계산: 자기자본 + 이자부채 - 현금및현금성자산
-        denominator = yearly_data.equity + interest_bearing_debt - yearly_data.cash_and_cash_equivalents
+        cash = yearly_data.cash_and_cash_equivalents or 0
+        denominator = yearly_data.equity + interest_bearing_debt - cash
         
         if denominator == 0:
             logger.warning(
@@ -157,7 +158,31 @@ class IndicatorCalculator:
         
         # ROIC 계산 (소수 형태)
         return numerator / denominator
-    
+
+    @staticmethod
+    def calculate_invested_capital(yearly_data: YearlyFinancialDataObject) -> int:
+        """
+        IC (Invested Capital, 투하자본) 계산. ROIC 분모와 동일.
+
+        공식: 자기자본 + 이자부채 - 현금및현금성자산
+        """
+        cash = yearly_data.cash_and_cash_equivalents or 0
+        return yearly_data.equity + yearly_data.interest_bearing_debt - cash
+
+    @staticmethod
+    def calculate_ev(
+        market_cap: int,
+        interest_bearing_debt: int,
+        cash: int,
+        noncontrolling_interest: int = 0,
+    ) -> int:
+        """
+        EV (Enterprise Value, 기업가치) 계산.
+
+        공식: 시가총액 + 이자부채 - 현금 + 비지배지분
+        """
+        return market_cap + interest_bearing_debt - cash + noncontrolling_interest
+
     @staticmethod
     def calculate_wacc(
         yearly_data: YearlyFinancialDataObject,
@@ -273,13 +298,36 @@ class IndicatorCalculator:
         if oi is None:
             return None
         return oi / yearly_data.revenue
-    
+
+    @staticmethod
+    def calculate_debt_ratio(yearly_data: YearlyFinancialDataObject) -> float | None:
+        """
+        부채비율 계산 (총자본/부채총계)
+
+        공식: 자본총계 / 부채총계
+        부채총계가 0이거나 없으면 계산하지 않음 (None 반환).
+
+        Args:
+            yearly_data: YearlyFinancialDataObject 객체
+
+        Returns:
+            부채비율 (float). 데이터 없거나 부채총계 0이면 None
+        """
+        total_equity = yearly_data.total_equity
+        total_liabilities = getattr(yearly_data, 'total_liabilities', None)
+        if total_liabilities is None or total_liabilities <= 0:
+            return None
+        if total_equity is None:
+            return None
+        return total_equity / total_liabilities
+
     @staticmethod
     def calculate_basic_financial_ratios(company_data: CompanyFinancialObject) -> None:
         """
-        기본 재무지표 계산 (영업이익률만)
+        기본 재무지표 계산 (영업이익률, 부채비율)
         
         영업이익률은 기본 지표(매출액·영업이익)로 계산. ROE는 DART 주요재무지표 M211550에서 채움.
+        부채비율은 자본총계/부채총계.
         
         Args:
             company_data: CompanyFinancialObject 객체 (in-place 수정)
@@ -288,6 +336,7 @@ class IndicatorCalculator:
             yearly_data.operating_margin = (
                 IndicatorCalculator.calculate_operating_margin(yearly_data)
             )
+            yearly_data.debt_ratio = IndicatorCalculator.calculate_debt_ratio(yearly_data)
     
     @staticmethod
     def calculate_basic_financial_ratios_for_quarterly(quarterly_data: 'YearlyFinancialDataObject') -> None:
