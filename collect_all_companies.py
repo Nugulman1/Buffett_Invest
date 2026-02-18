@@ -12,7 +12,6 @@ import sys
 import time
 import logging
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Django 설정
 BASE_DIR = Path(__file__).resolve().parent
@@ -26,7 +25,7 @@ from django.apps import apps as django_apps
 from apps.service.orchestrator import DataOrchestrator
 from apps.dart.client import DartClient
 from apps.ecos.client import EcosClient
-from apps.service.db import should_collect_company, save_company_to_db
+from apps.service.db import should_collect_company
 from apps.service.passed_json import save_passed_companies_json
 
 logger = logging.getLogger(__name__)
@@ -182,99 +181,64 @@ def main(limit: int = None, max_workers: int = None):
     logger.info('스킵: %s개 (확인한 %s개 중)', total_skipped, skip_stats['total_checked'])
     if skip_stats['total_checked'] < len(all_stock_codes):
         logger.info('미확인: %s개 (limit 도달로 중단)', len(all_stock_codes) - skip_stats['total_checked'])
-    logger.info('병렬 처리: %s개 스레드 사용', max_workers)
+    logger.info('다중회사 배치 수집: 100개씩')
     
     orchestrator = DataOrchestrator()
     
     # 통계
     success_count = 0
     fail_count = 0
-    passed_filter_stock_codes = []  # 필터 통과한 종목코드
-    results = []  # 모든 결과 저장
+    passed_filter_stock_codes = []
+    passed_for_json = []  # (stock_code, company_name, corp_code) for JSON 저장
     
-    # API 호출 횟수 초기화 (XML 로드 전 호출 횟수 저장)
+    # API 호출 횟수 초기화
     initial_dart_calls = DartClient._api_call_count
     initial_ecos_calls = EcosClient._api_call_count
-    
-    # 전체 처리 시간 측정 시작
     start_time = time.time()
     
-    # 병렬 처리
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # 모든 작업 제출
-        future_to_stock_code = {
-            executor.submit(process_single_company, stock_code, corp_code, orchestrator): stock_code
-            for stock_code, corp_code in stock_code_to_corp_code.items()
-        }
+    items = list(stock_code_to_corp_code.items())
+    total_count = len(items)
+    batch_size = 100
+    
+    for start in range(0, total_count, batch_size):
+        batch = items[start:start + batch_size]
+        corp_codes = [c for _, c in batch]
+        corp_to_stock = {c: s for s, c in batch}
+        batch_num = start // batch_size + 1
+        logger.info('배치 %s: corp_codes %s개 수집 시작', batch_num, len(corp_codes))
         
-        # 완료된 작업 처리
-        completed = 0
-        total_count = len(stock_code_to_corp_code)
-        for future in as_completed(future_to_stock_code):
-            completed += 1
-            stock_code = future_to_stock_code[future]
-            
-            try:
-                result = future.result()
-                results.append(result)
-                
-                if result['status'] == 'success':
-                    success_count += 1
-                    company_name = result.get('company_name', '')
-                    logger.info('[%s/%s] %s 성공 (%s)', completed, total_count, stock_code, company_name)
-                    
-                    if result.get('passed_all_filters', False):
-                        passed_filter_stock_codes.append(stock_code)
-                        logger.info('필터 통과: %s (%s)', stock_code, company_name)
-                else:
-                    fail_count += 1
-                    error = result.get('error', '알 수 없는 오류')
-                    logger.error('[%s/%s] %s 실패: %s', completed, total_count, stock_code, error)
-                    
-            except Exception as e:
+        try:
+            batch_results = orchestrator.collect_companies_data_batch(corp_codes)
+        except Exception as e:
+            logger.error('배치 %s 전체 실패: %s', batch_num, e)
+            fail_count += len(corp_codes)
+            continue
+        
+        for r in batch_results:
+            corp_code = r['corp_code']
+            stock_code = corp_to_stock.get(corp_code, '')
+            if r['status'] == 'success':
+                success_count += 1
+                logger.info('[배치 %s] %s 성공 (%s)', batch_num, stock_code or corp_code, r.get('company_name', ''))
+                if r.get('passed_all_filters', False):
+                    passed_filter_stock_codes.append(stock_code or corp_code)
+                    passed_for_json.append((stock_code or corp_code, r.get('company_name', ''), corp_code))
+                    logger.info('필터 통과: %s (%s)', stock_code or corp_code, r.get('company_name', ''))
+            else:
                 fail_count += 1
-                logger.error('[%s/%s] %s 예외 발생: %s', completed, total_count, stock_code, e)
-                results.append({
-                    'stock_code': stock_code,
-                    'status': 'failed',
-                    'error': f'Future 처리 중 오류: {str(e)}'
-                })
-    
-    # 성공한 기업 데이터를 순차적으로 DB에 저장 (SQLite 동시 쓰기 문제 방지)
-    logger.info('DB 저장 중...')
-    db_save_success = 0
-    db_save_fail = 0
-    for result in results:
-        if result['status'] == 'success' and 'company_data' in result:
-            try:
-                save_company_to_db(result['company_data'])
-                db_save_success += 1
-            except Exception as e:
-                db_save_fail += 1
-                logger.warning('%s DB 저장 실패: %s', result['stock_code'], e)
-    
-    if db_save_success > 0:
-        logger.info('DB 저장 완료: %s개', db_save_success)
-    if db_save_fail > 0:
-        logger.warning('DB 저장 실패: %s개', db_save_fail)
+                logger.warning('[배치 %s] %s 실패: %s', batch_num, stock_code or corp_code, r.get('error', ''))
+        
+        logger.info('배치 %s: 성공 %s, 실패 %s',
+                    batch_num,
+                    sum(1 for r in batch_results if r['status'] == 'success'),
+                    sum(1 for r in batch_results if r['status'] == 'failed'))
     
     # 필터 통과 기업 저장 (JSON 형식)
-    if passed_filter_stock_codes:
+    if passed_for_json:
         saved_count = 0
-        for result in results:
-            if result['status'] == 'success' and result.get('passed_all_filters', False):
-                stock_code = result.get('stock_code')
-                company_data = result.get('company_data')
-                
-                if stock_code and company_data:
-                    # 기업명과 corp_code 추출
-                    company_name = company_data.company_name or ''
-                    corp_code = company_data.corp_code or ''
-                    
-                    # JSON 파일에 저장
-                    if save_passed_companies_json(stock_code, company_name, corp_code, passed_filters_file):
-                        saved_count += 1
-        
+        for stock_code, company_name, corp_code in passed_for_json:
+            if save_passed_companies_json(stock_code, company_name, corp_code, passed_filters_file):
+                saved_count += 1
         if saved_count > 0:
             logger.info('필터 통과 기업 %s개 저장 완료: %s', saved_count, passed_filters_file.name)
     

@@ -102,4 +102,83 @@ class DataOrchestrator:
         
         return company_data
 
+    def collect_companies_data_batch(self, corp_codes: list[str]) -> list[dict]:
+        """
+        다중회사 주요계정 API로 배치 수집 후 회사별 계산·필터·저장.
+        회사 단위로 try/except 하여 일부 실패해도 성공한 건은 저장.
+
+        Args:
+            corp_codes: 고유번호 리스트 (최대 100개)
+
+        Returns:
+            [{"corp_code": ..., "status": "success"|"failed", "passed_all_filters": bool, "error": ...}, ...]
+        """
+        if not corp_codes:
+            return []
+        years = self.dart_service._get_recent_years(5)
+        company_data_map = self.dart_service.fill_basic_indicators_multi(corp_codes, years)
+
+        # 채권수익률 1회 조회/캐시 (기존과 동일)
+        try:
+            from django.utils import timezone
+            from datetime import timedelta
+            from django.apps import apps as django_apps
+            BondYieldModel = django_apps.get_model('apps', 'BondYield')
+            bond_yield_obj, created = BondYieldModel.objects.get_or_create(
+                id=1,
+                defaults={
+                    'yield_value': 0.0,
+                    'collected_at': timezone.now() - timedelta(days=2)
+                }
+            )
+            if timezone.now() - bond_yield_obj.collected_at > timedelta(days=1):
+                bond_yield = self.ecos_service.collect_bond_yield_5y()
+                bond_yield_value = bond_yield / 100.0 if bond_yield else 0.0
+                bond_yield_obj.yield_value = bond_yield_value
+                bond_yield_obj.collected_at = timezone.now()
+                bond_yield_obj.save()
+        except Exception as e:
+            logger.warning("채권수익률 수집 실패: %s", e)
+
+        results = []
+        for corp_code in corp_codes:
+            company_data = company_data_map.get(corp_code)
+            if not company_data:
+                results.append({
+                    'corp_code': corp_code,
+                    'status': 'failed',
+                    'passed_all_filters': False,
+                    'error': '수집된 연간 데이터 없음',
+                })
+                continue
+            try:
+                try:
+                    company_info = self.dart_client.get_company_info(corp_code)
+                    if company_info:
+                        company_data.company_name = company_info.get('corp_name', '')
+                except Exception as e:
+                    logger.warning("기업 정보 조회 실패 %s: %s", corp_code, e)
+                IndicatorCalculator.calculate_basic_financial_ratios(company_data)
+                try:
+                    CompanyFilter.apply_all_filters(company_data)
+                except Exception as e:
+                    logger.warning("필터 적용 실패 %s: %s", corp_code, e)
+                save_company_to_db(company_data)
+                results.append({
+                    'corp_code': corp_code,
+                    'status': 'success',
+                    'passed_all_filters': company_data.passed_all_filters,
+                    'company_name': company_data.company_name or '',
+                    'error': None,
+                })
+            except Exception as e:
+                logger.warning("배치 내 회사 저장 실패 %s: %s", corp_code, e)
+                results.append({
+                    'corp_code': corp_code,
+                    'status': 'failed',
+                    'passed_all_filters': False,
+                    'error': str(e),
+                })
+        return results
+
 

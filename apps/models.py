@@ -86,6 +86,15 @@ class YearlyFinancialData(models.Model):
     fcf = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자유현금흐름')
     roic = models.FloatField(default=0.0, null=True, blank=True, verbose_name='투하자본수익률')
     wacc = models.FloatField(default=0.0, null=True, blank=True, verbose_name='가중평균자본비용')
+    # 다중회사 주요계정 확장 (DART 주요계정 전부 저장)
+    current_assets = models.BigIntegerField(null=True, blank=True, verbose_name='유동자산')
+    noncurrent_assets = models.BigIntegerField(null=True, blank=True, verbose_name='비유동자산')
+    current_liabilities = models.BigIntegerField(null=True, blank=True, verbose_name='유동부채')
+    noncurrent_liabilities = models.BigIntegerField(null=True, blank=True, verbose_name='비유동부채')
+    total_liabilities = models.BigIntegerField(null=True, blank=True, verbose_name='부채총계')
+    capital_stock = models.BigIntegerField(null=True, blank=True, verbose_name='자본금')
+    retained_earnings = models.BigIntegerField(null=True, blank=True, verbose_name='이익잉여금')
+    profit_before_tax = models.BigIntegerField(null=True, blank=True, verbose_name='법인세차감전순이익')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
     
@@ -135,6 +144,29 @@ class QuarterlyFinancialData(models.Model):
         quarter_names = {1: '1분기', 2: '반기', 3: '3분기'}
         quarter_name = quarter_names.get(self.quarter, f'{self.quarter}분기')
         return f"{self.company.company_name} - {self.year}년 {quarter_name}"
+
+
+class YearlyFinancialIndicator(models.Model):
+    """연도별 주요재무지표 (DART fnlttCmpnyIndx 지표 코드·값)"""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='yearly_indicators', verbose_name='회사')
+    year = models.IntegerField(verbose_name='사업연도')
+    idx_code = models.CharField(max_length=20, verbose_name='지표코드')  # M211100 등
+    idx_val = models.FloatField(null=True, blank=True, verbose_name='지표값')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
+
+    class Meta:
+        db_table = 'yearly_financial_indicator'
+        verbose_name = '연도별재무지표'
+        verbose_name_plural = '연도별재무지표들'
+        unique_together = [['company', 'year', 'idx_code']]
+        indexes = [
+            models.Index(fields=['company', 'year']),
+            models.Index(fields=['idx_code']),
+        ]
+
+    def __str__(self):
+        return f"{self.company.company_name} - {self.year}년 {self.idx_code}"
 
 
 class FavoriteGroup(models.Model):
@@ -263,6 +295,16 @@ class YearlyFinancialDataObject:
         self.total_equity: int | None = 0  # 자본총계
         self.operating_margin: float | None = 0.0  # 영업이익률 (%) - 계산 방식 (영업이익/매출액)
         self.roe: float | None = 0.0  # ROE (%) - 계산 방식 (당기순이익/자본총계)
+        
+        # === 다중회사 주요계정 확장 ===
+        self.current_assets: int | None = None  # 유동자산
+        self.noncurrent_assets: int | None = None  # 비유동자산
+        self.current_liabilities: int | None = None  # 유동부채
+        self.noncurrent_liabilities: int | None = None  # 비유동부채
+        self.total_liabilities: int | None = None  # 부채총계
+        self.capital_stock: int | None = None  # 자본금
+        self.retained_earnings: int | None = None  # 이익잉여금
+        self.profit_before_tax: int | None = None  # 법인세차감전순이익
         
         # === 계산에 사용하는 기본 지표 ===
         self.tangible_asset_acquisition: int = 0  # 유형자산 취득

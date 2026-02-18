@@ -2,12 +2,16 @@
 DART 데이터 수집 서비스
 """
 import json
+import logging
 from pathlib import Path
 from datetime import datetime
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from apps.dart.client import DartClient
 from apps.models import FinancialStatementData, YearlyFinancialDataObject, CompanyFinancialObject
 from apps.utils import normalize_account_name
+
+logger = logging.getLogger(__name__)
 
 
 class DartDataService:
@@ -207,7 +211,131 @@ class DartDataService:
         else:
             company_data.latest_annual_rcept_no = None
             company_data.latest_annual_report_year = None
-    
+
+    def fill_basic_indicators_multi(
+        self, corp_codes: list[str], years: list[int]
+    ) -> dict[str, CompanyFinancialObject]:
+        """
+        다중회사 주요계정 API로 100개 회사 x 연도별 데이터 수집 후 회사별 CompanyFinancialObject 반환.
+
+        배치 내 일부 연도 실패 시 해당 연도만 로그 후 스킵. 회사별로 yearly_data 병합 후 반환.
+        """
+        if not corp_codes:
+            return {}
+        corp_set = set(corp_codes)
+        # stock_code -> corp_code (요청 corp_set에 해당하는 것만). 종목코드는 6자리로 통일(API가 앞자리 0 생략할 수 있음)
+        def _norm_stock(s):
+            return str(s).strip().zfill(6) if s else ""
+        stock_to_corp = {
+            _norm_stock(k): v for k, v in self.client._corp_code_mapping_cache.items() if v in corp_set
+        }
+        mappings = self._load_indicator_mappings()
+        reverse_mapping: dict[str, str] = {}
+        for mapping_config in mappings.values():
+            internal_field = mapping_config.get('internal_field')
+            if not internal_field:
+                continue
+            for variant in mapping_config.get('dart_variants', []):
+                normalized_variant = normalize_account_name(variant)
+                reverse_mapping.setdefault(normalized_variant, internal_field)
+
+        year_amount_pairs = [
+            (0, 'thstrm_amount'),
+            (-1, 'frmtrm_amount'),
+            (-2, 'bfefrmtrm_amount'),
+        ]
+
+        # corp_code -> year -> YearlyFinancialDataObject
+        corp_year_to_data: dict[str, dict[int, YearlyFinancialDataObject]] = defaultdict(dict)
+        latest_rcept: dict[str, tuple[str | None, int | None]] = {}  # corp_code -> (rcept_no, year)
+
+        for year in years:
+            year_str = str(year)
+            try:
+                raw_list = self.client.get_financial_statement_multi(
+                    corp_codes, year_str, reprt_code='11011'
+                )
+            except Exception as e:
+                logger.warning(
+                    "다중회사 주요계정 API 실패 (배치 %s건, 연도 %s): %s",
+                    len(corp_codes), year_str, e,
+                )
+                continue
+            if not raw_list:
+                continue
+
+            # 행별 stock_code, fs_div. CFS 우선, 없으면 OFS 사용 (일부 회사는 연결재무제표 미제출)
+            by_stock_cfs: dict[str, list] = defaultdict(list)
+            by_stock_ofs: dict[str, list] = defaultdict(list)
+            for row in raw_list:
+                fs_div = (row.get('fs_div') or '').strip()
+                raw_sc = row.get('stock_code')
+                stock_code = _norm_stock(raw_sc) if raw_sc is not None and raw_sc != '' else ''
+                if not stock_code:
+                    continue
+                if fs_div == 'OFS':
+                    by_stock_ofs[stock_code].append(row)
+                else:
+                    by_stock_cfs[stock_code].append(row)
+            by_stock = {}
+            fs_div_used: dict[str, str] = {}
+            for sc in set(by_stock_cfs.keys()) | set(by_stock_ofs.keys()):
+                if by_stock_cfs[sc]:
+                    by_stock[sc] = by_stock_cfs[sc]
+                    fs_div_used[sc] = 'CFS'
+                else:
+                    by_stock[sc] = by_stock_ofs[sc]
+                    fs_div_used[sc] = 'OFS'
+
+            for stock_code, rows in by_stock.items():
+                corp_code = stock_to_corp.get(stock_code)
+                if not corp_code:
+                    continue
+                fs_div_choice = fs_div_used.get(stock_code, 'CFS')
+                fs_data = FinancialStatementData(
+                    year=year_str, reprt_code='11011', fs_div=fs_div_choice, raw_data=rows
+                )
+                rcept_no = (fs_data.rcept_no or '').strip() or None
+                for offset, amount_type in year_amount_pairs:
+                    target_year = year + offset
+                    if target_year not in years:
+                        continue
+                    if corp_code not in corp_year_to_data:
+                        corp_year_to_data[corp_code] = {}
+                    if target_year in corp_year_to_data[corp_code]:
+                        continue
+                    yearly_data = YearlyFinancialDataObject(year=target_year)
+                    yearly_data.rcept_no = rcept_no
+                    for norm_name, account_data in fs_data.normalized_account_index.items():
+                        internal_field = reverse_mapping.get(norm_name)
+                        if not internal_field or not hasattr(yearly_data, internal_field):
+                            continue
+                        amount = account_data.get(amount_type, '0')
+                        try:
+                            value = int(amount.replace(',', '')) if amount else None
+                        except (ValueError, AttributeError):
+                            value = None
+                        setattr(yearly_data, internal_field, value)
+                    corp_year_to_data[corp_code][target_year] = yearly_data
+                    if target_year == year and rcept_no:
+                        if corp_code not in latest_rcept or year > latest_rcept[corp_code][1]:
+                            latest_rcept[corp_code] = (rcept_no, year)
+
+        result: dict[str, CompanyFinancialObject] = {}
+        for corp_code, year_to_data in corp_year_to_data.items():
+            if not year_to_data:
+                continue
+            company_data = CompanyFinancialObject()
+            company_data.corp_code = corp_code
+            sorted_items = sorted(year_to_data.items(), key=lambda x: x[0])
+            for _, yearly_data in sorted_items:
+                company_data.yearly_data.append(yearly_data)
+            rcept_no, report_year = latest_rcept.get(corp_code, (None, None))
+            company_data.latest_annual_rcept_no = rcept_no
+            company_data.latest_annual_report_year = report_year
+            result[corp_code] = company_data
+        return result
+
     def _process_single_quarter_basic(self, corp_code: str, rcept_no: str, reprt_code: str, quarter: int, mappings: dict):
         """
         단일 분기의 기본 지표 수집

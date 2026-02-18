@@ -385,7 +385,45 @@ class DartClient:
         
         # 빈 리스트인 경우도 정상 반환 (호출자가 처리)
         return financial_list if isinstance(financial_list, list) else []
-    
+
+    def get_financial_statement_multi(self, corp_codes: list, bsns_year: str, reprt_code='11011', fs_div='CFS'):
+        """
+        다중회사 주요계정 조회 (최대 100개 회사)
+
+        API: fnlttMultiAcnt.json. _make_request 사용으로 재시도·일별 통계 적용.
+
+        Args:
+            corp_codes: 고유번호 8자리 리스트 (최대 100개)
+            bsns_year: 사업연도 (예: '2024')
+            reprt_code: 보고서 코드 ('11011': 사업보고서)
+            fs_div: 재무제표 구분 ('CFS': 연결, 'OFS': 별도). 가이드에 없으면 무시됨.
+
+        Returns:
+            재무제표 행 리스트 (각 행에 stock_code 등 포함). 실패/데이터없음 시 빈 리스트.
+        """
+        if not corp_codes:
+            return []
+        corp_code_param = ','.join(str(c).strip() for c in corp_codes)
+        params = {
+            'corp_code': corp_code_param,
+            'bsns_year': bsns_year,
+            'reprt_code': reprt_code,
+        }
+        # fnlttMultiAcnt 가이드에 fs_div 유무에 따라 추가 (없으면 응답에서 CFS 필터)
+        try:
+            result = self._make_request("fnlttMultiAcnt.json", params=params)
+        except Exception as e:
+            raise e
+        if not isinstance(result, dict):
+            return []
+        if result.get('status') != '000':
+            message = result.get('message', '')
+            if '조회된 데이타가 없습니다' in message or '데이터가 없습니다' in message:
+                return []
+            raise Exception(f"다중회사 재무제표 조회 실패: {message}")
+        financial_list = result.get('list', [])
+        return financial_list if isinstance(financial_list, list) else []
+
     def get_report_list(self, corp_code, bgn_de, end_de, last_reprt_at='N', page_no=1, page_count=1000):
         """
         공시보고서 목록 조회

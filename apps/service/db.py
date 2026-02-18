@@ -261,5 +261,13 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                     'operating_margin': yearly_data.operating_margin,
                     'roe': yearly_data.roe,
                     'interest_bearing_debt': yearly_data.interest_bearing_debt or 0,
+                    'current_assets': getattr(yearly_data, 'current_assets', None),
+                    'noncurrent_assets': getattr(yearly_data, 'noncurrent_assets', None),
+                    'current_liabilities': getattr(yearly_data, 'current_liabilities', None),
+                    'noncurrent_liabilities': getattr(yearly_data, 'noncurrent_liabilities', None),
+                    'total_liabilities': getattr(yearly_data, 'total_liabilities', None),
+                    'capital_stock': getattr(yearly_data, 'capital_stock', None),
+                    'retained_earnings': getattr(yearly_data, 'retained_earnings', None),
+                    'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
                 }
             )

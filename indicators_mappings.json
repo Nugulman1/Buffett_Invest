@@ -64,5 +64,40 @@
             "매출액(별도)"
         ],
         "description": "매출액 (손익계산서)"
+    },
+    "유동자산": {
+        "internal_field": "current_assets",
+        "dart_variants": ["유동자산", "유동자산합계", "유동자산(연결)", "유동자산(별도)"],
+        "description": "유동자산"
+    },
+    "비유동자산": {
+        "internal_field": "noncurrent_assets",
+        "dart_variants": ["비유동자산", "비유동자산합계", "비유동자산(연결)", "비유동자산(별도)"],
+        "description": "비유동자산"
+    },
+    "비유동부채": {
+        "internal_field": "noncurrent_liabilities",
+        "dart_variants": ["비유동부채", "비유동부채합계", "비유동부채(연결)", "비유동부채(별도)"],
+        "description": "비유동부채"
+    },
+    "부채총계": {
+        "internal_field": "total_liabilities",
+        "dart_variants": ["부채총계", "부채총계합계", "부채총계(연결)", "부채총계(별도)"],
+        "description": "부채총계"
+    },
+    "자본금": {
+        "internal_field": "capital_stock",
+        "dart_variants": ["자본금", "자본금(연결)", "자본금(별도)"],
+        "description": "자본금"
+    },
+    "이익잉여금": {
+        "internal_field": "retained_earnings",
+        "dart_variants": ["이익잉여금", "이익잉여금(결손금)", "이익잉여금(연결)", "이익잉여금(별도)"],
+        "description": "이익잉여금"
+    },
+    "법인세차감전 순이익": {
+        "internal_field": "profit_before_tax",
+        "dart_variants": ["법인세차감전 순이익", "법인세차감전순이익(손실)", "법인세차감전 순이익(연결)", "법인세차감전 순이익(별도)"],
+        "description": "법인세차감전 순이익"
     }
 }
