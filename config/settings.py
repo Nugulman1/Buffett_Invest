@@ -151,8 +151,7 @@ DATA_COLLECTION = {
     
     # 데이터 수집 관련
     'COLLECTION_LIMIT': int(os.getenv('COLLECTION_LIMIT', '10')),  # 기본 수집 개수
-    'MAX_WORKERS': int(os.getenv('MAX_WORKERS', '3')),  # 기본 병렬 처리 스레드 수
-    
+
     # 로깅
     'LOGGING_LEVEL': os.getenv('LOGGING_LEVEL', 'INFO'),  # 로깅 레벨
 }

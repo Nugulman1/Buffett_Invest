@@ -179,9 +179,11 @@ class IndicatorCalculator:
         """
         EV (Enterprise Value, 기업가치) 계산.
 
-        공식: 시가총액 + 이자부채 - 현금 + 비지배지분
+        공식: 시가총액 + 이자부채 - (기말현금및현금성자산 × 70%) + 비지배지분
+        현금은 보수적으로 70%만 차감.
         """
-        return market_cap + interest_bearing_debt - cash + noncontrolling_interest
+        cash_70 = int(cash * 0.7)
+        return market_cap + interest_bearing_debt - cash_70 + noncontrolling_interest
 
     @staticmethod
     def calculate_wacc(

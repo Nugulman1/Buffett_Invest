@@ -112,6 +112,14 @@
                         this.initialMemoText = data.memo || '';
                         this.memoUpdatedAt = data.memo_updated_at || null;
                         this.memoChanged = false;
+                        // KRX·필터 갱신 반영을 위해 한 번만 페이지 새로고침 (무한 리로드 방지)
+                        const refreshKey = 'detailRefreshed_' + this.corpCode;
+                        if (!sessionStorage.getItem(refreshKey)) {
+                            sessionStorage.setItem(refreshKey, '1');
+                            window.location.reload();
+                            return;
+                        }
+                        sessionStorage.removeItem(refreshKey);
                     } else {
                         this.error = data.error || '데이터를 불러올 수 없습니다.';
                     }
@@ -501,6 +509,20 @@
                                             x-text="companyData?.filter_roe ? '통과' : '미통과'"></span>
                                     </div>
                                 </div>
+                                <div class="col-12">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <span class="small">2차 필터 (ROIC-WACC):</span>
+                                        <span class="badge"
+                                            :class="companyData?.passed_second_filter ? 'bg-success' : 'bg-danger'"
+                                            x-text="companyData?.passed_second_filter ? '통과' : '미통과'"></span>
+                                    </div>
+                                </div>
+                                <div class="col-12" x-show="companyData">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <span class="small">연속 배당:</span>
+                                        <span class="badge bg-secondary" x-text="(companyData?.consecutive_dividend_years ?? 0) + '년'"></span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -529,6 +551,10 @@
                                             <th class="text-end">FCF</th>
                                             <th class="text-end">ROIC</th>
                                             <th class="text-end">WACC</th>
+                                            <th class="text-end">EV</th>
+                                            <th class="text-end">IC</th>
+                                            <th class="text-end">부채비율</th>
+                                            <th class="text-end">배당성향</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -549,6 +575,10 @@
                                                 <td class="text-end" x-text="formatAmount(data.fcf)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.roic)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.wacc)"></td>
+                                                <td class="text-end" x-text="formatAmount(data.ev)"></td>
+                                                <td class="text-end" x-text="formatAmount(data.invested_capital)"></td>
+                                                <td class="text-end" x-text="formatPercent(data.debt_ratio)"></td>
+                                                <td class="text-end" x-text="formatPercent(data.dividend_payout_ratio)"></td>
                                             </tr>
                                         </template>
                                     </tbody>

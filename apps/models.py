@@ -119,9 +119,11 @@ class YearlyFinancialData(models.Model):
     roe = models.FloatField(default=0.0, null=True, blank=True, verbose_name='ROE')
     debt_ratio = models.FloatField(null=True, blank=True, verbose_name='부채비율')  # 자본총계/부채총계
     interest_bearing_debt = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='이자부채')
+    interest_expense = models.BigIntegerField(null=True, blank=True, verbose_name='이자비용')
     cash_and_cash_equivalents = models.BigIntegerField(null=True, blank=True, verbose_name='현금및현금성자산')
     noncontrolling_interest = models.BigIntegerField(null=True, blank=True, verbose_name='비지배지분')
     dividend_paid = models.BigIntegerField(null=True, blank=True, verbose_name='배당금지급')
+    dividend_payout_ratio = models.FloatField(null=True, blank=True, verbose_name='배당성향(FCF대비)')  # 배당금/FCF, 연간 계산
     fcf = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자유현금흐름')
     roic = models.FloatField(default=0.0, null=True, blank=True, verbose_name='투하자본수익률')
     wacc = models.FloatField(default=0.0, null=True, blank=True, verbose_name='가중평균자본비용')
@@ -360,6 +362,7 @@ class YearlyFinancialDataObject:
         self.interest_expense: int = 0  # 이자비용 (WACC 계산에 사용)
         self.noncontrolling_interest: int = 0  # 비지배지분 (LLM 추출)
         self.dividend_paid: int | None = None  # 배당금 지급 (LLM 추출)
+        self.dividend_payout_ratio: float | None = None  # 배당성향 (배당금/FCF, 기업 조회 시 계산)
         self.beta: float = 1.0  # 베타 (고정)
         self.mrp: float = 5.0  # MRP (고정)
         

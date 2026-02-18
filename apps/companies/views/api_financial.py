@@ -14,81 +14,55 @@ from apps.service.bond_yield import get_bond_yield_5y
 from apps.service.corp_code import resolve_corp_code, get_stock_code_by_corp_code
 
 
-def _process_single_year_indicators(year_data, corp_code, company):
-    """단일 년도 지표 계산 및 저장."""
+def _refresh_krx_ev_ic_and_second_filter(corp_code: str) -> None:
+    """
+    기업 조회 시 호출. KRX에서 일별 데이터 전체(BAS_DD, 시가총액 등) 수집 후,
+    EV/IC·배당성향·2차 필터를 재계산해 DB에 반영.
+    """
     from django.apps import apps as django_apps
-    from django.conf import settings
     from apps.service.calculator import IndicatorCalculator
+    from apps.service.filter import CompanyFilter
+    from apps.service.krx_client import fetch_and_save_company_market_cap
     from apps.models import YearlyFinancialDataObject
 
     YearlyFinancialDataModel = django_apps.get_model("apps", "YearlyFinancialData")
-    year = year_data.get("year")
-    if not year:
-        raise ValueError("year 필드가 필요합니다.")
-
+    yearly_list = list(
+        YearlyFinancialDataModel.objects.filter(company_id=corp_code).order_by("year")
+    )
+    if not yearly_list:
+        return
+    market_cap = fetch_and_save_company_market_cap(corp_code)
+    for yd in yearly_list:
+        obj = YearlyFinancialDataObject(yd.year)
+        obj.equity = yd.total_equity or 0
+        obj.interest_bearing_debt = yd.interest_bearing_debt or 0
+        obj.cash_and_cash_equivalents = getattr(yd, "cash_and_cash_equivalents", None) or 0
+        obj.noncontrolling_interest = getattr(yd, "noncontrolling_interest", None) or 0
+        ic = IndicatorCalculator.calculate_invested_capital(obj)
+        ev = (
+            IndicatorCalculator.calculate_ev(
+                market_cap,
+                obj.interest_bearing_debt,
+                obj.cash_and_cash_equivalents,
+                obj.noncontrolling_interest,
+            )
+            if market_cap is not None
+            else None
+        )
+        yd.invested_capital = ic
+        yd.ev = ev
+        dividend_payout_ratio = None
+        if yd.fcf and yd.fcf > 0 and yd.dividend_paid is not None and yd.dividend_paid >= 0:
+            dividend_payout_ratio = yd.dividend_paid / yd.fcf
+        yd.dividend_payout_ratio = dividend_payout_ratio
+        yd.save(update_fields=["invested_capital", "ev", "dividend_payout_ratio"])
+    CompanyModel = django_apps.get_model("apps", "Company")
     try:
-        yearly_data_db = YearlyFinancialDataModel.objects.get(
-            company=company, year=year
-        )
-    except YearlyFinancialDataModel.DoesNotExist:
-        raise YearlyFinancialDataModel.DoesNotExist(
-            f"{year}년도 데이터를 찾을 수 없습니다. 먼저 재무 데이터를 수집해주세요."
-        )
-
-    if yearly_data_db.operating_income is None or yearly_data_db.total_equity is None:
-        yearly_data_db.fcf = None
-        yearly_data_db.roic = None
-        yearly_data_db.wacc = None
-        yearly_data_db.save()
-        return {
-            "corp_code": corp_code,
-            "year": year,
-            "fcf": None,
-            "roic": None,
-            "wacc": None,
-        }
-
-    yearly_data_obj = YearlyFinancialDataObject(year=year)
-    yearly_data_obj.cfo = year_data.get("cfo", 0) or 0
-    yearly_data_obj.tangible_asset_acquisition = (
-        year_data.get("tangible_asset_acquisition", 0) or 0
-    )
-    yearly_data_obj.intangible_asset_acquisition = (
-        year_data.get("intangible_asset_acquisition", 0) or 0
-    )
-    yearly_data_obj.operating_income = year_data.get("operating_income", 0) or 0
-    yearly_data_obj.equity = year_data.get("equity", 0) or 0
-    yearly_data_obj.interest_bearing_debt = (
-        year_data.get("interest_bearing_debt", 0) or 0
-    )
-    yearly_data_obj.cash_and_cash_equivalents = (
-        year_data.get("cash_and_cash_equivalents", 0) or 0
-    )
-    yearly_data_obj.interest_expense = year_data.get("interest_expense", 0) or 0
-
-    defaults = settings.CALCULATOR_DEFAULTS
-    tax_rate = float(year_data.get("tax_rate", defaults["TAX_RATE"])) / 100.0
-    bond_yield = float(year_data.get("bond_yield", 3.5))
-    equity_risk_premium = float(year_data.get("equity_risk_premium", defaults["EQUITY_RISK_PREMIUM"]))
-
-    fcf = IndicatorCalculator.calculate_fcf(yearly_data_obj)
-    roic = IndicatorCalculator.calculate_roic(yearly_data_obj, tax_rate)
-    wacc = IndicatorCalculator.calculate_wacc(
-        yearly_data_obj, bond_yield, tax_rate, equity_risk_premium
-    )
-
-    yearly_data_db.fcf = fcf
-    yearly_data_db.roic = roic
-    yearly_data_db.wacc = wacc
-    yearly_data_db.save()
-
-    return {
-        "corp_code": corp_code,
-        "year": year,
-        "fcf": fcf,
-        "roic": roic,
-        "wacc": wacc,
-    }
+        company = CompanyModel.objects.get(corp_code=corp_code)
+        company.passed_second_filter = CompanyFilter.check_second_filter(corp_code)
+        company.save(update_fields=["passed_second_filter"])
+    except CompanyModel.DoesNotExist:
+        pass
 
 
 @api_view(["GET"])
@@ -108,149 +82,88 @@ def get_financial_data(request, corp_code):
         corp_code = resolved
 
         company_data, company = load_company_from_db(corp_code)
-        if (
+        if not (
             company_data
             and company_data.yearly_data
             and company
             and not should_collect_company_from_company(company)
         ):
-            memo = company.memo
-            memo_updated_at = (
-                company.memo_updated_at.isoformat()
-                if company.memo_updated_at
-                else None
+            orchestrator = DataOrchestrator()
+            orchestrator.collect_company_data(corp_code)
+            company_data, company = load_company_from_db(corp_code)
+
+        if not company_data:
+            return Response(
+                {"error": "기업 데이터를 찾을 수 없습니다."},
+                status=status.HTTP_404_NOT_FOUND,
             )
-            data = {
-                "corp_code": company_data.corp_code,
-                "company_name": company_data.company_name,
-                "bond_yield_5y": get_bond_yield_5y(),
-                "passed_all_filters": company_data.passed_all_filters,
-                "filter_operating_income": company_data.filter_operating_income,
-                "filter_net_income": company_data.filter_net_income,
-                "filter_revenue_cagr": company_data.filter_revenue_cagr,
-                "filter_operating_margin": company_data.filter_operating_margin,
-                "filter_roe": company_data.filter_roe,
-                "memo": memo,
-                "memo_updated_at": memo_updated_at,
-                "yearly_data": [
-                    {
-                        "year": yd.year,
-                        "revenue": yd.revenue,
-                        "operating_income": yd.operating_income,
-                        "net_income": yd.net_income,
-                        "total_assets": yd.total_assets,
-                        "total_equity": yd.total_equity,
-                        "operating_margin": yd.operating_margin,
-                        "roe": yd.roe,
-                        "debt_ratio": getattr(yd, "debt_ratio", None),
-                        "fcf": yd.fcf,
-                        "roic": yd.roic,
-                        "wacc": yd.wacc,
-                        "ev": getattr(yd, "ev", None),
-                        "invested_capital": getattr(yd, "invested_capital", None),
-                        "dividend_paid": getattr(yd, "dividend_paid", None),
-                    }
-                    for yd in company_data.yearly_data
-                ],
-            }
-            return Response(data, status=status.HTTP_200_OK)
 
-        orchestrator = DataOrchestrator()
-        company_data = orchestrator.collect_company_data(corp_code)
+        # 기업 조회 시마다 KRX 실시간 수집 후 EV/IC·2차 필터 재계산
+        _refresh_krx_ev_ic_and_second_filter(corp_code)
+        company_data, company = load_company_from_db(corp_code)
+        if not company_data:
+            return Response(
+                {"error": "기업 데이터를 찾을 수 없습니다."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
-        company_data_from_db, company_from_db = load_company_from_db(corp_code)
-        if company_data_from_db:
-            if company_from_db:
-                memo = company_from_db.memo
-                memo_updated_at = (
-                    company_from_db.memo_updated_at.isoformat()
-                    if company_from_db.memo_updated_at
-                    else None
-                )
-            else:
-                memo = None
-                memo_updated_at = None
-
-            data = {
-                "corp_code": company_data_from_db.corp_code,
-                "company_name": company_data_from_db.company_name,
-                "bond_yield_5y": get_bond_yield_5y(),
-                "passed_all_filters": company_data_from_db.passed_all_filters,
-                "filter_operating_income": company_data_from_db.filter_operating_income,
-                "filter_net_income": company_data_from_db.filter_net_income,
-                "filter_revenue_cagr": company_data_from_db.filter_revenue_cagr,
-                "filter_operating_margin": company_data_from_db.filter_operating_margin,
-                "filter_roe": company_data_from_db.filter_roe,
-                "memo": memo,
-                "memo_updated_at": memo_updated_at,
-                "yearly_data": [
-                    {
-                        "year": yd.year,
-                        "revenue": yd.revenue,
-                        "operating_income": yd.operating_income,
-                        "net_income": yd.net_income,
-                        "total_assets": yd.total_assets,
-                        "total_equity": yd.total_equity,
-                        "operating_margin": yd.operating_margin,
-                        "roe": yd.roe,
-                        "debt_ratio": getattr(yd, "debt_ratio", None),
-                        "fcf": yd.fcf,
-                        "roic": yd.roic,
-                        "wacc": yd.wacc,
-                        "ev": getattr(yd, "ev", None),
-                        "invested_capital": getattr(yd, "invested_capital", None),
-                        "dividend_paid": getattr(yd, "dividend_paid", None),
-                    }
-                    for yd in company_data_from_db.yearly_data
-                ],
-            }
-        else:
-            try:
-                company = CompanyModel.objects.get(corp_code=corp_code)
-                memo = company.memo
-                memo_updated_at = (
-                    company.memo_updated_at.isoformat()
-                    if company.memo_updated_at
-                    else None
-                )
-            except CompanyModel.DoesNotExist:
-                memo = None
-                memo_updated_at = None
-
-            data = {
-                "corp_code": company_data.corp_code,
-                "company_name": company_data.company_name,
-                "bond_yield_5y": get_bond_yield_5y(),
-                "passed_all_filters": company_data.passed_all_filters,
-                "filter_operating_income": company_data.filter_operating_income,
-                "filter_net_income": company_data.filter_net_income,
-                "filter_revenue_cagr": company_data.filter_revenue_cagr,
-                "filter_operating_margin": company_data.filter_operating_margin,
-                "filter_roe": company_data.filter_roe,
-                "memo": memo,
-                "memo_updated_at": memo_updated_at,
-                "yearly_data": [
-                    {
-                        "year": yd.year,
-                        "revenue": yd.revenue,
-                        "operating_income": yd.operating_income,
-                        "net_income": yd.net_income,
-                        "total_assets": yd.total_assets,
-                        "total_equity": yd.total_equity,
-                        "operating_margin": yd.operating_margin,
-                        "roe": yd.roe,
-                        "debt_ratio": getattr(yd, "debt_ratio", None),
-                        "fcf": None,
-                        "roic": None,
-                        "wacc": None,
-                        "ev": getattr(yd, "ev", None),
-                        "invested_capital": getattr(yd, "invested_capital", None),
-                        "dividend_paid": getattr(yd, "dividend_paid", None),
-                    }
-                    for yd in company_data.yearly_data
-                ],
-            }
-
+        memo = company.memo if company else None
+        memo_updated_at = (
+            company.memo_updated_at.isoformat()
+            if company and company.memo_updated_at
+            else None
+        )
+        market_cap = getattr(company, "market_cap", None) if company else None
+        market_cap_updated_at = (
+            company.market_cap_updated_at.isoformat()
+            if company and getattr(company, "market_cap_updated_at", None)
+            else None
+        )
+        sorted_yearly = sorted(company_data.yearly_data, key=lambda x: x.year, reverse=True)
+        consecutive_dividend_years = 0
+        for yd in sorted_yearly:
+            if yd.dividend_paid is None or yd.dividend_paid <= 0:
+                break
+            consecutive_dividend_years += 1
+        data = {
+            "corp_code": company_data.corp_code,
+            "company_name": company_data.company_name,
+            "bond_yield_5y": get_bond_yield_5y(),
+            "market_cap": market_cap,
+            "market_cap_updated_at": market_cap_updated_at,
+            "passed_all_filters": company_data.passed_all_filters,
+            "passed_second_filter": getattr(company, "passed_second_filter", False) if company else False,
+            "consecutive_dividend_years": consecutive_dividend_years,
+            "filter_operating_income": company_data.filter_operating_income,
+            "filter_net_income": company_data.filter_net_income,
+            "filter_revenue_cagr": company_data.filter_revenue_cagr,
+            "filter_operating_margin": company_data.filter_operating_margin,
+            "filter_roe": company_data.filter_roe,
+            "memo": memo,
+            "memo_updated_at": memo_updated_at,
+            "yearly_data": [
+                {
+                    "year": yd.year,
+                    "revenue": yd.revenue,
+                    "operating_income": yd.operating_income,
+                    "net_income": yd.net_income,
+                    "total_assets": yd.total_assets,
+                    "total_equity": yd.total_equity,
+                    "operating_margin": yd.operating_margin,
+                    "roe": yd.roe,
+                    "debt_ratio": getattr(yd, "debt_ratio", None),
+                    "fcf": yd.fcf,
+                    "roic": yd.roic,
+                    "wacc": yd.wacc,
+                    "ev": getattr(yd, "ev", None),
+                    "invested_capital": getattr(yd, "invested_capital", None),
+                    "dividend_paid": getattr(yd, "dividend_paid", None),
+                    "dividend_payout_ratio": getattr(yd, "dividend_payout_ratio", None),
+                    "interest_expense": getattr(yd, "interest_expense", None),
+                }
+                for yd in company_data.yearly_data
+            ],
+        }
         return Response(data, status=status.HTTP_200_OK)
 
     except Exception as e:
@@ -550,7 +463,7 @@ def parse_and_calculate(request, corp_code):
                 yearly_data_obj, bond_yield, tax_rate, equity_risk_premium
             )
 
-            # 계산 과정 콘솔 출력
+            # 계산 과정 콘솔 출력 (calculator 결과만 사용, 공식은 calculator.py 일원화)
             capex = yearly_data_obj.tangible_asset_acquisition + yearly_data_obj.intangible_asset_acquisition
             logger.info("")
             logger.info("[%s년] 계산 과정 (DB: 영업이익=%s, 자본=%s)",
@@ -563,25 +476,15 @@ def parse_and_calculate(request, corp_code):
                 format_amount_korean(capex),
                 format_amount_korean(fcf),
             )
-            denom = yearly_data_obj.equity + interest_bearing_debt - yearly_data_obj.cash_and_cash_equivalents
-            numer = yearly_data_obj.operating_income * (1 - tax_rate)
-            logger.info("  ROIC: 영업이익(1-세율)(%s) / (자본+이자부채-현금)(%s) = %.2f%%",
-                format_amount_korean(int(numer)),
-                format_amount_korean(denom),
-                roic * 100,
-            )
-            total_cap = yearly_data_obj.equity + interest_bearing_debt
-            eq_w = yearly_data_obj.equity / total_cap if total_cap else 0
-            debt_w = interest_bearing_debt / total_cap if total_cap else 0
-            re = (bond_yield + equity_risk_premium) / 100.0
-            rd = yearly_data_obj.interest_expense / interest_bearing_debt if interest_bearing_debt else 0
-            logger.info("  WACC: E/(E+D)=%.1f%%, D/(E+D)=%.1f%%, Re=%.2f%%, Rd=%.2f%% -> WACC=%.2f%%",
-                eq_w * 100, debt_w * 100, re * 100, rd * 100, wacc * 100,
-            )
+            logger.info("  ROIC: %.2f%%, WACC: %.2f%%", roic * 100, wacc * 100)
 
             dividend_val = row.get("dividend_paid")
             yearly_data_db.dividend_paid = (
                 int(dividend_val) if dividend_val is not None and dividend_val != "" else None
+            )
+            interest_expense_val = row.get("interest_expense")
+            yearly_data_db.interest_expense = (
+                int(interest_expense_val) if interest_expense_val is not None and interest_expense_val != "" else None
             )
             yearly_data_db.interest_bearing_debt = interest_bearing_debt
             yearly_data_db.cash_and_cash_equivalents = yearly_data_obj.cash_and_cash_equivalents
@@ -601,12 +504,7 @@ def parse_and_calculate(request, corp_code):
 
         logger.info("")
         logger.info("[parse_and_calculate] DB 저장 완료: %s개 연도", len(results))
-
-        from apps.service.filter import CompanyFilter
-        CompanyModel = django_apps.get_model("apps", "Company")
-        company = CompanyModel.objects.get(corp_code=corp_code)
-        company.passed_second_filter = CompanyFilter.check_second_filter(corp_code)
-        company.save(update_fields=["passed_second_filter"])
+        # 2차 필터·EV/IC는 기업 조회 시 KRX 실시간 반영하여 재계산함 (parse 시점에는 미반영)
 
         if not results:
             return Response(
@@ -782,83 +680,6 @@ def calculate_ev_ic(request, corp_code):
         )
     except Exception as e:
         logger.exception("[calculate_ev_ic] 오류: %s", e)
-        return Response(
-            {"error": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-
-@api_view(["POST"])
-def save_calculated_indicators(request, corp_code):
-    """
-    계산 지표 저장 API
-    POST /api/companies/{corp_code}/calculated-indicators/
-    """
-    try:
-        from django.apps import apps as django_apps
-
-        CompanyModel = django_apps.get_model("apps", "Company")
-        YearlyFinancialDataModel = django_apps.get_model(
-            "apps", "YearlyFinancialData"
-        )
-
-        resolved, err = resolve_corp_code(corp_code)
-        if err:
-            return Response({"error": err}, status=status.HTTP_404_NOT_FOUND)
-        corp_code = resolved
-
-        try:
-            company = CompanyModel.objects.get(corp_code=corp_code)
-        except CompanyModel.DoesNotExist:
-            return Response(
-                {"error": f"기업을 찾을 수 없습니다. (corp_code: {corp_code})"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        data_list = (
-            request.data
-            if isinstance(request.data, list)
-            else [request.data]
-        )
-
-        results = []
-        errors = []
-
-        for idx, year_data in enumerate(data_list):
-            try:
-                result = _process_single_year_indicators(
-                    year_data, corp_code, company
-                )
-                results.append(result)
-            except YearlyFinancialDataModel.DoesNotExist as e:
-                errors.append(
-                    {"index": idx, "year": year_data.get("year"), "error": str(e)}
-                )
-            except ValueError as e:
-                errors.append(
-                    {"index": idx, "year": year_data.get("year"), "error": str(e)}
-                )
-            except Exception as e:
-                errors.append(
-                    {"index": idx, "year": year_data.get("year"), "error": str(e)}
-                )
-
-        response_data = {
-            "results": results,
-            "success_count": len(results),
-            "total_count": len(data_list),
-        }
-        if errors:
-            response_data["errors"] = errors
-
-        if not results:
-            return Response(
-                response_data,
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        return Response(response_data, status=status.HTTP_200_OK)
-
-    except Exception as e:
         return Response(
             {"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

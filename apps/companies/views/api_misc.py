@@ -7,7 +7,7 @@ from django.apps import apps as django_apps
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from apps.service.corp_code import get_stock_code_by_corp_code
+from apps.service.corp_code import get_stock_code_by_corp_code, resolve_corp_code
 
 
 @api_view(["GET"])
@@ -72,10 +72,7 @@ def search_companies(request):
     기업 검색 API (기업명, 종목코드 6자리, 기업번호 8자리)
     GET /api/companies/search/?q=검색어&limit=10
     """
-    from django.apps import apps as django_apps
     from django.db.models import Q
-
-    from apps.service.corp_code import resolve_corp_code
 
     CompanyModel = django_apps.get_model("apps", "Company")
 

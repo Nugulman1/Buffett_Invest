@@ -103,48 +103,10 @@ def filter_stock_codes_by_db(stock_codes: list, dart_client: DartClient, limit: 
     return filtered, skip_stats
 
 
-def process_single_company(stock_code: str, corp_code: str, orchestrator: DataOrchestrator):
-    """
-    단일 기업 데이터 수집 처리 (병렬 처리용 함수)
-    
-    Args:
-        stock_code: 종목코드
-        corp_code: 고유번호 (8자리)
-        orchestrator: DataOrchestrator 인스턴스
-    
-    Returns:
-        dict: 처리 결과 (company_data 포함)
-    """
-    try:
-        # 데이터 수집 (DB 저장 제외 - SQLite 동시 쓰기 문제 방지)
-        company_data = orchestrator.collect_company_data(corp_code, save_to_db=False)
-        
-        return {
-            'stock_code': stock_code,
-            'status': 'success',
-            'company_name': company_data.company_name,
-            'passed_all_filters': company_data.passed_all_filters,
-            'company_data': company_data  # DB 저장을 위해 데이터도 반환
-        }
-        
-    except Exception as e:
-        import traceback
-        error_msg = str(e)
-        traceback_str = traceback.format_exc()
-        return {
-            'stock_code': stock_code,
-            'status': 'failed',
-            'error': error_msg,
-            'traceback': traceback_str
-        }
-
-
-def main(limit: int = None, max_workers: int = None):
+def main(limit: int = None):
     """메인 실행 함수"""
-    # Django 설정에서 값 가져오기 (파라미터가 있으면 우선)
     from django.conf import settings
     limit = limit or settings.DATA_COLLECTION['COLLECTION_LIMIT']
-    max_workers = max_workers or settings.DATA_COLLECTION['MAX_WORKERS']
     
     # 파일 경로
     stock_codes_file = BASE_DIR / '종목코드.md'
@@ -290,13 +252,6 @@ if __name__ == '__main__':
         default=None,
         help='수집할 최대 기업 수 (기본값: settings.DATA_COLLECTION["COLLECTION_LIMIT"])',
     )
-    parser.add_argument(
-        '--workers',
-        type=int,
-        default=None,
-        help='병렬 처리 스레드 수 (기본값: settings.DATA_COLLECTION["MAX_WORKERS"])',
-    )
-    
     args = parser.parse_args()
-    main(limit=args.limit, max_workers=args.workers)
+    main(limit=args.limit)
 

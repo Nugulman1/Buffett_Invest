@@ -208,9 +208,11 @@ def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None,
             yearly_data_obj.total_liabilities = getattr(yearly_data_db, 'total_liabilities', None)
             yearly_data_obj.debt_ratio = getattr(yearly_data_db, 'debt_ratio', None)
             yearly_data_obj.interest_bearing_debt = yearly_data_db.interest_bearing_debt or 0
+            yearly_data_obj.interest_expense = getattr(yearly_data_db, 'interest_expense', None) or 0
             yearly_data_obj.cash_and_cash_equivalents = getattr(yearly_data_db, 'cash_and_cash_equivalents', None) or 0
             yearly_data_obj.noncontrolling_interest = getattr(yearly_data_db, 'noncontrolling_interest', None) or 0
             yearly_data_obj.dividend_paid = getattr(yearly_data_db, "dividend_paid", None)
+            yearly_data_obj.dividend_payout_ratio = getattr(yearly_data_db, "dividend_payout_ratio", None)
             yearly_data_obj.fcf = yearly_data_db.fcf
             yearly_data_obj.roic = yearly_data_db.roic
             yearly_data_obj.wacc = yearly_data_db.wacc
@@ -269,6 +271,7 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                     'roe': yearly_data.roe,
                     'debt_ratio': getattr(yearly_data, 'debt_ratio', None),
                     'interest_bearing_debt': yearly_data.interest_bearing_debt or 0,
+                    'interest_expense': getattr(yearly_data, 'interest_expense', None),
                     'cash_and_cash_equivalents': getattr(yearly_data, 'cash_and_cash_equivalents', None),
                     'noncontrolling_interest': getattr(yearly_data, 'noncontrolling_interest', None),
                     'current_assets': getattr(yearly_data, 'current_assets', None),
@@ -285,16 +288,4 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                 }
             )
 
-        yearly_indicators = getattr(company_data, 'yearly_indicators', None) or {}
-        yearly_indicator_names = getattr(company_data, 'yearly_indicator_names', None) or {}
-        YearlyFinancialIndicatorModel = django_apps.get_model('apps', 'YearlyFinancialIndicator')
-        for year, indicators in yearly_indicators.items():
-            names_by_code = yearly_indicator_names.get(year, {})
-            for idx_code, value in indicators.items():
-                idx_nm = names_by_code.get(idx_code)
-                YearlyFinancialIndicatorModel.objects.update_or_create(
-                    company=company,
-                    year=year,
-                    idx_code=idx_code,
-                    defaults={'idx_val': value, 'idx_nm': idx_nm},
-                )
+        # yearly_indicators는 함수 내 임시 데이터(ROE 등 채움용). DB에 저장하지 않음.
