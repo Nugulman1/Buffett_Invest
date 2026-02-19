@@ -32,6 +32,7 @@ class Company(models.Model):
         indexes = [
             models.Index(fields=['corp_code']),
             models.Index(fields=['company_name']),  # 기업명 검색 성능 향상
+            models.Index(fields=['passed_all_filters', 'company_name']),  # 1차 필터 통과 목록 조회
         ]
     
     def __str__(self):
