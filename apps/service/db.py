@@ -4,10 +4,12 @@ DB 레이어: 분기보고서 저장/조회, 기업·after_date 조회, 연간 C
 Companies 뷰는 이 모듈과 DART 서비스만 호출하고, 직접 ORM 사용하지 않음.
 """
 import threading
+import time
 
 from django.apps import apps as django_apps
 from django.utils import timezone
 from django.db import transaction
+from django.db.utils import OperationalError
 
 from apps.models import CompanyFinancialObject, YearlyFinancialDataObject
 
@@ -183,6 +185,7 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
 
     트랜잭션으로 원자성 보장: Company와 YearlyFinancialData 저장이 모두 성공하거나 모두 실패.
     병렬 수집 시 한 번에 한 스레드만 쓰기하도록 락 사용.
+    SQLite "database is locked" 발생 시 최대 5회까지 대기 후 재시도.
 
     Args:
         company_data: CompanyFinancialObject 객체
@@ -191,53 +194,61 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
     YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
     now = timezone.now()
 
-    with db_write_lock:
-        with transaction.atomic():
-            company, created = CompanyModel.objects.update_or_create(
-                corp_code=company_data.corp_code,
-                defaults={
-                    'company_name': company_data.company_name,
-                    'last_collected_at': now,
-                    'passed_all_filters': company_data.passed_all_filters,
-                    'filter_operating_income': company_data.filter_operating_income,
-                    'filter_net_income': company_data.filter_net_income,
-                    'filter_revenue_cagr': company_data.filter_revenue_cagr,
-                    'filter_operating_margin': company_data.filter_operating_margin,
-                    'filter_roe': company_data.filter_roe,
-                    'latest_annual_rcept_no': getattr(company_data, 'latest_annual_rcept_no', None),
-                    'latest_annual_report_year': getattr(company_data, 'latest_annual_report_year', None),
-                }
-            )
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            with db_write_lock:
+                with transaction.atomic():
+                    company, created = CompanyModel.objects.update_or_create(
+                        corp_code=company_data.corp_code,
+                        defaults={
+                            'company_name': company_data.company_name,
+                            'last_collected_at': now,
+                            'passed_all_filters': company_data.passed_all_filters,
+                            'filter_operating_income': company_data.filter_operating_income,
+                            'filter_net_income': company_data.filter_net_income,
+                            'filter_revenue_cagr': company_data.filter_revenue_cagr,
+                            'filter_operating_margin': company_data.filter_operating_margin,
+                            'filter_roe': company_data.filter_roe,
+                            'latest_annual_rcept_no': getattr(company_data, 'latest_annual_rcept_no', None),
+                            'latest_annual_report_year': getattr(company_data, 'latest_annual_report_year', None),
+                        }
+                    )
 
-            for yearly_data in company_data.yearly_data:
-                YearlyFinancialDataModel.objects.update_or_create(
-                    company=company,
-                    year=yearly_data.year,
-                    defaults={
-                        'revenue': yearly_data.revenue,
-                        'operating_income': yearly_data.operating_income,
-                        'net_income': yearly_data.net_income,
-                        'total_assets': yearly_data.total_assets,
-                        'total_equity': yearly_data.total_equity,
-                        'operating_margin': yearly_data.operating_margin,
-                        'roe': yearly_data.roe,
-                        'debt_ratio': getattr(yearly_data, 'debt_ratio', None),
-                        'interest_bearing_debt': yearly_data.interest_bearing_debt or 0,
-                        'interest_expense': getattr(yearly_data, 'interest_expense', None),
-                        'cash_and_cash_equivalents': getattr(yearly_data, 'cash_and_cash_equivalents', None),
-                        'noncontrolling_interest': getattr(yearly_data, 'noncontrolling_interest', None),
-                        'current_assets': getattr(yearly_data, 'current_assets', None),
-                        'noncurrent_assets': getattr(yearly_data, 'noncurrent_assets', None),
-                        'current_liabilities': getattr(yearly_data, 'current_liabilities', None),
-                        'noncurrent_liabilities': getattr(yearly_data, 'noncurrent_liabilities', None),
-                        'total_liabilities': getattr(yearly_data, 'total_liabilities', None),
-                        'capital_stock': getattr(yearly_data, 'capital_stock', None),
-                        'retained_earnings': getattr(yearly_data, 'retained_earnings', None),
-                        'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
-                        'dividend_paid': getattr(yearly_data, 'dividend_paid', None),
-                        'ev': getattr(yearly_data, 'ev', None),
-                        'invested_capital': getattr(yearly_data, 'invested_capital', None),
-                    }
-                )
+                    for yearly_data in company_data.yearly_data:
+                        YearlyFinancialDataModel.objects.update_or_create(
+                            company=company,
+                            year=yearly_data.year,
+                            defaults={
+                                'revenue': yearly_data.revenue,
+                                'operating_income': yearly_data.operating_income,
+                                'net_income': yearly_data.net_income,
+                                'total_assets': yearly_data.total_assets,
+                                'total_equity': yearly_data.total_equity,
+                                'operating_margin': yearly_data.operating_margin,
+                                'roe': yearly_data.roe,
+                                'debt_ratio': getattr(yearly_data, 'debt_ratio', None),
+                                'interest_bearing_debt': yearly_data.interest_bearing_debt or 0,
+                                'interest_expense': getattr(yearly_data, 'interest_expense', None),
+                                'cash_and_cash_equivalents': getattr(yearly_data, 'cash_and_cash_equivalents', None),
+                                'noncontrolling_interest': getattr(yearly_data, 'noncontrolling_interest', None),
+                                'current_assets': getattr(yearly_data, 'current_assets', None),
+                                'noncurrent_assets': getattr(yearly_data, 'noncurrent_assets', None),
+                                'current_liabilities': getattr(yearly_data, 'current_liabilities', None),
+                                'noncurrent_liabilities': getattr(yearly_data, 'noncurrent_liabilities', None),
+                                'total_liabilities': getattr(yearly_data, 'total_liabilities', None),
+                                'capital_stock': getattr(yearly_data, 'capital_stock', None),
+                                'retained_earnings': getattr(yearly_data, 'retained_earnings', None),
+                                'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
+                                'dividend_paid': getattr(yearly_data, 'dividend_paid', None),
+                                'ev': getattr(yearly_data, 'ev', None),
+                                'invested_capital': getattr(yearly_data, 'invested_capital', None),
+                            }
+                        )
 
-            # yearly_indicators는 함수 내 임시 데이터(ROE 등 채움용). DB에 저장하지 않음.
+                    # yearly_indicators는 함수 내 임시 데이터(ROE 등 채움용). DB에 저장하지 않음.
+            return
+        except OperationalError as e:
+            if "locked" not in str(e).lower() or attempt >= max_retries - 1:
+                raise
+            time.sleep(0.5 * (attempt + 1))

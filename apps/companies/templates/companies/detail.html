@@ -225,6 +225,10 @@
                 }
                 return value.toFixed(2) + '%';
             },
+            formatEvIcRatio(ev, ic) {
+                if (ev == null || ic == null || ic === 0) return '-';
+                return (ev / ic).toFixed(2);
+            },
 
             // 메모 날짜 포맷팅
             formatMemoDate(dateString) {
@@ -536,7 +540,7 @@
                             <h4 class="card-title mb-3">
                                 <i class="bi bi-table me-2"></i>각종 지표
                             </h4>
-                            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                            <div class="table-responsive" style="max-height: 300px; overflow-x: auto; overflow-y: auto;">
                                 <table class="table table-sm table-hover" style="font-size: 0.8rem;">
                                     <thead class="table-light sticky-top">
                                         <tr>
@@ -544,17 +548,16 @@
                                             <th class="text-end">매출액</th>
                                             <th class="text-end">영업이익</th>
                                             <th class="text-end">당기순이익</th>
-                                            <th class="text-end">총자산</th>
-                                            <th class="text-end">자기자본</th>
                                             <th class="text-end">영업이익률</th>
                                             <th class="text-end">ROE</th>
                                             <th class="text-end">FCF</th>
                                             <th class="text-end">ROIC</th>
                                             <th class="text-end">WACC</th>
-                                            <th class="text-end">EV</th>
-                                            <th class="text-end">IC</th>
+                                            <th class="text-end">EV/IC</th>
                                             <th class="text-end">부채비율</th>
                                             <th class="text-end">배당성향</th>
+                                            <th class="text-end">배당지급액</th>
+                                            <th class="text-end">시가총액</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -568,17 +571,16 @@
                                                 <td class="text-end" x-text="formatAmount(data.revenue)"></td>
                                                 <td class="text-end" x-text="formatAmount(data.operating_income)"></td>
                                                 <td class="text-end" x-text="formatAmount(data.net_income)"></td>
-                                                <td class="text-end" x-text="formatAmount(data.total_assets)"></td>
-                                                <td class="text-end" x-text="formatAmount(data.total_equity)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.operating_margin)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.roe)"></td>
                                                 <td class="text-end" x-text="formatAmount(data.fcf)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.roic)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.wacc)"></td>
-                                                <td class="text-end" x-text="formatAmount(data.ev)"></td>
-                                                <td class="text-end" x-text="formatAmount(data.invested_capital)"></td>
+                                                <td class="text-end" x-text="formatEvIcRatio(data.ev, data.invested_capital)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.debt_ratio)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.dividend_payout_ratio)"></td>
+                                                <td class="text-end" x-text="formatAmount(data.dividend_paid)"></td>
+                                                <td class="text-end" x-text="formatAmount(companyData && companyData.market_cap)"></td>
                                             </tr>
                                         </template>
                                     </tbody>

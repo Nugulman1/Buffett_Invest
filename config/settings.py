@@ -76,7 +76,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
         'OPTIONS': {
-            'timeout': 30,  # SQLite 잠금 타임아웃 (초, 기본값 5초에서 30초로 증가)
+            'timeout': 10,  # SQLite 잠금 대기(초). 짧게 두면 실패 후 save_company_to_db 재시도(0.5~2초 sleep)가 빨리 동작
         },
     }
 }
@@ -151,7 +151,8 @@ DATA_COLLECTION = {
     
     # 데이터 수집 관련
     'COLLECTION_LIMIT': int(os.getenv('COLLECTION_LIMIT', '10')),
-    'PARALLEL_WORKERS': int(os.getenv('PARALLEL_WORKERS', '9')),  # 기업 배치 병렬 수집 스레드 수 (1이면 순차)  # 기본 수집 개수
+    # 기업 배치 병렬 수집 스레드 수 (1=순차). 2 이상이면 스레드별 DB 연결로 SQLite "database is locked" 가능 → save_company_to_db에서 자동 재시도.
+    'PARALLEL_WORKERS': int(os.getenv('PARALLEL_WORKERS', '9')),
 
     # 로깅
     'LOGGING_LEVEL': os.getenv('LOGGING_LEVEL', 'INFO'),  # 로깅 레벨

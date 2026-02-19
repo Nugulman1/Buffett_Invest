@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
 from apps.dart.client import DartClient
 from apps.models import FinancialStatementData, YearlyFinancialDataObject, CompanyFinancialObject
 from apps.utils import normalize_account_name
