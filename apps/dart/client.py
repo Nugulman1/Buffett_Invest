@@ -3,6 +3,7 @@ DART OpenDART API 클라이언트
 """
 import logging
 import re
+import threading
 import time
 import requests
 import zipfile
@@ -24,8 +25,9 @@ class DartClient:
     # 종목코드 → corp_code 매핑 캐시 (클래스 변수)
     _corp_code_mapping_cache = {}
     
-    # API 호출 횟수 추적 (클래스 변수)
+    # API 호출 횟수 추적 (클래스 변수). 병렬 수집 시 락으로 보호.
     _api_call_count = 0
+    _api_call_lock = threading.Lock()
     
     # 일별 통계 업데이트 플래그 (성능 최적화: 배치 업데이트)
     _last_stats_update_date = None
@@ -122,11 +124,9 @@ class DartClient:
         
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (총 4번 시도)
             try:
-                # API 호출 횟수 증가
-                DartClient._api_call_count += 1
-                
-                # 일별 API 호출 통계 업데이트
-                DartClient._update_daily_stats()
+                with DartClient._api_call_lock:
+                    DartClient._api_call_count += 1
+                    DartClient._update_daily_stats()
                 
                 response = requests.get(url, params=params, timeout=timeout)
                 

@@ -7,11 +7,13 @@
 사용법:
     python collect_all_companies.py [--limit N]
 """
+import json
 import os
 import sys
 import time
 import logging
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Django 설정
 BASE_DIR = Path(__file__).resolve().parent
@@ -25,9 +27,22 @@ from django.apps import apps as django_apps
 from apps.service.orchestrator import DataOrchestrator
 from apps.dart.client import DartClient
 from apps.ecos.client import EcosClient
-from apps.service.db import should_collect_company
 
 logger = logging.getLogger(__name__)
+
+# #region agent log
+_DEBUG_LOG_PATH = Path(__file__).resolve().parent / "debug-684b61.log"
+
+def _debug_log(message: str, data: dict, hypothesis_id: str = ""):
+    try:
+        payload = {"sessionId": "684b61", "location": "collect_all_companies.py", "message": message, "data": data, "timestamp": int(time.time() * 1000)}
+        if hypothesis_id:
+            payload["hypothesisId"] = hypothesis_id
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+# #endregion
 
 
 def parse_stock_codes_file(stock_codes_file: Path) -> list:
@@ -52,68 +67,99 @@ def parse_stock_codes_file(stock_codes_file: Path) -> list:
 
 def filter_stock_codes_by_db(stock_codes: list, dart_client: DartClient, limit: int) -> tuple[dict, dict]:
     """
-    DB 체크로 수집 필요한 종목코드만 필터링
-    
-    - 종목코드 → corp_code 변환
-    - DB에서 수집 필요 여부 확인 (should_collect_company)
-    - limit 개수만큼만 반환
-    
+    종목코드 → corp_code 변환. 변환 실패/예외만 스킵. limit개만 수집 대상으로 반환.
+
     Returns:
-        (filtered_dict, skip_stats) 튜플
+        (stock_code -> corp_code 딕셔너리, skip_stats)
     """
-    filtered = {}
-    
-    # 스킵 통계
     skip_stats = {
-        'no_corp_code': 0,  # 종목코드 변환 실패
-        'already_collected': 0,  # 이미 수집됨 (4월 1일 기준)
-        'conversion_error': 0,  # 변환 예외 발생
-        'total_checked': 0,  # 실제 확인한 개수
+        "no_corp_code": 0,
+        "conversion_error": 0,
+        "total_checked": 0,
     }
-    
+    ordered_pairs = []
+
     for stock_code in stock_codes:
-        skip_stats['total_checked'] += 1
+        skip_stats["total_checked"] += 1
         try:
-            # 종목코드 → corp_code 변환
             corp_code = dart_client._get_corp_code_by_stock_code(stock_code)
             if not corp_code:
-                skip_stats['no_corp_code'] += 1
+                skip_stats["no_corp_code"] += 1
                 continue
-            
-            # DB 체크 (4월 1일 기준 재수집 로직 포함)
-            if should_collect_company(corp_code):
-                filtered[stock_code] = corp_code
-                if len(filtered) >= limit:
-                    break
-            else:
-                skip_stats['already_collected'] += 1
-        except Exception as e:
-            # 변환 실패 시 스킵
-            skip_stats['conversion_error'] += 1
+            ordered_pairs.append((stock_code, corp_code))
+        except Exception:
+            skip_stats["conversion_error"] += 1
             continue
-    
-    # 스킵 통계 출력
-    total_skipped = skip_stats['no_corp_code'] + skip_stats['already_collected'] + skip_stats['conversion_error']
-    logger.info('필터링 통계: 확인 %s개, 수집 대상 %s개, 스킵 %s개', skip_stats['total_checked'], len(filtered), total_skipped)
-    logger.info('스킵 상세: 종목코드 변환 실패 %s개, 이미 수집됨 %s개, 변환 예외 %s개',
-                skip_stats['no_corp_code'], skip_stats['already_collected'], skip_stats['conversion_error'])
-    if skip_stats['total_checked'] < len(stock_codes):
-        logger.info('미확인: %s개 (limit 도달로 중단)', len(stock_codes) - skip_stats['total_checked'])
-    
+
+    if not ordered_pairs:
+        logger.info("변환 통계: 확인 %s개, 수집 대상 0개", skip_stats["total_checked"])
+        return {}, skip_stats
+
+    filtered = {}
+    for stock_code, corp_code in ordered_pairs:
+        filtered[stock_code] = corp_code
+        if len(filtered) >= limit:
+            break
+
+    total_skipped = skip_stats["no_corp_code"] + skip_stats["conversion_error"]
+    logger.info(
+        "변환 통계: 확인 %s개, 수집 대상 %s개, 스킵 %s개",
+        skip_stats["total_checked"],
+        len(filtered),
+        total_skipped,
+    )
+    logger.info(
+        "스킵 상세: 종목코드 변환 실패 %s개, 변환 예외 %s개",
+        skip_stats["no_corp_code"],
+        skip_stats["conversion_error"],
+    )
+    if len(ordered_pairs) > len(filtered):
+        logger.info(
+            "미수집: %s개 (limit 도달로 중단)",
+            len(ordered_pairs) - len(filtered),
+        )
+
     return filtered, skip_stats
 
 
-def main(limit: int = None):
-    """메인 실행 함수"""
-    from django.conf import settings
-    limit = limit or settings.DATA_COLLECTION['COLLECTION_LIMIT']
-    
-    # 파일 경로
-    stock_codes_file = BASE_DIR / '종목코드.md'
+def _run_one_batch(batch_num: int, corp_codes: list, corp_to_stock: dict) -> tuple:
+    """
+    단일 배치 수집 (병렬 실행용). 배치마다 새 DataOrchestrator 사용.
+    Returns:
+        (batch_num, corp_to_stock, batch_results) 성공 시
+        (batch_num, corp_to_stock, None, error) 예외 시
+    """
+    # #region agent log — 병렬 시 어떤 배치가 시작/완료하는지 확인
+    _debug_log("batch worker started", {"batch_num": batch_num, "corp_count": len(corp_codes)}, "perf")
+    # #endregion
+    try:
+        orchestrator = DataOrchestrator()
+        batch_results = orchestrator.collect_companies_data_batch(corp_codes)
+        # #region agent log
+        _debug_log("batch worker done", {"batch_num": batch_num, "status": "success", "result_count": len(batch_results)}, "perf")
+        # #endregion
+        return (batch_num, corp_to_stock, batch_results)
+    except Exception as e:
+        # #region agent log
+        _debug_log("batch worker done", {"batch_num": batch_num, "status": "exception", "error": str(e)}, "perf")
+        # #endregion
+        return (batch_num, corp_to_stock, None, e)
 
-    # 종목코드.md 파일 파싱 (모든 종목코드)
-    all_stock_codes = parse_stock_codes_file(stock_codes_file)
-    
+
+def main(limit: int = None, stock_code: str = None):
+    """메인 실행 함수. stock_code가 있으면 해당 종목 1건만 수집."""
+    from django.conf import settings
+    if stock_code:
+        all_stock_codes = [stock_code.strip()]
+        limit = 1
+        logger.info('특정 기업 수집: 종목코드=%s', stock_code)
+    else:
+        limit = limit or settings.DATA_COLLECTION['COLLECTION_LIMIT']
+        # 파일 경로
+        stock_codes_file = BASE_DIR / '종목코드.md'
+        # 종목코드.md 파일 파싱 (모든 종목코드)
+        all_stock_codes = parse_stock_codes_file(stock_codes_file)
+
     if not all_stock_codes:
         logger.warning('종목코드 파일이 비어있거나 찾을 수 없습니다.')
         return
@@ -128,83 +174,151 @@ def main(limit: int = None):
     dart_client.load_corp_code_xml()
     logger.info('XML 로드 완료 (총 %s개 매핑)', len(dart_client._corp_code_mapping_cache))
     
-    # DB 체크로 수집 필요한 종목코드만 필터링
-    logger.info('DB 체크로 수집 필요한 종목코드 필터링 중...')
+    # 종목코드 → corp_code 변환 후 수집 대상 확정
+    logger.info('종목코드 → corp_code 변환 중...')
     stock_code_to_corp_code, skip_stats = filter_stock_codes_by_db(all_stock_codes, dart_client, limit)
     
     if not stock_code_to_corp_code:
-        logger.info('수집할 종목코드가 없습니다. (모두 최근에 수집되었거나 DB에 존재)')
+        logger.info('수집할 종목이 없습니다.')
         return
-    
-    total_skipped = skip_stats['no_corp_code'] + skip_stats['already_collected'] + skip_stats['conversion_error']
+
+    # #region agent log
+    _debug_log("collect after filter_stock_codes_by_db", {"target_count": len(stock_code_to_corp_code), "limit": limit, "total_skipped": skip_stats['no_corp_code'] + skip_stats['conversion_error']}, "perf")
+    # #endregion
+    total_skipped = skip_stats['no_corp_code'] + skip_stats['conversion_error']
     logger.info('수집 대상: %s개 (limit: %s)', len(stock_code_to_corp_code), limit)
     logger.info('스킵: %s개 (확인한 %s개 중)', total_skipped, skip_stats['total_checked'])
     if skip_stats['total_checked'] < len(all_stock_codes):
         logger.info('미확인: %s개 (limit 도달로 중단)', len(all_stock_codes) - skip_stats['total_checked'])
-    logger.info('다중회사 배치 수집: 100개씩')
+    batch_size = 100
+    parallel_workers = settings.DATA_COLLECTION.get('PARALLEL_WORKERS', 1)
+    # #region agent log
+    _debug_log("collect batch config", {"total_count": len(stock_code_to_corp_code), "batch_size": batch_size, "parallel_workers": parallel_workers}, "perf")
+    # #endregion
+    if parallel_workers >= 2:
+        logger.info('다중회사 배치 수집: 100개씩, 병렬 스레드 %s개', parallel_workers)
+    else:
+        logger.info('다중회사 배치 수집: 100개씩')
     
-    orchestrator = DataOrchestrator()
-    
-    # 통계
     success_count = 0
     fail_count = 0
     passed_filter_stock_codes = []
 
-    # API 호출 횟수 초기화
-    initial_dart_calls = DartClient._api_call_count
-    initial_ecos_calls = EcosClient._api_call_count
+    with DartClient._api_call_lock:
+        initial_dart_calls = DartClient._api_call_count
+    with EcosClient._api_call_lock:
+        initial_ecos_calls = EcosClient._api_call_count
     start_time = time.time()
     
     items = list(stock_code_to_corp_code.items())
     total_count = len(items)
-    batch_size = 100
     
-    for start in range(0, total_count, batch_size):
-        batch = items[start:start + batch_size]
-        corp_codes = [c for _, c in batch]
-        corp_to_stock = {c: s for s, c in batch}
-        batch_num = start // batch_size + 1
-        logger.info('배치 %s: corp_codes %s개 수집 시작', batch_num, len(corp_codes))
-        
-        try:
-            batch_results = orchestrator.collect_companies_data_batch(corp_codes)
-        except Exception as e:
-            logger.error('배치 %s 전체 실패: %s', batch_num, e)
-            fail_count += len(corp_codes)
-            continue
-        
-        for r in batch_results:
-            corp_code = r['corp_code']
-            stock_code = corp_to_stock.get(corp_code, '')
-            if r['status'] == 'success':
-                success_count += 1
-                logger.info('[배치 %s] %s 성공 (%s)', batch_num, stock_code or corp_code, r.get('company_name', ''))
-                if r.get('passed_all_filters', False):
-                    passed_filter_stock_codes.append(stock_code or corp_code)
-                    logger.info('필터 통과: %s (%s)', stock_code or corp_code, r.get('company_name', ''))
-            else:
-                fail_count += 1
-                logger.warning('[배치 %s] %s 실패: %s', batch_num, stock_code or corp_code, r.get('error', ''))
-        
-        logger.info('배치 %s: 성공 %s, 실패 %s',
-                    batch_num,
-                    sum(1 for r in batch_results if r['status'] == 'success'),
-                    sum(1 for r in batch_results if r['status'] == 'failed'))
+    if parallel_workers >= 2:
+        futures = []
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            for start in range(0, total_count, batch_size):
+                batch = items[start:start + batch_size]
+                corp_codes = [c for _, c in batch]
+                corp_to_stock = {c: s for s, c in batch}
+                batch_num = start // batch_size + 1
+                logger.info('배치 %s: corp_codes %s개 수집 제출', batch_num, len(corp_codes))
+                future = executor.submit(_run_one_batch, batch_num, corp_codes, corp_to_stock)
+                futures.append(future)
+            
+            for future in as_completed(futures):
+                result = future.result()
+                batch_num = result[0]
+                corp_to_stock = result[1]
+                # #region agent log — 메인 스레드가 배치 완료를 받는 순서 확인
+                _debug_log("main received batch", {"batch_num": batch_num, "result_len": len(result)}, "perf")
+                # #endregion
+                if len(result) == 4:
+                    _, _, _, err = result
+                    logger.error('배치 %s 전체 실패: %s', batch_num, err)
+                    fail_count += len(corp_to_stock)
+                    continue
+                _, _, batch_results = result
+                for r in batch_results:
+                    corp_code = r['corp_code']
+                    stock_code = corp_to_stock.get(corp_code, '')
+                    if r['status'] == 'success':
+                        success_count += 1
+                        logger.info('[배치 %s] %s 성공 (%s)', batch_num, stock_code or corp_code, r.get('company_name', ''))
+                        if r.get('passed_all_filters', False):
+                            passed_filter_stock_codes.append(stock_code or corp_code)
+                            logger.info('필터 통과: %s (%s)', stock_code or corp_code, r.get('company_name', ''))
+                    else:
+                        fail_count += 1
+                        logger.warning('[배치 %s] %s 실패: %s', batch_num, stock_code or corp_code, r.get('error', ''))
+                logger.info('배치 %s: 성공 %s, 실패 %s',
+                            batch_num,
+                            sum(1 for r in batch_results if r['status'] == 'success'),
+                            sum(1 for r in batch_results if r['status'] == 'failed'))
+    else:
+        orchestrator = DataOrchestrator()
+        for start in range(0, total_count, batch_size):
+            batch = items[start:start + batch_size]
+            corp_codes = [c for _, c in batch]
+            corp_to_stock = {c: s for s, c in batch}
+            batch_num = start // batch_size + 1
+            logger.info('배치 %s: corp_codes %s개 수집 시작', batch_num, len(corp_codes))
+            try:
+                batch_results = orchestrator.collect_companies_data_batch(corp_codes)
+            except Exception as e:
+                logger.error('배치 %s 전체 실패: %s', batch_num, e)
+                fail_count += len(corp_codes)
+                continue
+            for r in batch_results:
+                corp_code = r['corp_code']
+                stock_code = corp_to_stock.get(corp_code, '')
+                if r['status'] == 'success':
+                    success_count += 1
+                    logger.info('[배치 %s] %s 성공 (%s)', batch_num, stock_code or corp_code, r.get('company_name', ''))
+                    if r.get('passed_all_filters', False):
+                        passed_filter_stock_codes.append(stock_code or corp_code)
+                        logger.info('필터 통과: %s (%s)', stock_code or corp_code, r.get('company_name', ''))
+                else:
+                    fail_count += 1
+                    logger.warning('[배치 %s] %s 실패: %s', batch_num, stock_code or corp_code, r.get('error', ''))
+            logger.info('배치 %s: 성공 %s, 실패 %s',
+                        batch_num,
+                        sum(1 for r in batch_results if r['status'] == 'success'),
+                        sum(1 for r in batch_results if r['status'] == 'failed'))
     
-    # 필터 통과 기업은 DB Company.passed_all_filters로 이미 저장됨 (passed API는 DB 조회)
-
-    # 전체 처리 시간 계산
     total_time = time.time() - start_time
-    
-    # 대기 중인 통계를 DB에 저장
+    # #region agent log
+    _debug_log("collect main exit", {"total_elapsed_sec": round(total_time, 2), "success_count": success_count, "fail_count": fail_count, "passed_filter_count": len(passed_filter_stock_codes)}, "perf")
+    # #endregion
+
     DartClient.flush_daily_stats()
     EcosClient.flush_daily_stats()
     
-    # API 호출 횟수 계산 (XML 로드 이후 호출 횟수)
-    dart_api_calls = DartClient._api_call_count - initial_dart_calls
-    ecos_api_calls = EcosClient._api_call_count - initial_ecos_calls
+    with DartClient._api_call_lock:
+        final_dart_calls = DartClient._api_call_count
+    with EcosClient._api_call_lock:
+        final_ecos_calls = EcosClient._api_call_count
+    dart_api_calls = final_dart_calls - initial_dart_calls
+    ecos_api_calls = final_ecos_calls - initial_ecos_calls
     total_api_calls = dart_api_calls + ecos_api_calls
-    
+    batch_count = (total_count + batch_size - 1) // batch_size if batch_size else 0
+    # #region agent log — 전체 수집 시 배치/워커/API 대비 시간 비교용
+    _debug_log(
+        "collect summary",
+        {
+            "total_companies": total_count,
+            "batch_size": batch_size,
+            "batch_count": batch_count,
+            "parallel_workers": parallel_workers,
+            "total_elapsed_sec": round(total_time, 2),
+            "dart_api_calls": dart_api_calls,
+            "ecos_api_calls": ecos_api_calls,
+            "success_count": success_count,
+            "fail_count": fail_count,
+        },
+        "perf",
+    )
+    # #endregion
+
     # 일별 통계 조회 및 출력
     from django.apps import apps as django_apps
     from datetime import date
@@ -244,7 +358,7 @@ def main(limit: int = None):
 
 if __name__ == '__main__':
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='종목코드.md 파일에서 기업 데이터를 수집합니다.')
     parser.add_argument(
         '--limit',
@@ -252,6 +366,13 @@ if __name__ == '__main__':
         default=None,
         help='수집할 최대 기업 수 (기본값: settings.DATA_COLLECTION["COLLECTION_LIMIT"])',
     )
+    parser.add_argument(
+        '--stock-code',
+        type=str,
+        default=None,
+        metavar='CODE',
+        help='해당 종목코드 1건만 수집 (예: BYC=001460)',
+    )
     args = parser.parse_args()
-    main(limit=args.limit)
+    main(limit=args.limit, stock_code=args.stock_code)
 

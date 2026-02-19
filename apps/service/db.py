@@ -3,7 +3,7 @@ DB 레이어: 분기보고서 저장/조회, 기업·after_date 조회, 연간 C
 
 Companies 뷰는 이 모듈과 DART 서비스만 호출하고, 직접 ORM 사용하지 않음.
 """
-from datetime import datetime, date
+import threading
 
 from django.apps import apps as django_apps
 from django.utils import timezone
@@ -114,60 +114,6 @@ def load_quarterly_financial_data(corp_code: str) -> list[dict]:
     ]
 
 
-def should_collect_company(corp_code: str) -> bool:
-    """
-    기업 수집 필요 여부 확인 (4월 1일 기준)
-
-    DB에 기업이 없거나, last_collected_at이 없거나, 4월 1일 기준으로 1년이 지났으면 수집 필요.
-
-    Args:
-        corp_code: 고유번호 (8자리)
-
-    Returns:
-        수집 필요 여부 (bool) - True면 수집 필요, False면 수집 불필요
-    """
-    CompanyModel = django_apps.get_model('apps', 'Company')
-
-    try:
-        company = CompanyModel.objects.prefetch_related('yearly_data').get(corp_code=corp_code)
-        return should_collect_company_from_company(company)
-    except CompanyModel.DoesNotExist:
-        return True
-
-
-def should_collect_company_from_company(company) -> bool:
-    """
-    Company 모델 인스턴스로 수집 필요 여부 확인 (4월 1일 기준).
-
-    - yearly_data가 없거나 모든 연도 매출액이 0이면 수집 필요.
-    - last_collected_at이 없거나, 4월 1일 기준으로 1년이 지났으면 수집 필요.
-    """
-    yearly_data_list = list(company.yearly_data.all())
-    if not yearly_data_list:
-        return True
-    # 데이터 없음(None) 또는 0이면 수집 필요
-    if all(yd.revenue is None or yd.revenue == 0 for yd in yearly_data_list):
-        return True
-
-    if not company.last_collected_at:
-        return True
-
-    last_collected_date = company.last_collected_at.date()
-    current_date = datetime.now().date()
-
-    if last_collected_date.month >= 4:
-        last_april = date(last_collected_date.year, 4, 1)
-    else:
-        last_april = date(last_collected_date.year - 1, 4, 1)
-
-    if current_date.month >= 4:
-        current_april = date(current_date.year, 4, 1)
-    else:
-        current_april = date(current_date.year - 1, 4, 1)
-
-    return current_april > last_april
-
-
 def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None, object | None]:
     """
     DB에서 Company 및 YearlyFinancialData 모델을 조회하여 CompanyFinancialObject로 변환
@@ -227,11 +173,16 @@ def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None,
         return (None, None)
 
 
+# 병렬 수집 시 SQLite 쓰기 충돌 방지용 락
+db_write_lock = threading.Lock()
+
+
 def save_company_to_db(company_data: CompanyFinancialObject) -> None:
     """
     CompanyFinancialObject를 Django 모델로 변환하여 DB에 저장
 
-    트랜잭션으로 원자성 보장: Company와 YearlyFinancialData 저장이 모두 성공하거나 모두 실패
+    트랜잭션으로 원자성 보장: Company와 YearlyFinancialData 저장이 모두 성공하거나 모두 실패.
+    병렬 수집 시 한 번에 한 스레드만 쓰기하도록 락 사용.
 
     Args:
         company_data: CompanyFinancialObject 객체
@@ -240,52 +191,53 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
     YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
     now = timezone.now()
 
-    with transaction.atomic():
-        company, created = CompanyModel.objects.update_or_create(
-            corp_code=company_data.corp_code,
-            defaults={
-                'company_name': company_data.company_name,
-                'last_collected_at': now,
-                'passed_all_filters': company_data.passed_all_filters,
-                'filter_operating_income': company_data.filter_operating_income,
-                'filter_net_income': company_data.filter_net_income,
-                'filter_revenue_cagr': company_data.filter_revenue_cagr,
-                'filter_operating_margin': company_data.filter_operating_margin,
-                'filter_roe': company_data.filter_roe,
-                'latest_annual_rcept_no': getattr(company_data, 'latest_annual_rcept_no', None),
-                'latest_annual_report_year': getattr(company_data, 'latest_annual_report_year', None),
-            }
-        )
-
-        for yearly_data in company_data.yearly_data:
-            YearlyFinancialDataModel.objects.update_or_create(
-                company=company,
-                year=yearly_data.year,
+    with db_write_lock:
+        with transaction.atomic():
+            company, created = CompanyModel.objects.update_or_create(
+                corp_code=company_data.corp_code,
                 defaults={
-                    'revenue': yearly_data.revenue,
-                    'operating_income': yearly_data.operating_income,
-                    'net_income': yearly_data.net_income,
-                    'total_assets': yearly_data.total_assets,
-                    'total_equity': yearly_data.total_equity,
-                    'operating_margin': yearly_data.operating_margin,
-                    'roe': yearly_data.roe,
-                    'debt_ratio': getattr(yearly_data, 'debt_ratio', None),
-                    'interest_bearing_debt': yearly_data.interest_bearing_debt or 0,
-                    'interest_expense': getattr(yearly_data, 'interest_expense', None),
-                    'cash_and_cash_equivalents': getattr(yearly_data, 'cash_and_cash_equivalents', None),
-                    'noncontrolling_interest': getattr(yearly_data, 'noncontrolling_interest', None),
-                    'current_assets': getattr(yearly_data, 'current_assets', None),
-                    'noncurrent_assets': getattr(yearly_data, 'noncurrent_assets', None),
-                    'current_liabilities': getattr(yearly_data, 'current_liabilities', None),
-                    'noncurrent_liabilities': getattr(yearly_data, 'noncurrent_liabilities', None),
-                    'total_liabilities': getattr(yearly_data, 'total_liabilities', None),
-                    'capital_stock': getattr(yearly_data, 'capital_stock', None),
-                    'retained_earnings': getattr(yearly_data, 'retained_earnings', None),
-                    'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
-                    'dividend_paid': getattr(yearly_data, 'dividend_paid', None),
-                    'ev': getattr(yearly_data, 'ev', None),
-                    'invested_capital': getattr(yearly_data, 'invested_capital', None),
+                    'company_name': company_data.company_name,
+                    'last_collected_at': now,
+                    'passed_all_filters': company_data.passed_all_filters,
+                    'filter_operating_income': company_data.filter_operating_income,
+                    'filter_net_income': company_data.filter_net_income,
+                    'filter_revenue_cagr': company_data.filter_revenue_cagr,
+                    'filter_operating_margin': company_data.filter_operating_margin,
+                    'filter_roe': company_data.filter_roe,
+                    'latest_annual_rcept_no': getattr(company_data, 'latest_annual_rcept_no', None),
+                    'latest_annual_report_year': getattr(company_data, 'latest_annual_report_year', None),
                 }
             )
 
-        # yearly_indicators는 함수 내 임시 데이터(ROE 등 채움용). DB에 저장하지 않음.
+            for yearly_data in company_data.yearly_data:
+                YearlyFinancialDataModel.objects.update_or_create(
+                    company=company,
+                    year=yearly_data.year,
+                    defaults={
+                        'revenue': yearly_data.revenue,
+                        'operating_income': yearly_data.operating_income,
+                        'net_income': yearly_data.net_income,
+                        'total_assets': yearly_data.total_assets,
+                        'total_equity': yearly_data.total_equity,
+                        'operating_margin': yearly_data.operating_margin,
+                        'roe': yearly_data.roe,
+                        'debt_ratio': getattr(yearly_data, 'debt_ratio', None),
+                        'interest_bearing_debt': yearly_data.interest_bearing_debt or 0,
+                        'interest_expense': getattr(yearly_data, 'interest_expense', None),
+                        'cash_and_cash_equivalents': getattr(yearly_data, 'cash_and_cash_equivalents', None),
+                        'noncontrolling_interest': getattr(yearly_data, 'noncontrolling_interest', None),
+                        'current_assets': getattr(yearly_data, 'current_assets', None),
+                        'noncurrent_assets': getattr(yearly_data, 'noncurrent_assets', None),
+                        'current_liabilities': getattr(yearly_data, 'current_liabilities', None),
+                        'noncurrent_liabilities': getattr(yearly_data, 'noncurrent_liabilities', None),
+                        'total_liabilities': getattr(yearly_data, 'total_liabilities', None),
+                        'capital_stock': getattr(yearly_data, 'capital_stock', None),
+                        'retained_earnings': getattr(yearly_data, 'retained_earnings', None),
+                        'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
+                        'dividend_paid': getattr(yearly_data, 'dividend_paid', None),
+                        'ev': getattr(yearly_data, 'ev', None),
+                        'invested_capital': getattr(yearly_data, 'invested_capital', None),
+                    }
+                )
+
+            # yearly_indicators는 함수 내 임시 데이터(ROE 등 채움용). DB에 저장하지 않음.

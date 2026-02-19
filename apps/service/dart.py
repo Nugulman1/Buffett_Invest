@@ -3,7 +3,6 @@ DART 데이터 수집 서비스
 """
 import json
 import logging
-from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -49,42 +48,7 @@ class DartDataService:
             end_year = current_year - 2
         
         return list(range(start_year, end_year + 1))  # end_year 포함
-    
-    def collect_financial_data(self, corp_code: str, year: str):
-        """
-        단일 연도의 연간 보고서 재무제표 데이터 수집
-        
-        Args:
-            corp_code: 고유번호 (8자리)
-            year: 사업연도 (예: '2024')
-        
-        Returns:
-            FinancialStatementData 객체 (단일, 실패 시 None)
-        """
-        # 먼저 직접 사업연도로 조회 시도
-        for fs_div in ['CFS', 'OFS']:
-            try:
-                raw_data = self.client.get_financial_statement(
-                    corp_code=corp_code,
-                    bsns_year=year,
-                    reprt_code='11011',  # 사업보고서
-                    fs_div=fs_div
-                )
-                
-                if raw_data:
-                    return FinancialStatementData(
-                        year=year,
-                        reprt_code='11011',
-                        fs_div=fs_div,
-                        raw_data=raw_data
-                    )
-            except Exception:
-                if fs_div == 'CFS':
-                    continue  # OFS도 시도
-                break
-        
-        return None
-    
+
     def _load_indicator_mappings(self):
         """
         매핑표 로드 (캐싱 적용)
@@ -104,114 +68,6 @@ class DartDataService:
             DartDataService._indicator_mappings_cache = mappings
             return mappings
     
-    def _process_single_year_basic(
-        self, corp_code: str, year: int, years: list[int], mappings: dict
-    ):
-        """
-        단일 사업보고서의 기본 지표 처리 (병렬 처리용).
-        당기·전기·전전기(thstrm, frmtrm, bfefrmtrm) 3개 연도 데이터를 추출한다.
-        
-        Args:
-            corp_code: 고유번호 (8자리)
-            year: 사업보고서 연도 (예: 2024)
-            years: 수집 대상 연도 집합 (예: [2020, 2021, 2022, 2023, 2024])
-            mappings: 지표 매핑 테이블
-            
-        Returns:
-            [(target_year, yearly_data), ...] 리스트 (실패 시 빈 리스트)
-        """
-        year_str = str(year)
-        
-        fs_data = self.collect_financial_data(corp_code, year_str)
-        if not fs_data:
-            return []
-        
-        rcept_no = (fs_data.rcept_no or '').strip() or None
-        
-        # 역매핑 생성: "정규화된 계정명" -> "YearlyFinancialDataObject 필드명"
-        reverse_mapping: dict[str, str] = {}
-        for mapping_config in mappings.values():
-            internal_field = mapping_config.get('internal_field')
-            if not internal_field:
-                continue
-            for variant in mapping_config.get('dart_variants', []):
-                normalized_variant = normalize_account_name(variant)
-                reverse_mapping.setdefault(normalized_variant, internal_field)
-
-        # 당기·전기·전전기 매핑 (bsns_year 기준)
-        # 2024 보고서 → thstrm=2024, frmtrm=2023, bfefrmtrm=2022
-        year_amount_pairs = [
-            (year, 'thstrm_amount'),
-            (year - 1, 'frmtrm_amount'),
-            (year - 2, 'bfefrmtrm_amount'),
-        ]
-        
-        results = []
-        for target_year, amount_type in year_amount_pairs:
-            if target_year not in years:
-                continue
-            
-            yearly_data = YearlyFinancialDataObject(year=target_year)
-            yearly_data.rcept_no = rcept_no
-            
-            for normalized_account_name, account_data in fs_data.normalized_account_index.items():
-                internal_field = reverse_mapping.get(normalized_account_name)
-                if not internal_field or not hasattr(yearly_data, internal_field):
-                    continue
-                amount = account_data.get(amount_type, '0')
-                try:
-                    value = int(amount.replace(',', '')) if amount else None
-                except (ValueError, AttributeError):
-                    value = None
-                setattr(yearly_data, internal_field, value)
-            
-            results.append((target_year, yearly_data))
-        return results
-    
-    def fill_basic_indicators(self, corp_code: str, years: list[int], company_data: CompanyFinancialObject):
-        """
-        CompanyFinancialObject의 yearly_data에 기본 지표를 채움 (in-place 수정)
-        
-        기본 지표: 매출액, 영업이익, 당기순이익, 자산총계, 자본총계, 유동부채
-        
-        Args:
-            corp_code: 고유번호 (8자리)
-            years: 수집할 연도 리스트 (예: [2020, 2021, 2022, 2023, 2024])
-            company_data: 채울 CompanyFinancialObject 객체
-        """
-        # 매핑표 로드
-        mappings = self._load_indicator_mappings()
-        
-        # 병렬 처리로 각 연도별 데이터 수집 (보고서 1건당 당기·전기·전전기 3개 연도 추출)
-        year_to_data: dict[int, YearlyFinancialDataObject] = {}
-        with ThreadPoolExecutor(max_workers=len(years)) as executor:
-            future_to_year = {
-                executor.submit(self._process_single_year_basic, corp_code, year, years, mappings): year
-                for year in years
-            }
-            for future in as_completed(future_to_year):
-                try:
-                    results = future.result()
-                    for y, data in results:
-                        # 이미 존재하면 스킵 (먼저 수집된 값 유지)
-                        if y not in year_to_data:
-                            year_to_data[y] = data
-                except Exception:
-                    pass
-        
-        # 연도 순서대로 정렬하여 추가
-        sorted_items = sorted(year_to_data.items(), key=lambda x: x[0])
-        for year, yearly_data in sorted_items:
-            company_data.yearly_data.append(yearly_data)
-        
-        if sorted_items:
-            latest_year, latest_data = sorted_items[-1]
-            company_data.latest_annual_rcept_no = latest_data.rcept_no
-            company_data.latest_annual_report_year = latest_year
-        else:
-            company_data.latest_annual_rcept_no = None
-            company_data.latest_annual_report_year = None
-
     def fill_basic_indicators_multi(
         self, corp_codes: list[str], years: list[int]
     ) -> dict[str, CompanyFinancialObject]:
@@ -222,6 +78,9 @@ class DartDataService:
         """
         if not corp_codes:
             return {}
+        # 종목코드→corp_code 매핑이 없으면 API 응답의 stock_code를 corp_code로 연결할 수 없음. 진입 경로(예: API 단건 조회)에선 load가 호출되지 않을 수 있으므로 여기서 보장.
+        if not self.client._corp_code_mapping_cache:
+            self.client.load_corp_code_xml()
         corp_set = set(corp_codes)
         # stock_code -> corp_code (요청 corp_set에 해당하는 것만). 종목코드는 6자리로 통일(API가 앞자리 0 생략할 수 있음)
         def _norm_stock(s):
@@ -402,7 +261,9 @@ class DartDataService:
                         if not value_str:
                             continue
                         value = float(value_str)
-                        # DART fnlttCmpnyIndx idx_val은 소수(예: 0.256)로 주므로 그대로 저장
+                        # ROE(M211550)는 API가 퍼센트 단위(예: 3.395)로 주므로 소수로 저장 (÷100)
+                        if idx_code == 'M211550':
+                            value = value / 100.0
                         corp_year_to_indicators[corp_code][year_val][idx_code] = value
                         if idx_nm:
                             corp_year_to_names[corp_code][year_val][idx_code] = idx_nm

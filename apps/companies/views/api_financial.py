@@ -8,8 +8,7 @@ from rest_framework import status
 
 logger = logging.getLogger(__name__)
 
-from apps.service.orchestrator import DataOrchestrator
-from apps.service.db import should_collect_company_from_company, load_company_from_db
+from apps.service.db import load_company_from_db
 from apps.service.bond_yield import get_bond_yield_5y
 from apps.service.corp_code import resolve_corp_code, get_stock_code_by_corp_code
 
@@ -82,16 +81,6 @@ def get_financial_data(request, corp_code):
         corp_code = resolved
 
         company_data, company = load_company_from_db(corp_code)
-        if not (
-            company_data
-            and company_data.yearly_data
-            and company
-            and not should_collect_company_from_company(company)
-        ):
-            orchestrator = DataOrchestrator()
-            orchestrator.collect_company_data(corp_code)
-            company_data, company = load_company_from_db(corp_code)
-
         if not company_data:
             return Response(
                 {"error": "기업 데이터를 찾을 수 없습니다."},

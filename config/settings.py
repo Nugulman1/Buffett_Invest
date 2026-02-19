@@ -147,10 +147,11 @@ DATA_COLLECTION = {
     # API 관련
     'API_TIMEOUT': int(os.getenv('API_TIMEOUT', '30')),  # API 요청 타임아웃 (초)
     'API_MAX_RETRIES': int(os.getenv('API_MAX_RETRIES', '2')),  # 최대 재시도 횟수
-    'API_DELAY': float(os.getenv('API_DELAY', '1.0')),  # API 호출 사이 지연 (초, Rate Limiting 방지)
+    'API_DELAY': float(os.getenv('API_DELAY', '3.0')),  # API 호출 후 지연(초). 병렬 시 rate limit 완화용.
     
     # 데이터 수집 관련
-    'COLLECTION_LIMIT': int(os.getenv('COLLECTION_LIMIT', '10')),  # 기본 수집 개수
+    'COLLECTION_LIMIT': int(os.getenv('COLLECTION_LIMIT', '10')),
+    'PARALLEL_WORKERS': int(os.getenv('PARALLEL_WORKERS', '9')),  # 기업 배치 병렬 수집 스레드 수 (1이면 순차)  # 기본 수집 개수
 
     # 로깅
     'LOGGING_LEVEL': os.getenv('LOGGING_LEVEL', 'INFO'),  # 로깅 레벨

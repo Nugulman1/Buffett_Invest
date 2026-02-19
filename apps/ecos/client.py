@@ -2,6 +2,7 @@
 ECOS 한국은행 경제통계시스템 API 클라이언트
 국채 금리 데이터 조회
 """
+import threading
 import requests
 from datetime import date
 from django.conf import settings
@@ -13,8 +14,9 @@ class EcosClient:
     
     BASE_URL = "https://ecos.bok.or.kr/api"
     
-    # API 호출 횟수 추적 (클래스 변수)
+    # API 호출 횟수 추적 (클래스 변수). 병렬 수집 시 락으로 보호.
     _api_call_count = 0
+    _api_call_lock = threading.Lock()
     
     # 일별 통계 업데이트 플래그 (성능 최적화: 배치 업데이트)
     _last_stats_update_date = None
@@ -64,11 +66,9 @@ class EcosClient:
         params = {}
         
         try:
-            # API 호출 횟수 증가
-            EcosClient._api_call_count += 1
-            
-            # 일별 API 호출 통계 업데이트
-            EcosClient._update_daily_stats()
+            with EcosClient._api_call_lock:
+                EcosClient._api_call_count += 1
+                EcosClient._update_daily_stats()
             
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()

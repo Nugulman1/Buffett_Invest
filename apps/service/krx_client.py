@@ -61,7 +61,10 @@ class KrxClient:
             data = resp.json()
             return self._parse_full_row(data)
         except requests.exceptions.RequestException as e:
-            logger.warning("KRX API 요청 실패 (stock_code=%s): %s", stock_code, e)
+            hint = ""
+            if hasattr(e, "response") and e.response is not None and getattr(e.response, "status_code", None) == 403:
+                hint = " (KRX_API_KEY 및 openapi.krx.co.kr 사용 안내 확인)"
+            logger.warning("KRX API 요청 실패 (stock_code=%s): %s%s", stock_code, e, hint)
             return None
         except (ValueError, KeyError, TypeError) as e:
             logger.warning("KRX 응답 파싱 실패 (stock_code=%s): %s", stock_code, e)
@@ -105,12 +108,16 @@ def fetch_and_save_company_market_cap(corp_code: str) -> int | None:
 
     stock_code = get_stock_code_by_corp_code(corp_code)
     if not stock_code:
-        logger.debug("시가총액 조회: corp_code %s에 대한 종목코드 없음", corp_code)
+        logger.warning("KRX 시가총액 조회: corp_code=%s에 대한 종목코드 없음", corp_code)
         return None
 
     client = KrxClient()
     row = client.get_daily_data(stock_code)
     if not row:
+        logger.warning(
+            "KRX 시가총액 조회 실패: corp_code=%s stock_code=%s (API 키 없음 또는 API 오류)",
+            corp_code, stock_code,
+        )
         return None
 
     CompanyModel = django_apps.get_model("apps", "Company")

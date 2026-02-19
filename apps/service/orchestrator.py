@@ -2,16 +2,16 @@
 데이터 수집 오케스트레이터
 """
 import logging
+
 from apps.service.dart import DartDataService
 from apps.service.ecos import EcosDataService
 from apps.service.calculator import IndicatorCalculator
 from apps.service.filter import CompanyFilter
 from apps.models import CompanyFinancialObject, YearlyFinancialDataObject
 from apps.dart.client import DartClient
-from apps.service.db import save_company_to_db
+from apps.service.db import save_company_to_db, db_write_lock
 
 logger = logging.getLogger(__name__)
-
 
 # DART 다중회사 주요재무지표 ROE 지표코드
 ROE_IDX_CODE = 'M211550'
@@ -27,13 +27,22 @@ class DataOrchestrator:
     
     @staticmethod
     def _fill_roe_from_indicators(company_data: CompanyFinancialObject) -> None:
-        """yearly_indicators의 M211550(ROE) 값을 yearly_data.roe에 채움. 없으면 None 유지."""
+        """yearly_indicators의 M211550(ROE) 값을 yearly_data.roe에 채움. 없으면 당기순이익/자본총계로 계산(폴백)."""
         indicators = getattr(company_data, 'yearly_indicators', None) or {}
+        corp_code = getattr(company_data, 'corp_code', '')
         for yearly_data in company_data.yearly_data:
             year_indicators = indicators.get(yearly_data.year, {})
             val = year_indicators.get(ROE_IDX_CODE)
             yearly_data.roe = float(val) if val is not None else None
-    
+            # 폴백: DART ROE 없으면 당기순이익/자본총계로 수동 계산
+            if yearly_data.roe is None and yearly_data.net_income is not None and yearly_data.total_equity is not None and yearly_data.total_equity > 0:
+                yearly_data.roe = yearly_data.net_income / yearly_data.total_equity
+            if yearly_data.roe is None:
+                logger.debug(
+                    "ROE 미수집: corp_code=%s year=%s (DART M211550 해당 연도 없음)",
+                    corp_code, yearly_data.year,
+                )
+
     def collect_company_data(self, corp_code: str, save_to_db: bool = True) -> CompanyFinancialObject:
         """
         회사 데이터 수집 (DART + ECOS)
@@ -48,7 +57,7 @@ class DataOrchestrator:
         # CompanyFinancialObject 생성
         company_data = CompanyFinancialObject()
         company_data.corp_code = corp_code
-        
+
         # 기업 기본 정보 조회
         try:
             company_info = self.dart_client.get_company_info(corp_code)
@@ -56,12 +65,17 @@ class DataOrchestrator:
                 company_data.company_name = company_info.get('corp_name', '')
         except Exception as e:
             logger.warning("기업 정보 조회 실패: %s", e)
-        
+
         # 최근 5년 연도 리스트 생성
         years = self.dart_service._get_recent_years(5)
-        
-        # DART 기본 지표 수집 (한 번의 호출로 모든 연도 처리)
-        self.dart_service.fill_basic_indicators(corp_code, years, company_data)
+
+        # DART 기본 지표 수집 (다중 API 사용, 단일은 list 1개로 호출)
+        company_data_map = self.dart_service.fill_basic_indicators_multi([corp_code], years)
+        multi_data = company_data_map.get(corp_code)
+        if multi_data:
+            company_data.yearly_data = multi_data.yearly_data
+            company_data.latest_annual_rcept_no = multi_data.latest_annual_rcept_no
+            company_data.latest_annual_report_year = multi_data.latest_annual_report_year
         # DART 주요재무지표 수집 (ROE M211550 등) → yearly_data.roe 채움
         indicators_map, indicator_names_map = self.dart_service.fill_financial_indicators_multi([corp_code], years)
         company_data.yearly_indicators = indicators_map.get(corp_code, {})
@@ -69,45 +83,45 @@ class DataOrchestrator:
         self._fill_roe_from_indicators(company_data)
         # 기본 재무지표 계산 (영업이익률만)
         IndicatorCalculator.calculate_basic_financial_ratios(company_data)
-        
-        # ECOS 데이터 수집 (채권수익률 - 하루 기준으로 캐싱)
-        # 채권수익률은 BondYield 모델에 캐싱되며, 필요 시 get_bond_yield_5y() 함수로 조회
+
+        # ECOS 데이터 수집 (채권수익률 - 하루 기준으로 캐싱, DB 접근은 락으로 직렬화)
         try:
             from django.utils import timezone
             from datetime import timedelta
             from django.apps import apps as django_apps
-            
+
             BondYieldModel = django_apps.get_model('apps', 'BondYield')
-            
-            # DB에서 채권수익률 조회 (단일 레코드만 유지)
-            bond_yield_obj, created = BondYieldModel.objects.get_or_create(
-                id=1,  # 단일 레코드
-                defaults={
-                    'yield_value': 0.0,
-                    'collected_at': timezone.now() - timedelta(days=2)  # 기본값: 2일 전
-                }
-            )
-            
-            # 하루가 지났는지 확인
-            if timezone.now() - bond_yield_obj.collected_at > timedelta(days=1):
-                # ECOS API 호출하여 업데이트
-                bond_yield = self.ecos_service.collect_bond_yield_5y()
-                # ECOS API는 백분율로 반환하므로 소수로 변환 (예: 3.057% -> 0.03057)
-                bond_yield_value = bond_yield / 100.0 if bond_yield else 0.0
-                bond_yield_obj.yield_value = bond_yield_value
-                bond_yield_obj.collected_at = timezone.now()
-                bond_yield_obj.save()
+
+            with db_write_lock:
+                # DB에서 채권수익률 조회 (단일 레코드만 유지)
+                bond_yield_obj, created = BondYieldModel.objects.get_or_create(
+                    id=1,  # 단일 레코드
+                    defaults={
+                        'yield_value': 0.0,
+                        'collected_at': timezone.now() - timedelta(days=2)  # 기본값: 2일 전
+                    }
+                )
+
+                # 하루가 지났는지 확인
+                if timezone.now() - bond_yield_obj.collected_at > timedelta(days=1):
+                    # ECOS API 호출하여 업데이트
+                    bond_yield = self.ecos_service.collect_bond_yield_5y()
+                    # ECOS API는 백분율로 반환하므로 소수로 변환 (예: 3.057% -> 0.03057)
+                    bond_yield_value = bond_yield / 100.0 if bond_yield else 0.0
+                    bond_yield_obj.yield_value = bond_yield_value
+                    bond_yield_obj.collected_at = timezone.now()
+                    bond_yield_obj.save()
         except Exception as e:
             logger.warning("채권수익률 수집 실패: %s", e)
             # 채권수익률 수집 실패해도 계속 진행 (기본값 사용)
-        
+
         # 필터 적용
         try:
             CompanyFilter.apply_all_filters(company_data)
         except Exception as e:
             logger.warning("필터 적용 실패: %s", e)
             # 필터 실패 시에도 수집된 데이터는 반환
-        
+
         # DB 저장 로직 (save_to_db가 True일 때만 실행) -> 동시 쓰기 회피 용도
         if save_to_db:
             try:
@@ -115,7 +129,7 @@ class DataOrchestrator:
             except Exception as e:
                 logger.warning("DB 저장 실패: %s", e)
                 # DB 저장 실패 시에도 수집된 데이터는 반환
-        
+
         return company_data
 
     def collect_companies_data_batch(self, corp_codes: list[str]) -> list[dict]:
@@ -140,25 +154,26 @@ class DataOrchestrator:
                 company_data.yearly_indicators = indicators_map.get(corp_code, {})
                 company_data.yearly_indicator_names = indicator_names_map.get(corp_code, {})
 
-        # 채권수익률 1회 조회/캐시 (기존과 동일)
+        # 채권수익률 1회 조회/캐시 (DB 접근은 락으로 직렬화해 SQLite "database is locked" 방지)
         try:
             from django.utils import timezone
             from datetime import timedelta
             from django.apps import apps as django_apps
             BondYieldModel = django_apps.get_model('apps', 'BondYield')
-            bond_yield_obj, created = BondYieldModel.objects.get_or_create(
-                id=1,
-                defaults={
-                    'yield_value': 0.0,
-                    'collected_at': timezone.now() - timedelta(days=2)
-                }
-            )
-            if timezone.now() - bond_yield_obj.collected_at > timedelta(days=1):
-                bond_yield = self.ecos_service.collect_bond_yield_5y()
-                bond_yield_value = bond_yield / 100.0 if bond_yield else 0.0
-                bond_yield_obj.yield_value = bond_yield_value
-                bond_yield_obj.collected_at = timezone.now()
-                bond_yield_obj.save()
+            with db_write_lock:
+                bond_yield_obj, created = BondYieldModel.objects.get_or_create(
+                    id=1,
+                    defaults={
+                        'yield_value': 0.0,
+                        'collected_at': timezone.now() - timedelta(days=2)
+                    }
+                )
+                if timezone.now() - bond_yield_obj.collected_at > timedelta(days=1):
+                    bond_yield = self.ecos_service.collect_bond_yield_5y()
+                    bond_yield_value = bond_yield / 100.0 if bond_yield else 0.0
+                    bond_yield_obj.yield_value = bond_yield_value
+                    bond_yield_obj.collected_at = timezone.now()
+                    bond_yield_obj.save()
         except Exception as e:
             logger.warning("채권수익률 수집 실패: %s", e)
 
