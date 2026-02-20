@@ -53,7 +53,7 @@ class Command(BaseCommand):
                     self.stdout.write(
                         self.style.WARNING(
                             f'\n경고: 기업 {company.company_name} ({corp_code})의 재무지표 기본 필드를 초기화합니다.\n'
-                            f'연도별 데이터 기본 필드 초기화 및 분기 데이터 {quarterly_data_count}개 삭제.\n'
+                            f'연도별 데이터 기본 필드만 초기화하며, 분기 데이터는 보존됩니다.\n'
                             f'FCF, ROIC, WACC는 보존되며, Company 정보와 메모도 유지됩니다.\n'
                             f'필터 필드는 초기화됩니다.\n'
                             f'계속하려면 --confirm 옵션을 추가하세요.'
@@ -73,8 +73,6 @@ class Command(BaseCommand):
                         roe=0.0,
                         # fcf, roic, wacc는 업데이트하지 않음 (보존)
                     )
-                    # 분기 데이터 삭제
-                    deleted_quarterly_count = QuarterlyFinancialDataModel.objects.filter(company=company).delete()[0]
                     # last_collected_at 초기화 (재수집 가능하게)
                     company.last_collected_at = None
                     # 필터 관련 필드 초기화
@@ -101,8 +99,7 @@ class Command(BaseCommand):
                 
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f'✓ 기업 {company.company_name} ({corp_code})의 재무지표 기본 필드 {updated_count}개를 초기화하고 분기 데이터 {deleted_quarterly_count}개를 삭제했습니다.\n'
-                        f'  FCF, ROIC, WACC는 보존되었으며, 메모도 보존되었습니다. (last_collected_at 및 필터 필드 초기화됨)'
+                        f'✓ 기업 {company.company_name} ({corp_code})의 재무지표 기본 필드 {updated_count}개를 초기화했습니다. 분기 데이터는 보존되었으며, FCF, ROIC, WACC, 메모는 보존되었습니다. (last_collected_at 및 필터 필드 초기화됨)'
                     )
                 )
                 
@@ -126,7 +123,7 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.WARNING(
                         f'\n경고: 전체 {total_companies}개 기업의 재무지표 기본 필드를 초기화합니다.\n'
-                        f'연도별 데이터 기본 필드 초기화 및 분기 데이터 {total_quarterly_data}개 삭제.\n'
+                        f'연도별 데이터 기본 필드만 초기화하며, 분기 데이터는 보존됩니다.\n'
                         f'FCF, ROIC, WACC는 보존되며, Company 정보와 메모도 모두 유지됩니다.\n'
                         f'필터 필드는 초기화됩니다.\n'
                         f'계속하려면 --confirm 옵션을 추가하세요.'
@@ -146,13 +143,11 @@ class Command(BaseCommand):
                     roe=0.0,
                     # fcf, roic, wacc는 업데이트하지 않음 (보존)
                 )
-                # 전체 분기 데이터 삭제
-                deleted_quarterly_count = QuarterlyFinancialDataModel.objects.all().delete()[0]
                 # 모든 Company의 last_collected_at, 필터 필드, 최근 사업보고서 링크용 필드 초기화
                 CompanyModel.objects.all().update(
                     last_collected_at=None,
                     passed_all_filters=False,
-                    passed_second_filter=False,
+                    passed_second_filter=None,
                     filter_operating_income=False,
                     filter_net_income=False,
                     filter_revenue_cagr=False,
@@ -164,7 +159,6 @@ class Command(BaseCommand):
 
             self.stdout.write(
                 self.style.SUCCESS(
-                    f'\n✓ 전체 {total_companies}개 기업의 재무지표 기본 필드 {updated_count}개를 초기화하고 분기 데이터 {deleted_quarterly_count}개를 삭제했습니다.\n'
-                    f'  FCF, ROIC, WACC는 보존되었으며, 모든 메모도 보존되었습니다. (last_collected_at 및 필터 필드 초기화됨)'
+                    f'\n✓ 전체 {total_companies}개 기업의 재무지표 기본 필드 {updated_count}개를 초기화했습니다. 분기 데이터는 보존되었으며, FCF, ROIC, WACC, 모든 메모는 보존되었습니다. (last_collected_at 및 필터 필드 초기화됨)'
                 )
             )

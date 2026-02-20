@@ -139,8 +139,11 @@ ECOS_API_KEY = os.getenv('ECOS_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')
 KRX_API_KEY = os.getenv('KRX_API_KEY', '')
-# KRX 시가총액 조회 서비스 URL (Spec.docx/개발명세서 기준으로 .env에서 오버라이드 가능)
+# KRX 시가총액/일별 조회: 유가증권 일별매매정보(OPPUSES002_S2). .env에서 오버라이드 가능
 KRX_BASE_URL = os.getenv('KRX_BASE_URL', 'https://openapi.krx.co.kr')
+KRX_MARKET_CAP_PATH = os.getenv('KRX_MARKET_CAP_PATH', '/contents/OPP/USES/service/OPPUSES002_S2.cmd')
+# 당일 전체 종목 JSON 스냅샷 경로 (프로젝트 루트 기준)
+KRX_DAILY_SNAPSHOT_PATH = os.getenv('KRX_DAILY_SNAPSHOT_PATH', str(BASE_DIR / 'data' / 'krx_daily_snapshot.json'))
 
 # 데이터 수집 설정 (환경변수 또는 기본값)
 DATA_COLLECTION = {

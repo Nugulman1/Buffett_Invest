@@ -13,14 +13,30 @@ from apps.service.bond_yield import get_bond_yield_5y
 from apps.service.corp_code import resolve_corp_code, get_stock_code_by_corp_code
 
 
-def _refresh_krx_ev_ic_and_second_filter(corp_code: str) -> None:
+def _refresh_second_filter_only(corp_code: str) -> None:
     """
-    기업 조회 시 호출. KRX에서 일별 데이터 전체(BAS_DD, 시가총액 등) 수집 후,
-    EV/IC·배당성향·2차 필터를 재계산해 DB에 반영.
+    DB에 저장된 최근 3년 ROIC/WACC로 2차 필터만 재계산해 Company.passed_second_filter에 반영.
+    KRX/EV/IC 갱신 없이 기업 조회·계산기 저장 후 2차 필터만 갱신할 때 사용.
+    """
+    from django.apps import apps as django_apps
+    from apps.service.filter import CompanyFilter
+
+    CompanyModel = django_apps.get_model("apps", "Company")
+    try:
+        company = CompanyModel.objects.get(corp_code=corp_code)
+        company.passed_second_filter = CompanyFilter.check_second_filter(corp_code)
+        company.save(update_fields=["passed_second_filter"])
+    except CompanyModel.DoesNotExist:
+        pass
+
+
+def _refresh_krx_ev_ic_only(corp_code: str) -> None:
+    """
+    기업 조회 시 호출. KRX에서 시가총액 수집 후 EV/IC만 DB에 반영.
+    배당성향·2차 필터는 재무지표 계산기 저장 시에만 갱신됨.
     """
     from django.apps import apps as django_apps
     from apps.service.calculator import IndicatorCalculator
-    from apps.service.filter import CompanyFilter
     from apps.service.krx_client import fetch_and_save_company_market_cap
     from apps.models import YearlyFinancialDataObject
 
@@ -50,18 +66,7 @@ def _refresh_krx_ev_ic_and_second_filter(corp_code: str) -> None:
         )
         yd.invested_capital = ic
         yd.ev = ev
-        dividend_payout_ratio = None
-        if yd.fcf and yd.fcf > 0 and yd.dividend_paid is not None and yd.dividend_paid >= 0:
-            dividend_payout_ratio = yd.dividend_paid / yd.fcf
-        yd.dividend_payout_ratio = dividend_payout_ratio
-        yd.save(update_fields=["invested_capital", "ev", "dividend_payout_ratio"])
-    CompanyModel = django_apps.get_model("apps", "Company")
-    try:
-        company = CompanyModel.objects.get(corp_code=corp_code)
-        company.passed_second_filter = CompanyFilter.check_second_filter(corp_code)
-        company.save(update_fields=["passed_second_filter"])
-    except CompanyModel.DoesNotExist:
-        pass
+        yd.save(update_fields=["invested_capital", "ev"])
 
 
 @api_view(["GET"])
@@ -87,9 +92,10 @@ def get_financial_data(request, corp_code):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # 기업 조회 시마다 KRX 실시간 수집 후 EV/IC·2차 필터 재계산
-        _refresh_krx_ev_ic_and_second_filter(corp_code)
-        company_data, company = load_company_from_db(corp_code)
+        # 기업 조회 시마다 KRX 실시간 수집 후 EV/IC만 갱신 (배당성향·2차 필터는 계산기 저장 시 반영)
+        _refresh_krx_ev_ic_only(corp_code)
+        if company:
+            company.refresh_from_db()
         if not company_data:
             return Response(
                 {"error": "기업 데이터를 찾을 수 없습니다."},
@@ -121,7 +127,7 @@ def get_financial_data(request, corp_code):
             "market_cap": market_cap,
             "market_cap_updated_at": market_cap_updated_at,
             "passed_all_filters": company_data.passed_all_filters,
-            "passed_second_filter": getattr(company, "passed_second_filter", False) if company else False,
+            "passed_second_filter": getattr(company, "passed_second_filter", None) if company else None,
             "consecutive_dividend_years": consecutive_dividend_years,
             "filter_operating_income": company_data.filter_operating_income,
             "filter_net_income": company_data.filter_net_income,
@@ -139,6 +145,7 @@ def get_financial_data(request, corp_code):
                     "total_assets": yd.total_assets,
                     "total_equity": yd.total_equity,
                     "operating_margin": yd.operating_margin,
+                    "selling_admin_expense_ratio": getattr(yd, "selling_admin_expense_ratio", None),
                     "roe": yd.roe,
                     "debt_ratio": getattr(yd, "debt_ratio", None),
                     "fcf": yd.fcf,
@@ -481,6 +488,10 @@ def parse_and_calculate(request, corp_code):
             yearly_data_db.fcf = fcf
             yearly_data_db.roic = roic
             yearly_data_db.wacc = wacc
+            dividend_payout_ratio = None
+            if fcf and fcf > 0 and yearly_data_db.dividend_paid is not None and yearly_data_db.dividend_paid >= 0:
+                dividend_payout_ratio = yearly_data_db.dividend_paid / fcf
+            yearly_data_db.dividend_payout_ratio = dividend_payout_ratio
             yearly_data_db.save()
 
             results.append({
@@ -493,7 +504,8 @@ def parse_and_calculate(request, corp_code):
 
         logger.info("")
         logger.info("[parse_and_calculate] DB 저장 완료: %s개 연도", len(results))
-        # 2차 필터·EV/IC는 기업 조회 시 KRX 실시간 반영하여 재계산함 (parse 시점에는 미반영)
+        # 2차 필터만 DB 기준으로 갱신 (EV/IC는 기업 조회 시 KRX 사용 시 반영)
+        _refresh_second_filter_only(corp_code)
 
         if not results:
             return Response(
@@ -535,7 +547,8 @@ def get_market_cap(request, corp_code):
     corp_code = resolved
 
     from django.apps import apps as django_apps
-    from apps.service.krx_client import fetch_and_save_company_market_cap
+    from apps.service.krx_client import fetch_and_save_company_market_cap, get_snapshot_row_by_isu_cd
+    from apps.service.corp_code import get_stock_code_by_corp_code
 
     CompanyModel = django_apps.get_model("apps", "Company")
     try:
@@ -552,22 +565,24 @@ def get_market_cap(request, corp_code):
         market_cap = getattr(company, "market_cap", None)
 
     krx_daily = None
-    latest_krx = company.krx_daily_data.order_by("-BAS_DD").first()
-    if latest_krx:
-        krx_daily = {
-            "BAS_DD": latest_krx.BAS_DD,
-            "IDX_CLSS": latest_krx.IDX_CLSS,
-            "IDX_NM": latest_krx.IDX_NM,
-            "CLSPRC_IDX": latest_krx.CLSPRC_IDX,
-            "CMPPREVDD_IDX": latest_krx.CMPPREVDD_IDX,
-            "FLUC_RT": latest_krx.FLUC_RT,
-            "OPNPRC_IDX": latest_krx.OPNPRC_IDX,
-            "HGPRC_IDX": latest_krx.HGPRC_IDX,
-            "LWPRC_IDX": latest_krx.LWPRC_IDX,
-            "ACC_TRDVOL": latest_krx.ACC_TRDVOL,
-            "ACC_TRDVAL": latest_krx.ACC_TRDVAL,
-            "MKTCAP": latest_krx.MKTCAP,
-        }
+    stock_code = get_stock_code_by_corp_code(corp_code)
+    if stock_code:
+        row = get_snapshot_row_by_isu_cd(stock_code)
+        if row:
+            krx_daily = {
+                "BAS_DD": row.get("BAS_DD"),
+                "IDX_CLSS": row.get("MKT_NM"),
+                "IDX_NM": row.get("ISU_NM"),
+                "CLSPRC_IDX": row.get("TDD_CLSPRC"),
+                "CMPPREVDD_IDX": row.get("CMPPREVDD_PRC"),
+                "FLUC_RT": row.get("FLUC_RT"),
+                "OPNPRC_IDX": row.get("TDD_OPNPRC"),
+                "HGPRC_IDX": row.get("TDD_HGPRC"),
+                "LWPRC_IDX": row.get("TDD_LWPRC"),
+                "ACC_TRDVOL": row.get("ACC_TRDVOL"),
+                "ACC_TRDVAL": row.get("ACC_TRDVAL"),
+                "MKTCAP": row.get("MKTCAP"),
+            }
 
     return Response({
         "market_cap": market_cap,

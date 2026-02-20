@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 # DART 다중회사 주요재무지표 ROE 지표코드
 ROE_IDX_CODE = 'M211550'
 
+# 판관비율: fnlttCmpnyIndx 수익성지표 응답에서 idx_nm이 '판관비율' 또는 '판매비와관리비율'인 항목으로 매칭
+PANGWAN_NAMES = ('판관비율', '판매비와관리비율')
+
 
 class DataOrchestrator:
     """DART와 ECOS 데이터 수집을 조율하는 오케스트레이터"""
@@ -37,11 +40,29 @@ class DataOrchestrator:
             # 폴백: DART ROE 없으면 당기순이익/자본총계로 수동 계산
             if yearly_data.roe is None and yearly_data.net_income is not None and yearly_data.total_equity is not None and yearly_data.total_equity > 0:
                 yearly_data.roe = yearly_data.net_income / yearly_data.total_equity
-            if yearly_data.roe is None:
-                logger.debug(
-                    "ROE 미수집: corp_code=%s year=%s (DART M211550 해당 연도 없음)",
-                    corp_code, yearly_data.year,
-                )
+
+    @staticmethod
+    def _fill_selling_admin_expense_ratio_from_indicators(company_data: CompanyFinancialObject) -> None:
+        """yearly_indicators에서 판관비율(지표명 매칭) 값을 yearly_data.selling_admin_expense_ratio에 채움."""
+        indicators = getattr(company_data, 'yearly_indicators', None) or {}
+        names = getattr(company_data, 'yearly_indicator_names', None) or {}
+        for yearly_data in company_data.yearly_data:
+            year = yearly_data.year
+            year_indicators = indicators.get(year, {})
+            year_names = names.get(year, {})
+            value = None
+            for idx_code, idx_nm in (year_names or {}).items():
+                if idx_nm and any(p in idx_nm for p in PANGWAN_NAMES):
+                    val = year_indicators.get(idx_code)
+                    if val is not None:
+                        try:
+                            value = float(val)
+                            if value > 1:
+                                value = value / 100.0
+                        except (TypeError, ValueError):
+                            pass
+                    break
+            yearly_data.selling_admin_expense_ratio = value
 
     def collect_company_data(self, corp_code: str, save_to_db: bool = True) -> CompanyFinancialObject:
         """
@@ -81,6 +102,7 @@ class DataOrchestrator:
         company_data.yearly_indicators = indicators_map.get(corp_code, {})
         company_data.yearly_indicator_names = indicator_names_map.get(corp_code, {})
         self._fill_roe_from_indicators(company_data)
+        self._fill_selling_admin_expense_ratio_from_indicators(company_data)
         # 기본 재무지표 계산 (영업이익률만)
         IndicatorCalculator.calculate_basic_financial_ratios(company_data)
 
@@ -196,6 +218,7 @@ class DataOrchestrator:
                 except Exception as e:
                     logger.warning("기업 정보 조회 실패 %s: %s", corp_code, e)
                 self._fill_roe_from_indicators(company_data)
+                self._fill_selling_admin_expense_ratio_from_indicators(company_data)
                 IndicatorCalculator.calculate_basic_financial_ratios(company_data)
                 try:
                     CompanyFilter.apply_all_filters(company_data)

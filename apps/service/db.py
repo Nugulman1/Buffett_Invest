@@ -161,6 +161,7 @@ def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None,
             yearly_data_obj.noncontrolling_interest = getattr(yearly_data_db, 'noncontrolling_interest', None) or 0
             yearly_data_obj.dividend_paid = getattr(yearly_data_db, "dividend_paid", None)
             yearly_data_obj.dividend_payout_ratio = getattr(yearly_data_db, "dividend_payout_ratio", None)
+            yearly_data_obj.selling_admin_expense_ratio = getattr(yearly_data_db, "selling_admin_expense_ratio", None)
             yearly_data_obj.fcf = yearly_data_db.fcf
             yearly_data_obj.roic = yearly_data_db.roic
             yearly_data_obj.wacc = yearly_data_db.wacc
@@ -243,6 +244,7 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                                 'dividend_paid': getattr(yearly_data, 'dividend_paid', None),
                                 'ev': getattr(yearly_data, 'ev', None),
                                 'invested_capital': getattr(yearly_data, 'invested_capital', None),
+                                'selling_admin_expense_ratio': getattr(yearly_data, 'selling_admin_expense_ratio', None),
                             }
                         )
 

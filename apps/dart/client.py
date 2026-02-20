@@ -606,40 +606,6 @@ class DartClient:
             or "3분기보고서" in report_nm
         )
 
-    def _log_quarterly_reports_debug(
-        self,
-        corp_code: str,
-        bgn_de: str,
-        end_date: str,
-        all_reports: list,
-        quarterly_reports: list,
-        skipped_quarterly: list,
-    ) -> None:
-        """분기보고서 조회 결과를 디버깅용으로 로그 출력."""
-        lines = [
-            "",
-            "=" * 60,
-            "[분기보고서 조회 디버그]",
-            f"  corp_code: {corp_code}  |  조회 구간: {bgn_de} ~ {end_date}",
-            f"  DART 조회 전체 건수: {len(all_reports)}",
-            f"  분기로 인식·수집: {len(quarterly_reports)}건  |  분기로 인식했으나 제외: {len(skipped_quarterly)}건",
-            "-" * 60,
-        ]
-        if quarterly_reports:
-            lines.append("  [수집 대상 분기보고서]")
-            for r in quarterly_reports:
-                qname = {1: "1분기", 2: "반기", 3: "3분기"}.get(r["quarter"], str(r["quarter"]))
-                lines.append(f"    {r['rcept_dt']}  {qname}  reprt_code={r.get('reprt_code','')}  |  {r.get('report_nm', '')[:50]}")
-        if skipped_quarterly:
-            lines.append("  [분기로 인식했으나 제외]")
-            for s in skipped_quarterly[:10]:
-                qname = {1: "1분기", 2: "반기", 3: "3분기"}.get(s["quarter"], str(s["quarter"]))
-                lines.append(f"    {s.get('rcept_dt','')}  {qname}  |  {s.get('reason','')}  |  {s.get('report_nm','')[:40]}")
-            if len(skipped_quarterly) > 10:
-                lines.append(f"    ... 외 {len(skipped_quarterly) - 10}건")
-        lines.extend(["=" * 60, ""])
-        logger.info("\n".join(lines))
-
     def get_quarterly_reports_after_date(self, corp_code: str, after_date: str) -> list:
         """
         특정 날짜 이후의 분기보고서 목록 조회
@@ -763,11 +729,6 @@ class DartClient:
 
             # 접수일자 기준 내림차순 정렬 (가장 최근 것부터)
             quarterly_reports.sort(key=lambda x: x['rcept_dt'], reverse=True)
-
-            self._log_quarterly_reports_debug(
-                corp_code, after_date, end_date,
-                all_reports, quarterly_reports, skipped_quarterly,
-            )
             return quarterly_reports
 
         except Exception as e:
@@ -878,13 +839,7 @@ class DartClient:
                         })
 
             quarterly_reports.sort(key=lambda x: x['rcept_dt'], reverse=True)
-            result_list = quarterly_reports[:limit]
-
-            self._log_quarterly_reports_debug(
-                corp_code, bgn_de, end_date,
-                all_reports, result_list, skipped_quarterly,
-            )
-            return result_list
+            return quarterly_reports[:limit]
 
         except Exception as e:
             logger.warning("분기보고서 목록 조회 실패: %s", e)

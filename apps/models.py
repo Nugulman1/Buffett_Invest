@@ -15,7 +15,7 @@ class Company(models.Model):
     filter_revenue_cagr = models.BooleanField(default=False, verbose_name='매출액CAGR필터')
     filter_operating_margin = models.BooleanField(default=False, verbose_name='영업이익률필터')
     filter_roe = models.BooleanField(default=False, verbose_name='ROE필터')
-    passed_second_filter = models.BooleanField(default=False, verbose_name='2차필터통과')
+    passed_second_filter = models.BooleanField(null=True, default=None, verbose_name='2차필터통과')
     memo = models.TextField(blank=True, null=True, verbose_name='메모')
     memo_updated_at = models.DateTimeField(null=True, blank=True, verbose_name='메모수정일시')
     latest_annual_rcept_no = models.CharField(max_length=14, blank=True, null=True, verbose_name='최근사업보고서접수번호')
@@ -37,38 +37,6 @@ class Company(models.Model):
     
     def __str__(self):
         return f"{self.company_name} ({self.corp_code})"
-
-
-class KrxDailyData(models.Model):
-    """KRX API 일별 시세/지수 응답 저장 (출력명 그대로)"""
-    company = models.ForeignKey(
-        Company, on_delete=models.CASCADE, related_name="krx_daily_data", verbose_name="회사"
-    )
-    BAS_DD = models.CharField(max_length=8, verbose_name="기준일자")
-    IDX_CLSS = models.CharField(max_length=50, blank=True, null=True, verbose_name="계열구분")
-    IDX_NM = models.CharField(max_length=200, blank=True, null=True, verbose_name="지수명")
-    CLSPRC_IDX = models.CharField(max_length=50, blank=True, null=True, verbose_name="종가")
-    CMPPREVDD_IDX = models.CharField(max_length=50, blank=True, null=True, verbose_name="대비")
-    FLUC_RT = models.CharField(max_length=50, blank=True, null=True, verbose_name="등락률")
-    OPNPRC_IDX = models.CharField(max_length=50, blank=True, null=True, verbose_name="시가")
-    HGPRC_IDX = models.CharField(max_length=50, blank=True, null=True, verbose_name="고가")
-    LWPRC_IDX = models.CharField(max_length=50, blank=True, null=True, verbose_name="저가")
-    ACC_TRDVOL = models.CharField(max_length=50, blank=True, null=True, verbose_name="거래량")
-    ACC_TRDVAL = models.CharField(max_length=50, blank=True, null=True, verbose_name="거래대금")
-    MKTCAP = models.CharField(max_length=50, blank=True, null=True, verbose_name="상장시가총액")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
-
-    class Meta:
-        db_table = "krx_daily_data"
-        verbose_name = "KRX 일별데이터"
-        verbose_name_plural = "KRX 일별데이터들"
-        constraints = [
-            models.UniqueConstraint(fields=["company", "BAS_DD"], name="krx_daily_company_bas_dd"),
-        ]
-        indexes = [models.Index(fields=["company", "BAS_DD"])]
-
-    def __str__(self):
-        return f"{self.company_id} {self.BAS_DD}"
 
 
 class BondYield(models.Model):
@@ -117,6 +85,7 @@ class YearlyFinancialData(models.Model):
     total_assets = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자산총계')
     total_equity = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='자본총계')
     operating_margin = models.FloatField(default=0.0, null=True, blank=True, verbose_name='영업이익률')
+    selling_admin_expense_ratio = models.FloatField(null=True, blank=True, verbose_name='판관비율')
     roe = models.FloatField(default=0.0, null=True, blank=True, verbose_name='ROE')
     debt_ratio = models.FloatField(null=True, blank=True, verbose_name='부채비율')  # 자본총계/부채총계
     interest_bearing_debt = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='이자부채')
@@ -340,6 +309,7 @@ class YearlyFinancialDataObject:
         self.total_assets: int | None = 0  # 자산총계
         self.total_equity: int | None = 0  # 자본총계
         self.operating_margin: float | None = 0.0  # 영업이익률 (%) - 계산 방식 (영업이익/매출액)
+        self.selling_admin_expense_ratio: float | None = None  # 판관비율 (DART fnlttCmpnyIndx)
         self.roe: float | None = 0.0  # ROE (%) - 계산 방식 (당기순이익/자본총계)
         self.debt_ratio: float | None = None  # 부채비율 - 자본총계/부채총계
 

@@ -13,8 +13,8 @@ from apps.service.corp_code import get_stock_code_by_corp_code, resolve_corp_cod
 @api_view(["GET"])
 def get_passed_companies(request):
     """
-    필터 통과 기업 목록 조회 API (1차 필터 통과만, DB 조회).
-    1차 통과 기업을 메인에 노출해 두고, 상세에서 2차 조사·2차 필터 적용.
+    필터 통과 기업 목록 조회 API. 1차 필터 통과 기업을 노출하며,
+    상세에서 2차 평가 후 미통과한 기업만 제외 (2차 미평가/통과는 노출).
     GET /api/companies/passed/?page=1&page_size=10
     """
     page = int(request.GET.get("page", 1))
@@ -26,7 +26,7 @@ def get_passed_companies(request):
         page_size = 10
 
     CompanyModel = django_apps.get_model("apps", "Company")
-    qs = CompanyModel.objects.filter(passed_all_filters=True).order_by("company_name")
+    qs = CompanyModel.objects.filter(passed_all_filters=True).exclude(passed_second_filter=False).order_by("company_name")
 
     total = qs.count()
     total_pages = math.ceil(total / page_size) if total > 0 else 0

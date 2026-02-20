@@ -5,7 +5,6 @@
 FCF/ROIC/WACC 계산에 필요한 계정 값을 추출합니다.
 연도 추출 + 표 본문 분리(자산/영업) + 한글(지표명)·숫자(금액) 분리 → rows JSON.
 """
-import json
 import logging
 import re
 
@@ -151,47 +150,6 @@ def parse_table_body_to_rows(
     return rows
 
 
-def _format_parsed_display(result: dict, title: str) -> str:
-    """파싱 결과를 보기 쉬운 표 형태 문자열로 반환."""
-    years = result.get("years", [])
-    rows = result.get("rows", [])
-    if not years or not rows:
-        return json.dumps(result, indent=2, ensure_ascii=False)
-
-    def _fmt_val(val) -> str:
-        if val is None:
-            return "-"
-        if isinstance(val, int):
-            return f"{val:,}"
-        return str(val)
-
-    num_col_width = 18  # 큰 금액(콤마 포함) 수용
-    label_width = 36
-    total_width = label_width + num_col_width * len(years)
-    sep = "-" * total_width
-    top_sep = "=" * total_width
-
-    lines = [
-        "",
-        top_sep,
-        f"  {title} 파싱 결과",
-        f"  연도: {', '.join(str(y) for y in years)}",
-        top_sep,
-        "",
-        f"  {'지표':<{label_width}}" + "".join(f"{str(y):>{num_col_width}}" for y in years),
-        f"  {sep}",
-    ]
-    for r in rows:
-        label = (r.get("label") or "").strip()
-        if len(label) > label_width:
-            label = label[: label_width - 2] + "…"
-        vals = [_fmt_val(r.get(y)) for y in years]
-        line = f"  {label:<{label_width}}" + "".join(f"{v:>{num_col_width}}" for v in vals)
-        lines.append(line)
-    lines.extend(["", sep, ""])
-    return "\n".join(lines)
-
-
 def _extract_years_from_text(text: str) -> list[int]:
     """
     텍스트에서 처음 나오는 2020~2029 연도를 당기로 하고,
@@ -271,7 +229,6 @@ def parse_balance_sheet(text: str) -> dict:
     rows = parse_table_body_to_rows(trimmed, years, unit_multiplier=unit_multiplier)
     logger.info("[paste_parser] parse_balance_sheet: years=%s, rows=%s", years, len(rows))
     result = {"years": years, "data": {y: {} for y in years}, "rows": rows}
-    print(_format_parsed_display(result, "연결 재무상태표"))
     return result
 
 
@@ -286,5 +243,4 @@ def parse_cash_flow(text: str) -> dict:
     rows = parse_table_body_to_rows(trimmed, years, unit_multiplier=unit_multiplier)
     logger.info("[paste_parser] parse_cash_flow: years=%s, rows=%s", years, len(rows))
     result = {"years": years, "data": {y: {} for y in years}, "rows": rows}
-    print(_format_parsed_display(result, "연결 현금흐름표"))
     return result

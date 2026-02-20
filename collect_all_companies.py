@@ -7,7 +7,6 @@
 사용법:
     python collect_all_companies.py [--limit N]
 """
-import json
 import os
 import sys
 import time
@@ -29,21 +28,6 @@ from apps.dart.client import DartClient
 from apps.ecos.client import EcosClient
 
 logger = logging.getLogger(__name__)
-
-# #region agent log
-_DEBUG_LOG_PATH = Path(__file__).resolve().parent / "debug-684b61.log"
-
-def _debug_log(message: str, data: dict, hypothesis_id: str = ""):
-    try:
-        payload = {"sessionId": "684b61", "location": "collect_all_companies.py", "message": message, "data": data, "timestamp": int(time.time() * 1000)}
-        if hypothesis_id:
-            payload["hypothesisId"] = hypothesis_id
-        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-# #endregion
-
 
 def parse_stock_codes_file(stock_codes_file: Path) -> list:
     """종목코드.md 파일 파싱 (모든 종목코드 반환)"""
@@ -129,20 +113,11 @@ def _run_one_batch(batch_num: int, corp_codes: list, corp_to_stock: dict) -> tup
         (batch_num, corp_to_stock, batch_results) 성공 시
         (batch_num, corp_to_stock, None, error) 예외 시
     """
-    # #region agent log — 병렬 시 어떤 배치가 시작/완료하는지 확인
-    _debug_log("batch worker started", {"batch_num": batch_num, "corp_count": len(corp_codes)}, "perf")
-    # #endregion
     try:
         orchestrator = DataOrchestrator()
         batch_results = orchestrator.collect_companies_data_batch(corp_codes)
-        # #region agent log
-        _debug_log("batch worker done", {"batch_num": batch_num, "status": "success", "result_count": len(batch_results)}, "perf")
-        # #endregion
         return (batch_num, corp_to_stock, batch_results)
     except Exception as e:
-        # #region agent log
-        _debug_log("batch worker done", {"batch_num": batch_num, "status": "exception", "error": str(e)}, "perf")
-        # #endregion
         return (batch_num, corp_to_stock, None, e)
 
 
@@ -182,9 +157,6 @@ def main(limit: int = None, stock_code: str = None):
         logger.info('수집할 종목이 없습니다.')
         return
 
-    # #region agent log
-    _debug_log("collect after filter_stock_codes_by_db", {"target_count": len(stock_code_to_corp_code), "limit": limit, "total_skipped": skip_stats['no_corp_code'] + skip_stats['conversion_error']}, "perf")
-    # #endregion
     total_skipped = skip_stats['no_corp_code'] + skip_stats['conversion_error']
     logger.info('수집 대상: %s개 (limit: %s)', len(stock_code_to_corp_code), limit)
     logger.info('스킵: %s개 (확인한 %s개 중)', total_skipped, skip_stats['total_checked'])
@@ -192,9 +164,6 @@ def main(limit: int = None, stock_code: str = None):
         logger.info('미확인: %s개 (limit 도달로 중단)', len(all_stock_codes) - skip_stats['total_checked'])
     batch_size = 100
     parallel_workers = settings.DATA_COLLECTION.get('PARALLEL_WORKERS', 1)
-    # #region agent log
-    _debug_log("collect batch config", {"total_count": len(stock_code_to_corp_code), "batch_size": batch_size, "parallel_workers": parallel_workers}, "perf")
-    # #endregion
     if parallel_workers >= 2:
         logger.info('다중회사 배치 수집: 100개씩, 병렬 스레드 %s개', parallel_workers)
     else:
@@ -229,9 +198,6 @@ def main(limit: int = None, stock_code: str = None):
                 result = future.result()
                 batch_num = result[0]
                 corp_to_stock = result[1]
-                # #region agent log — 메인 스레드가 배치 완료를 받는 순서 확인
-                _debug_log("main received batch", {"batch_num": batch_num, "result_len": len(result)}, "perf")
-                # #endregion
                 if len(result) == 4:
                     _, _, _, err = result
                     logger.error('배치 %s 전체 실패: %s', batch_num, err)
@@ -286,9 +252,6 @@ def main(limit: int = None, stock_code: str = None):
                         sum(1 for r in batch_results if r['status'] == 'failed'))
     
     total_time = time.time() - start_time
-    # #region agent log
-    _debug_log("collect main exit", {"total_elapsed_sec": round(total_time, 2), "success_count": success_count, "fail_count": fail_count, "passed_filter_count": len(passed_filter_stock_codes)}, "perf")
-    # #endregion
 
     DartClient.flush_daily_stats()
     EcosClient.flush_daily_stats()
@@ -301,23 +264,6 @@ def main(limit: int = None, stock_code: str = None):
     ecos_api_calls = final_ecos_calls - initial_ecos_calls
     total_api_calls = dart_api_calls + ecos_api_calls
     batch_count = (total_count + batch_size - 1) // batch_size if batch_size else 0
-    # #region agent log — 전체 수집 시 배치/워커/API 대비 시간 비교용
-    _debug_log(
-        "collect summary",
-        {
-            "total_companies": total_count,
-            "batch_size": batch_size,
-            "batch_count": batch_count,
-            "parallel_workers": parallel_workers,
-            "total_elapsed_sec": round(total_time, 2),
-            "dart_api_calls": dart_api_calls,
-            "ecos_api_calls": ecos_api_calls,
-            "success_count": success_count,
-            "fail_count": fail_count,
-        },
-        "perf",
-    )
-    # #endregion
 
     # 일별 통계 조회 및 출력
     from django.apps import apps as django_apps

@@ -517,8 +517,8 @@
                                     <div class="d-flex align-items-center justify-content-between">
                                         <span class="small">2차 필터 (ROIC-WACC):</span>
                                         <span class="badge"
-                                            :class="companyData?.passed_second_filter ? 'bg-success' : 'bg-danger'"
-                                            x-text="companyData?.passed_second_filter ? '통과' : '미통과'"></span>
+                                            :class="companyData?.passed_second_filter === true ? 'bg-success' : (companyData?.passed_second_filter === false ? 'bg-danger' : 'bg-secondary')"
+                                            x-text="companyData?.passed_second_filter === true ? '통과' : (companyData?.passed_second_filter === false ? '미통과' : '미평가')"></span>
                                     </div>
                                 </div>
                                 <div class="col-12" x-show="companyData">
@@ -549,6 +549,7 @@
                                             <th class="text-end">영업이익</th>
                                             <th class="text-end">당기순이익</th>
                                             <th class="text-end">영업이익률</th>
+                                            <th class="text-end">판관비율</th>
                                             <th class="text-end">ROE</th>
                                             <th class="text-end">FCF</th>
                                             <th class="text-end">ROIC</th>
@@ -572,6 +573,7 @@
                                                 <td class="text-end" x-text="formatAmount(data.operating_income)"></td>
                                                 <td class="text-end" x-text="formatAmount(data.net_income)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.operating_margin)"></td>
+                                                <td class="text-end" x-text="formatPercent(data.selling_admin_expense_ratio)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.roe)"></td>
                                                 <td class="text-end" x-text="formatAmount(data.fcf)"></td>
                                                 <td class="text-end" x-text="formatPercent(data.roic)"></td>
