@@ -110,6 +110,8 @@ def load_quarterly_financial_data(corp_code: str) -> list[dict]:
             "total_equity": qd.total_equity,
             "operating_margin": qd.operating_margin,
             "roe": qd.roe,
+            "roic": None,
+            "wacc": None,
             "collected_at": qd.collected_at.isoformat() if qd.collected_at else None,
         }
         for qd in qs

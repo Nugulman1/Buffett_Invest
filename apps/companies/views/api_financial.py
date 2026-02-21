@@ -360,6 +360,12 @@ def parse_and_calculate(request, corp_code):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # EV 계산용 시가총액: 재무지표 계산 시점에 KRX에서 한 번 조회
+        from apps.service.krx_client import fetch_and_save_company_market_cap
+        fetch_and_save_company_market_cap(corp_code)
+        company.refresh_from_db()
+        market_cap = getattr(company, "market_cap", None)
+
         all_rows = bs_result["rows"] + cf_result["rows"]
         try:
             extracted = extract_financial_indicators(all_rows, years)
@@ -424,12 +430,16 @@ def parse_and_calculate(request, corp_code):
                 yearly_data_db.fcf = None
                 yearly_data_db.roic = None
                 yearly_data_db.wacc = None
+                yearly_data_db.ev = None
+                yearly_data_db.invested_capital = None
                 yearly_data_db.save()
                 results.append({
                     "year": year,
                     "fcf": None,
                     "roic": None,
                     "wacc": None,
+                    "ev": None,
+                    "invested_capital": None,
                     "parsed_accounts": {k: v for k, v in row.items() if not k.startswith("_") and v},
                 })
                 continue
@@ -492,6 +502,21 @@ def parse_and_calculate(request, corp_code):
             if fcf and fcf > 0 and yearly_data_db.dividend_paid is not None and yearly_data_db.dividend_paid >= 0:
                 dividend_payout_ratio = yearly_data_db.dividend_paid / fcf
             yearly_data_db.dividend_payout_ratio = dividend_payout_ratio
+
+            # EV/IC: 이자부채·현금·비지배지분 등 추출 데이터 기준으로 계산 후 저장
+            ic = IndicatorCalculator.calculate_invested_capital(yearly_data_obj)
+            ev = (
+                IndicatorCalculator.calculate_ev(
+                    market_cap or 0,
+                    yearly_data_obj.interest_bearing_debt,
+                    yearly_data_obj.cash_and_cash_equivalents,
+                    yearly_data_obj.noncontrolling_interest,
+                )
+                if market_cap is not None
+                else None
+            )
+            yearly_data_db.invested_capital = ic
+            yearly_data_db.ev = ev
             yearly_data_db.save()
 
             results.append({
@@ -499,12 +524,14 @@ def parse_and_calculate(request, corp_code):
                 "fcf": fcf,
                 "roic": roic,
                 "wacc": wacc,
+                "ev": ev,
+                "invested_capital": ic,
                 "parsed_accounts": {k: v for k, v in row.items() if not k.startswith("_") and v},
             })
 
         logger.info("")
         logger.info("[parse_and_calculate] DB 저장 완료: %s개 연도", len(results))
-        # 2차 필터만 DB 기준으로 갱신 (EV/IC는 기업 조회 시 KRX 사용 시 반영)
+        # 2차 필터만 DB 기준으로 갱신 (EV/IC는 위에서 재무지표 계산 시 함께 저장됨)
         _refresh_second_filter_only(corp_code)
 
         if not results:

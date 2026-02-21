@@ -21,10 +21,44 @@ KRX_OUTPUT_KEYS = [
     "ACC_TRDVOL", "ACC_TRDVAL", "MKTCAP", "LIST_SHRS",
 ]
 
+# 시장 구분 (유가 -> 코스닥 -> 코넥스 순 조회, 데이터 얻었으면 break)
+MARKET_KOSPI = "KOSPI"
+MARKET_KOSDAQ = "KOSDAQ"
+MARKET_KONEX = "KONEX"
+MARKET_ORDER = (MARKET_KOSPI, MARKET_KOSDAQ, MARKET_KONEX)
+
 # 메모리 캐시: 마지막 로드한 스냅샷 (ensure_latest_snapshot 결과)
 _snapshot_cache: dict | None = None
 
 KST = timezone(timedelta(hours=9))
+
+
+def _get_api_path(market: str) -> str:
+    """시장별 API path. 비어 있으면 해당 시장 미사용."""
+    if market == MARKET_KOSPI:
+        return getattr(settings, "KRX_MARKET_CAP_PATH", "/svc/apis/sto/stk_bydd_trd") or ""
+    if market == MARKET_KOSDAQ:
+        return getattr(settings, "KRX_KOSDAQ_MARKET_CAP_PATH", "/svc/apis/sto/ksq_bydd_trd") or ""
+    if market == MARKET_KONEX:
+        return getattr(settings, "KRX_KONEX_MARKET_CAP_PATH", "/svc/apis/sto/knx_bydd_trd") or ""
+    return ""
+
+
+def _get_snapshot_path(market: str) -> Path:
+    """시장별 스냅샷 JSON 파일 경로."""
+    if market == MARKET_KOSPI:
+        path = getattr(settings, "KRX_DAILY_SNAPSHOT_PATH", None)
+    elif market == MARKET_KOSDAQ:
+        path = getattr(settings, "KRX_DAILY_SNAPSHOT_KOSDAQ_PATH", None)
+    elif market == MARKET_KONEX:
+        path = getattr(settings, "KRX_DAILY_SNAPSHOT_KONEX_PATH", None)
+    else:
+        path = None
+    if path is None:
+        base = Path(settings.BASE_DIR)
+        name = "krx_daily_snapshot.json" if market == MARKET_KOSPI else f"krx_daily_snapshot_{market.lower()}.json"
+        path = str(base / "data" / name)
+    return Path(path)
 
 
 def _get_kst_now() -> datetime:
@@ -32,14 +66,6 @@ def _get_kst_now() -> datetime:
     return datetime.now(KST)
 
 
-def _get_snapshot_path() -> Path:
-    """스냅샷 JSON 파일 경로 (설정 또는 기본값)."""
-    path = getattr(settings, "KRX_DAILY_SNAPSHOT_PATH", None)
-    if path is None:
-        from pathlib import Path as P
-        base = P(settings.BASE_DIR)
-        path = str(base / "data" / "krx_daily_snapshot.json")
-    return Path(path)
 
 
 class KrxClient:
@@ -58,19 +84,17 @@ class KrxClient:
         )
         return h
 
-    def get_all_daily_data(self, bas_dd: str | None = None) -> list[dict]:
+    def get_all_daily_data(self, bas_dd: str | None = None, market: str = MARKET_KOSPI) -> list[dict]:
         """
-        당일 전체 종목 KRX 유가증권 일별매매정보(OPPUSES002_S2) 1회 호출.
-        basDd만 전달(isuCd 없음). 응답 outBlock 리스트를 15개 필드씩 파싱해 반환.
+        당일 전체 종목 KRX 일별매매정보 1회 호출.
+        market: KOSPI(stk_bydd_trd), KOSDAQ(ksq_bydd_trd), KONEX(knx_bydd_trd). basDd만 전달. 응답 outBlock 리스트를 15개 필드씩 파싱해 반환.
         """
         if not self.api_key:
             return []
+        service_path = _get_api_path(market)
+        if not service_path:
+            return []
         bas_dd = bas_dd or _get_kst_now().strftime("%Y%m%d")
-        service_path = getattr(
-            settings,
-            "KRX_MARKET_CAP_PATH",
-            "/contents/OPP/USES/service/OPPUSES002_S2.cmd",
-        )
         url = f"{self.base_url}{service_path}"
         params = {"basDd": bas_dd}
         req_headers = self._headers()
@@ -122,10 +146,10 @@ class KrxClient:
         return row
 
     def _parse_full_block_list(self, data: dict) -> list[dict]:
-        """응답에서 outBlock(리스트) 전체를 15개 필드씩 파싱해 리스트 반환."""
+        """응답에서 일별 데이터 리스트 추출. 실제 API는 OutBlock_1 사용."""
         if not data:
             return []
-        block = data.get("outBlock") or data.get("output") or data.get("block1") or data.get("OutBlock")
+        block = data.get("OutBlock_1") or data.get("outBlock") or data.get("output") or data.get("block1") or data.get("OutBlock")
         if isinstance(block, dict):
             block = [block]
         if not isinstance(block, list):
@@ -180,37 +204,80 @@ def _save_snapshot_json(path: Path, bas_dd: str, rows: list[dict]) -> None:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
+def _load_merged_snapshot() -> dict | None:
+    """유가 -> 코스닥 -> 코넥스 순으로 시장별 스냅샷 파일 로드 후 rows 병합. 조회 시 같은 순서로 찾으면 데이터 얻었으면 break."""
+    all_rows = []
+    collected_at = None
+    bas_dd = None
+    for market in MARKET_ORDER:
+        path = _get_snapshot_path(market)
+        snap = _load_snapshot_json(path)
+        if snap and snap.get("rows"):
+            all_rows.extend(snap["rows"])
+            if collected_at is None:
+                collected_at = snap.get("collected_at")
+                bas_dd = snap.get("bas_dd")
+    if not all_rows:
+        return None
+    now = _get_kst_now()
+    return {
+        "collected_at": collected_at or now.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
+        "bas_dd": bas_dd or now.strftime("%Y%m%d"),
+        "rows": all_rows,
+    }
+
+
 def ensure_latest_snapshot() -> dict | None:
     """
-    최신 스냅샷 확보. 재수집 조건 만족 시 API 호출 후 저장하고 캐시 갱신.
-    아니면 파일 또는 캐시에서 반환. 반환: {"collected_at", "bas_dd", "rows"} 또는 None.
+    최신 스냅샷 확보. 재수집 조건 만족 시에만 API 호출(유가/코스닥/코넥스, 하루 전→이틀 전 순).
+    아니면 시장별 파일 로드·병합 후 반환. 반환: {"collected_at", "bas_dd", "rows"}.
     """
     global _snapshot_cache
-    path = _get_snapshot_path()
-    if _should_refresh_snapshot(path):
-        now = _get_kst_now()
-        bas_dd_today = now.strftime("%Y%m%d")
-        client = KrxClient()
-        rows = client.get_all_daily_data(bas_dd_today)
-        if not rows:
-            # API 실패 시 기존 파일 있으면 로드
-            snap = _load_snapshot_json(path)
-            if snap:
-                _snapshot_cache = snap
-            return snap
-        _save_snapshot_json(path, bas_dd_today, rows)
-        _snapshot_cache = {
-            "collected_at": now.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
-            "bas_dd": bas_dd_today,
-            "rows": rows,
-        }
-        return _snapshot_cache
-    if _snapshot_cache is not None:
-        return _snapshot_cache
-    snap = _load_snapshot_json(path)
-    if snap is not None:
-        _snapshot_cache = snap
-    return snap
+    # 재수집 조건: 시장별 파일 중 하나라도 없거나, bas_dd가 오늘과 다르고 08:30 KST 이상이면 API 호출
+    need_refresh = any(
+        _should_refresh_snapshot(_get_snapshot_path(m)) for m in MARKET_ORDER if _get_api_path(m)
+    )
+    if not need_refresh:
+        snap = _load_merged_snapshot()
+        if snap is not None:
+            _snapshot_cache = snap
+        return snap
+
+    now = _get_kst_now()
+    client = KrxClient()
+    all_rows = []
+    bas_dd_used = None
+    bas_dd_candidates = [
+        (now - timedelta(days=1)).strftime("%Y%m%d"),
+        (now - timedelta(days=2)).strftime("%Y%m%d"),
+    ]
+    for market in MARKET_ORDER:
+        if not _get_api_path(market):
+            continue
+        rows = None
+        market_bas_dd = None
+        for bas_dd in bas_dd_candidates:
+            rows = client.get_all_daily_data(bas_dd, market=market)
+            if rows:
+                market_bas_dd = bas_dd
+                break
+        if rows and market_bas_dd:
+            if bas_dd_used is None:
+                bas_dd_used = market_bas_dd
+            path = _get_snapshot_path(market)
+            _save_snapshot_json(path, market_bas_dd, rows)
+            all_rows.extend(rows)
+    if not all_rows:
+        snap = _load_merged_snapshot()
+        if snap is not None:
+            _snapshot_cache = snap
+        return snap
+    _snapshot_cache = {
+        "collected_at": now.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
+        "bas_dd": bas_dd_used or bas_dd_candidates[0],
+        "rows": all_rows,
+    }
+    return _snapshot_cache
 
 
 def get_snapshot_row_by_isu_cd(isu_cd: str) -> dict | None:

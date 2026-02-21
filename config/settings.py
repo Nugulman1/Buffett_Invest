@@ -139,11 +139,16 @@ ECOS_API_KEY = os.getenv('ECOS_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')
 KRX_API_KEY = os.getenv('KRX_API_KEY', '')
-# KRX 시가총액/일별 조회: 유가증권 일별매매정보(OPPUSES002_S2). .env에서 오버라이드 가능
-KRX_BASE_URL = os.getenv('KRX_BASE_URL', 'https://openapi.krx.co.kr')
-KRX_MARKET_CAP_PATH = os.getenv('KRX_MARKET_CAP_PATH', '/contents/OPP/USES/service/OPPUSES002_S2.cmd')
-# 당일 전체 종목 JSON 스냅샷 경로 (프로젝트 루트 기준)
+# KRX 시가총액/일별 조회. 반드시 https://data-dbg.krx.co.kr 사용 (유가/코스닥/코넥스 동일)
+KRX_BASE_URL = 'https://data-dbg.krx.co.kr'
+KRX_MARKET_CAP_PATH = os.getenv('KRX_MARKET_CAP_PATH', '/svc/apis/sto/stk_bydd_trd')
+# 코스닥/코넥스 일별매매정보 API path (동일 base URL·파라미터)
+KRX_KOSDAQ_MARKET_CAP_PATH = os.getenv('KRX_KOSDAQ_MARKET_CAP_PATH', '/svc/apis/sto/ksq_bydd_trd')
+KRX_KONEX_MARKET_CAP_PATH = os.getenv('KRX_KONEX_MARKET_CAP_PATH', '/svc/apis/sto/knx_bydd_trd')
+# 당일 전체 종목 JSON 스냅샷 경로 (프로젝트 루트 기준). 시장별 파일
 KRX_DAILY_SNAPSHOT_PATH = os.getenv('KRX_DAILY_SNAPSHOT_PATH', str(BASE_DIR / 'data' / 'krx_daily_snapshot.json'))
+KRX_DAILY_SNAPSHOT_KOSDAQ_PATH = os.getenv('KRX_DAILY_SNAPSHOT_KOSDAQ_PATH', str(BASE_DIR / 'data' / 'krx_daily_snapshot_kosdaq.json'))
+KRX_DAILY_SNAPSHOT_KONEX_PATH = os.getenv('KRX_DAILY_SNAPSHOT_KONEX_PATH', str(BASE_DIR / 'data' / 'krx_daily_snapshot_konex.json'))
 
 # 데이터 수집 설정 (환경변수 또는 기본값)
 DATA_COLLECTION = {
