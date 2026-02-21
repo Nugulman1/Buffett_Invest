@@ -30,45 +30,6 @@ def _refresh_second_filter_only(corp_code: str) -> None:
         pass
 
 
-def _refresh_krx_ev_ic_only(corp_code: str) -> None:
-    """
-    기업 조회 시 호출. KRX에서 시가총액 수집 후 EV/IC만 DB에 반영.
-    배당성향·2차 필터는 재무지표 계산기 저장 시에만 갱신됨.
-    """
-    from django.apps import apps as django_apps
-    from apps.service.calculator import IndicatorCalculator
-    from apps.service.krx_client import fetch_and_save_company_market_cap
-    from apps.models import YearlyFinancialDataObject
-
-    YearlyFinancialDataModel = django_apps.get_model("apps", "YearlyFinancialData")
-    yearly_list = list(
-        YearlyFinancialDataModel.objects.filter(company_id=corp_code).order_by("year")
-    )
-    if not yearly_list:
-        return
-    market_cap = fetch_and_save_company_market_cap(corp_code)
-    for yd in yearly_list:
-        obj = YearlyFinancialDataObject(yd.year)
-        obj.equity = yd.total_equity or 0
-        obj.interest_bearing_debt = yd.interest_bearing_debt or 0
-        obj.cash_and_cash_equivalents = getattr(yd, "cash_and_cash_equivalents", None) or 0
-        obj.noncontrolling_interest = getattr(yd, "noncontrolling_interest", None) or 0
-        ic = IndicatorCalculator.calculate_invested_capital(obj)
-        ev = (
-            IndicatorCalculator.calculate_ev(
-                market_cap,
-                obj.interest_bearing_debt,
-                obj.cash_and_cash_equivalents,
-                obj.noncontrolling_interest,
-            )
-            if market_cap is not None
-            else None
-        )
-        yd.invested_capital = ic
-        yd.ev = ev
-        yd.save(update_fields=["invested_capital", "ev"])
-
-
 @api_view(["GET"])
 def get_financial_data(request, corp_code):
     """
@@ -86,16 +47,6 @@ def get_financial_data(request, corp_code):
         corp_code = resolved
 
         company_data, company = load_company_from_db(corp_code)
-        if not company_data:
-            return Response(
-                {"error": "기업 데이터를 찾을 수 없습니다."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        # 기업 조회 시마다 KRX 실시간 수집 후 EV/IC만 갱신 (배당성향·2차 필터는 계산기 저장 시 반영)
-        _refresh_krx_ev_ic_only(corp_code)
-        if company:
-            company.refresh_from_db()
         if not company_data:
             return Response(
                 {"error": "기업 데이터를 찾을 수 없습니다."},

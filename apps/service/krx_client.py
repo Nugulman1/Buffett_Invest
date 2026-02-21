@@ -165,19 +165,20 @@ def _should_refresh_snapshot(path: Path) -> bool:
     """
     재수집 필요 여부.
     1. JSON 파일이 없으면 True.
-    2. 저장된 bas_dd가 오늘(한국날짜)과 다르고, 현재 시각이 08:30 KST 이상이면 True.
+    2. 저장된 bas_dd가 어제(한국날짜)보다 이전이고, 현재 시각이 08:30 KST 이상이면 True.
+    (어제 또는 오늘 데이터가 이미 있으면 재수집하지 않음.)
     """
     if not path.exists():
         return True
     now = _get_kst_now()
-    bas_dd_today = now.strftime("%Y%m%d")
+    bas_dd_yesterday = (now - timedelta(days=1)).strftime("%Y%m%d")
     try:
         with open(path, "r", encoding="utf-8") as f:
             obj = json.load(f)
     except (json.JSONDecodeError, OSError):
         return True
     stored_bas_dd = (obj.get("bas_dd") or "").strip()
-    if stored_bas_dd != bas_dd_today:
+    if stored_bas_dd < bas_dd_yesterday:
         # 08:30 이상일 때만 재수집 (조건 2)
         return now.hour > 8 or (now.hour == 8 and now.minute >= 30)
     return False
