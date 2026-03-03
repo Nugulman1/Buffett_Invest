@@ -53,6 +53,12 @@ def get_financial_data(request, corp_code):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # 기업 조회 시 KRX 재수집 조건 확인 및 시가총액 갱신 (ensure_latest_snapshot 호출)
+        from apps.service.krx_client import fetch_and_save_company_market_cap
+        fetch_and_save_company_market_cap(corp_code)
+        if company:
+            company.refresh_from_db()
+
         memo = company.memo if company else None
         memo_updated_at = (
             company.memo_updated_at.isoformat()

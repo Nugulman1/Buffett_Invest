@@ -165,23 +165,36 @@ def _should_refresh_snapshot(path: Path) -> bool:
     """
     재수집 필요 여부.
     1. JSON 파일이 없으면 True.
-    2. 저장된 bas_dd가 어제(한국날짜)보다 이전이고, 현재 시각이 08:30 KST 이상이면 True.
+    2. 저장된 bas_dd를 파싱할 수 없거나 형식이 잘못되면 True.
+    3. 저장된 bas_dd가 오늘보다 미래(시스템 날짜 오류 등)면 True.
+    4. 저장된 bas_dd가 어제(한국날짜)보다 이전이면 True.
     (어제 또는 오늘 데이터가 이미 있으면 재수집하지 않음.)
     """
-    if not path.exists():
-        return True
-    now = _get_kst_now()
-    bas_dd_yesterday = (now - timedelta(days=1)).strftime("%Y%m%d")
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            obj = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return True
-    stored_bas_dd = (obj.get("bas_dd") or "").strip()
-    if stored_bas_dd < bas_dd_yesterday:
-        # 08:30 이상일 때만 재수집 (조건 2)
-        return now.hour > 8 or (now.hour == 8 and now.minute >= 30)
+    # [잠시 비활성화] KRX 재수집 로직 - 복원 시 아래 주석 해제 후 return False 삭제
     return False
+    # ---
+    # if not path.exists():
+    #     return True
+    # now = _get_kst_now()
+    # today = now.date()
+    # yesterday = today - timedelta(days=1)
+    # try:
+    #     with open(path, "r", encoding="utf-8") as f:
+    #         obj = json.load(f)
+    # except (json.JSONDecodeError, OSError):
+    #     return True
+    # stored_bas_dd = (obj.get("bas_dd") or "").strip()
+    # if not stored_bas_dd or len(stored_bas_dd) != 8:
+    #     return True
+    # try:
+    #     stored_date = datetime.strptime(stored_bas_dd, "%Y%m%d").date()
+    # except ValueError:
+    #     return True
+    # if stored_date > today:
+    #     return True
+    # if stored_date < yesterday:
+    #     return True
+    # return False
 
 
 def _load_snapshot_json(path: Path) -> dict | None:
@@ -234,7 +247,6 @@ def ensure_latest_snapshot() -> dict | None:
     아니면 시장별 파일 로드·병합 후 반환. 반환: {"collected_at", "bas_dd", "rows"}.
     """
     global _snapshot_cache
-    # 재수집 조건: 시장별 파일 중 하나라도 없거나, bas_dd가 오늘과 다르고 08:30 KST 이상이면 API 호출
     need_refresh = any(
         _should_refresh_snapshot(_get_snapshot_path(m)) for m in MARKET_ORDER if _get_api_path(m)
     )
@@ -248,10 +260,8 @@ def ensure_latest_snapshot() -> dict | None:
     client = KrxClient()
     all_rows = []
     bas_dd_used = None
-    bas_dd_candidates = [
-        (now - timedelta(days=1)).strftime("%Y%m%d"),
-        (now - timedelta(days=2)).strftime("%Y%m%d"),
-    ]
+    # data-dbg가 최근일 빈 배열 반환 시 대비, 최대 14일 전까지 시도
+    bas_dd_candidates = [(now - timedelta(days=d)).strftime("%Y%m%d") for d in range(1, 15)]
     for market in MARKET_ORDER:
         if not _get_api_path(market):
             continue
