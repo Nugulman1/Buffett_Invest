@@ -1,0 +1,4 @@
+# 개발/테스트 의존성 (런타임 requirements.txt와 분리)
+-r requirements.txt
+pytest>=9,<10
+pytest-django>=4.12,<5

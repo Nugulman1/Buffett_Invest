@@ -19,6 +19,11 @@ def _get_calculator_equity_risk_premium():
     return settings.CALCULATOR_DEFAULTS['EQUITY_RISK_PREMIUM']
 
 
+def _get_wacc_equity_premium_buffer():
+    """설정의 WACC 자기자본비용 보수 가산(%p, 기본 0.5)"""
+    return settings.CALCULATOR_DEFAULTS.get('WACC_EQUITY_PREMIUM_BUFFER', 0.5)
+
+
 class IndicatorCalculator:
     """재무 지표 계산 서비스"""
 
@@ -98,30 +103,6 @@ class IndicatorCalculator:
         return fcf
     
     @staticmethod
-    def calculate_icr(yearly_data: YearlyFinancialDataObject) -> float:
-        """
-        ICR (Interest Coverage Ratio, 이자보상비율) 계산
-        
-        공식: 영업이익 / 금융비용
-        
-        주의: 이자비용 대신 금융비용을 사용합니다 (간소화 버전).
-        금융비용은 이자비용보다 넓은 개념이므로 실제 ICR보다 약간 낮게 나올 수 있습니다.
-        현재 사용하지 않습니다.
-        
-        Args:
-            yearly_data: YearlyFinancialDataObject 객체
-        
-        Returns:
-            ICR 값 (배수, float)
-        """
-        if yearly_data.finance_costs == 0:
-            logger.warning(f"ICR 계산 실패: 금융비용이 0입니다 (year: {yearly_data.year})")
-            return 0.0
-        
-        icr = yearly_data.operating_income / yearly_data.finance_costs
-        return icr
-    
-    @staticmethod
     def calculate_roic(yearly_data: YearlyFinancialDataObject, tax_rate: float = None) -> float:
         """
         ROIC (Return on Invested Capital, 투하자본수익률) 계산
@@ -179,11 +160,34 @@ class IndicatorCalculator:
         """
         EV (Enterprise Value, 기업가치) 계산.
 
-        공식: 시가총액 + 이자부채 - (기말현금및현금성자산 × 70%) + 비지배지분
-        현금은 보수적으로 70%만 차감.
+        공식: 시가총액 + 이자부채 - 기말현금및현금성자산 + 비지배지분
+        현금은 표준 정의대로 전액 차감 (ROIC/IC 분모와 동일하게 통일 — T5).
+        주: 운용현금/초과현금 구분(초과현금만 차감)은 후순위 정교화 과제.
         """
-        cash_70 = int(cash * 0.7)
-        return market_cap + interest_bearing_debt - cash_70 + noncontrolling_interest
+        return market_cap + interest_bearing_debt - cash + noncontrolling_interest
+
+    @staticmethod
+    def compute_ic_ev(
+        yearly_data: YearlyFinancialDataObject,
+        market_cap: int | None,
+    ) -> tuple[int, int | None]:
+        """
+        IC(투하자본)와 EV(기업가치)를 한 번에 계산. (ic, ev) 반환.
+
+        IC는 항상 계산. EV는 market_cap이 있을 때만 계산하고 없으면 None.
+        EV/IC를 계산하는 모든 경로(배치 자동수집 orchestrator, calculate_ev_ic 뷰)가
+        이 한 함수를 쓰도록 단일화(T7) — 입력(이자부채·현금·비지배지분) 정의를 한곳에서 보장.
+        """
+        ic = IndicatorCalculator.calculate_invested_capital(yearly_data)
+        ev = None
+        if market_cap is not None:
+            ev = IndicatorCalculator.calculate_ev(
+                market_cap,
+                yearly_data.interest_bearing_debt,
+                yearly_data.cash_and_cash_equivalents,
+                yearly_data.noncontrolling_interest,
+            )
+        return ic, ev
 
     @staticmethod
     def calculate_wacc(
@@ -231,8 +235,9 @@ class IndicatorCalculator:
             )
             return 0.0
         
-        # Re = 국채수익률 + 0.5%p(보수적 가산) + 주주기대수익률 (퍼센트를 소수점으로 변환)
-        cost_of_equity = (bond_yield + 0.5 + equity_risk_premium) / 100.0
+        # Re = 국채수익률 + 보수가산(%p) + 주주기대수익률 (퍼센트를 소수점으로 변환)
+        buffer = _get_wacc_equity_premium_buffer()
+        cost_of_equity = (bond_yield + buffer + equity_risk_premium) / 100.0
         
         # Rd = 이자비용 / 이자부채 (비율 형태)
         if interest_bearing_debt == 0:
@@ -252,31 +257,6 @@ class IndicatorCalculator:
         
         # 소수 형태로 반환
         return wacc
-    
-    @classmethod
-    def calculate_all_indicators(
-        cls,
-        company_data: CompanyFinancialObject,
-        tax_rate: float = None,
-        equity_risk_premium: float = None
-    ) -> None:
-        """
-        모든 계산 지표 채우기
-        
-        주의: FCF, ROIC, WACC 등에 필요한 추가 데이터(CFO, 유형/무형자산취득 등)는
-        현재 수집하지 않아 해당 연도는 계산 생략.
-        
-        Args:
-            company_data: CompanyFinancialObject 객체
-            tax_rate: 법인세율 소수 (기본값: settings.CALCULATOR_DEFAULTS)
-            equity_risk_premium: 주주기대수익률 % (기본값: settings.CALCULATOR_DEFAULTS)
-        """
-        if tax_rate is None:
-            tax_rate = _get_calculator_tax_rate_decimal()
-        if equity_risk_premium is None:
-            equity_risk_premium = _get_calculator_equity_risk_premium()
-        if not company_data.yearly_data:
-            return
     
     @staticmethod
     def calculate_operating_margin(yearly_data: YearlyFinancialDataObject) -> float | None:
@@ -304,24 +284,25 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_debt_ratio(yearly_data: YearlyFinancialDataObject) -> float | None:
         """
-        부채비율 계산 (총자본/부채총계)
+        부채비율 계산 (표준: 부채총계 / 자본총계)
 
-        공식: 자본총계 / 부채총계
-        부채총계가 0이거나 없으면 계산하지 않음 (None 반환).
+        공식: 부채총계 / 자본총계
+        값이 클수록 부채 의존도가 높음(위험). 자본총계가 0 이하(자본잠식)이거나
+        없으면 계산하지 않음 (None 반환). 부채총계 0(무차입)은 0.0으로 유효.
 
         Args:
             yearly_data: YearlyFinancialDataObject 객체
 
         Returns:
-            부채비율 (float). 데이터 없거나 부채총계 0이면 None
+            부채비율 (float). 부채총계 없거나 자본총계 0 이하면 None
         """
         total_equity = yearly_data.total_equity
         total_liabilities = getattr(yearly_data, 'total_liabilities', None)
-        if total_liabilities is None or total_liabilities <= 0:
+        if total_liabilities is None:
             return None
-        if total_equity is None:
+        if total_equity is None or total_equity <= 0:
             return None
-        return total_equity / total_liabilities
+        return total_liabilities / total_equity
 
     @staticmethod
     def calculate_basic_financial_ratios(company_data: CompanyFinancialObject) -> None:

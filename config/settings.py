@@ -77,6 +77,9 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
         'OPTIONS': {
             'timeout': 10,  # SQLite 잠금 대기(초). 짧게 두면 실패 후 save_company_to_db 재시도(0.5~2초 sleep)가 빨리 동작
+            # 동시 쓰기 내성(T9): WAL로 읽기/쓰기 동시성 확보, IMMEDIATE로 쓰기 잠금 조기 획득
+            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;',
+            'transaction_mode': 'IMMEDIATE',
         },
     }
 }
@@ -136,8 +139,6 @@ REST_FRAMEWORK = {
 # API Keys (from .env)
 DART_API_KEY = os.getenv('DART_API_KEY', '')
 ECOS_API_KEY = os.getenv('ECOS_API_KEY', '')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')
 KRX_API_KEY = os.getenv('KRX_API_KEY', '')
 # KRX 시가총액/일별 조회 (유가/코스닥/코넥스 동일)
 KRX_BASE_URL = os.getenv('KRX_BASE_URL', 'https://data-dbg.krx.co.kr')
@@ -170,10 +171,14 @@ DATA_COLLECTION = {
 CALCULATOR_DEFAULTS = {
     'TAX_RATE': int(os.getenv('CALCULATOR_TAX_RATE', '25')),  # 법인세율 (%)
     'EQUITY_RISK_PREMIUM': float(os.getenv('CALCULATOR_EQUITY_RISK_PREMIUM', '10.0')),  # 주주기대수익률 (%)
+    'WACC_EQUITY_PREMIUM_BUFFER': float(os.getenv('CALCULATOR_WACC_BUFFER', '0.5')),  # WACC 자기자본비용 보수 가산 (%p)
 }
 
 # 2차 필터: ROIC - WACC >= 이 값(소수, 0.02 = 2%)이면 통과
 SECOND_FILTER_ROIC_WACC_SPREAD = float(os.getenv('SECOND_FILTER_ROIC_WACC_SPREAD', '0.02'))
+
+# 채권수익률(국채 5년) 조회 실패 시 WACC/계산기 폴백값 (퍼센트). 매직넘버 3.5 일원화(T6).
+BOND_YIELD_FALLBACK_PCT = float(os.getenv('BOND_YIELD_FALLBACK_PCT', '3.5'))
 
 # 로깅: formatter, console handler, root logger 통일
 LOGGING = {

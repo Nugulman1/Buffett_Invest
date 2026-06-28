@@ -3,13 +3,12 @@
 
 Re-export for `from apps.companies import views` / `config.urls` usage.
 """
-from .pages import company_list, company_detail, calculator
+from .pages import company_list, company_detail
 from .api_misc import get_passed_companies, search_companies
 from .api_financial import (
     get_financial_data,
     get_calculator_data,
     save_memo,
-    parse_and_calculate,
     calculate_ev_ic,
     get_annual_report_link,
     get_market_cap,
@@ -29,13 +28,11 @@ from .api_favorites import (
 __all__ = [
     "company_list",
     "company_detail",
-    "calculator",
     "get_passed_companies",
     "search_companies",
     "get_financial_data",
     "get_calculator_data",
     "save_memo",
-    "parse_and_calculate",
     "calculate_ev_ic",
     "get_annual_report_link",
     "get_market_cap",

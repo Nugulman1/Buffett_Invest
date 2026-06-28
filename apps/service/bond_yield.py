@@ -15,6 +15,9 @@ def get_bond_yield_5y() -> float:
 
     Returns:
         국채 5년 수익률 (소수 형태, 예: 0.03057 = 3.057%)
+
+    단위 주의: 이 값은 '소수'다. calculator.calculate_wacc()는 '퍼센트' 입력을 기대하므로
+    WACC 계산 전 ×100 변환이 필요하다(orchestrator._fill_advanced에서 처리).
     """
     BondYieldModel = django_apps.get_model('apps', 'BondYield')
 

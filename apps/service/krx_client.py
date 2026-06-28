@@ -170,31 +170,32 @@ def _should_refresh_snapshot(path: Path) -> bool:
     4. 저장된 bas_dd가 어제(한국날짜)보다 이전이면 True.
     (어제 또는 오늘 데이터가 이미 있으면 재수집하지 않음.)
     """
-    # [잠시 비활성화] KRX 재수집 로직 - 복원 시 아래 주석 해제 후 return False 삭제
+    if not path.exists():
+        return True
+    now = _get_kst_now()
+    today = now.date()
+    yesterday = today - timedelta(days=1)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return True
+    stored_bas_dd = (obj.get("bas_dd") or "").strip()
+    if not stored_bas_dd or len(stored_bas_dd) != 8:
+        return True
+    try:
+        stored_date = datetime.strptime(stored_bas_dd, "%Y%m%d").date()
+    except ValueError:
+        return True
+    if stored_date > today:
+        return True
+    if stored_date < yesterday:
+        logger.warning(
+            "KRX 스냅샷이 오래됨 (저장 bas_dd=%s < 어제=%s) → 재수집 시도",
+            stored_bas_dd, yesterday.strftime("%Y%m%d"),
+        )
+        return True
     return False
-    # ---
-    # if not path.exists():
-    #     return True
-    # now = _get_kst_now()
-    # today = now.date()
-    # yesterday = today - timedelta(days=1)
-    # try:
-    #     with open(path, "r", encoding="utf-8") as f:
-    #         obj = json.load(f)
-    # except (json.JSONDecodeError, OSError):
-    #     return True
-    # stored_bas_dd = (obj.get("bas_dd") or "").strip()
-    # if not stored_bas_dd or len(stored_bas_dd) != 8:
-    #     return True
-    # try:
-    #     stored_date = datetime.strptime(stored_bas_dd, "%Y%m%d").date()
-    # except ValueError:
-    #     return True
-    # if stored_date > today:
-    #     return True
-    # if stored_date < yesterday:
-    #     return True
-    # return False
 
 
 def _load_snapshot_json(path: Path) -> dict | None:
@@ -361,10 +362,14 @@ def fetch_and_save_company_market_cap(corp_code: str) -> int | None:
         except (TypeError, ValueError):
             pass
 
+    # 쓰기 락+재시도로 동시성 보호(T9): 배치 수집 중 시총 갱신이 겹쳐도 'database is locked' 회피
+    from apps.service.db import run_with_write_lock_retry
     try:
-        CompanyModel.objects.filter(corp_code=corp_code).update(
-            market_cap=market_cap,
-            market_cap_updated_at=now,
+        run_with_write_lock_retry(
+            lambda: CompanyModel.objects.filter(corp_code=corp_code).update(
+                market_cap=market_cap,
+                market_cap_updated_at=now,
+            )
         )
     except Exception as e:
         logger.warning("Company 시가총액 갱신 실패 corp_code=%s: %s", corp_code, e)

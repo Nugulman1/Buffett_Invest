@@ -27,24 +27,3 @@ def company_detail(request, corp_code):
         return HttpResponseNotFound(err)
     corp_code = resolved
     return render(request, "companies/detail.html", {"corp_code": corp_code})
-
-
-def calculator(request):
-    """
-    재무 지표 계산기 페이지
-    GET /companies/calculator/?corp_code=XXXXX (기업 상세에서만 진입)
-    """
-    from django.conf import settings
-    from apps.service.bond_yield import get_bond_yield_5y
-
-    bond_yield_5y = get_bond_yield_5y()
-    bond_yield_default = round(bond_yield_5y * 100, 2) if bond_yield_5y else 3.5
-
-    return render(
-        request,
-        "companies/calculator.html",
-        {
-            "calculator_defaults": settings.CALCULATOR_DEFAULTS,
-            "bond_yield_default": bond_yield_default,
-        },
-    )

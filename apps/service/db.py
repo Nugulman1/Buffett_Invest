@@ -182,6 +182,23 @@ def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None,
 db_write_lock = threading.Lock()
 
 
+def run_with_write_lock_retry(fn, *, max_retries: int = 5):
+    """
+    db_write_lock으로 직렬화 + SQLite 'database is locked' 시 지수백오프 재시도하며 fn() 실행.
+
+    모든 쓰기 경로(배치 수집·뷰 저장·KRX 시총 갱신)가 이 한 헬퍼로 동시성 보호를 일원화(T9).
+    fn은 보통 transaction.atomic() 블록을 감싼 무인자 콜러블. 재시도 대비 멱등이어야 함.
+    """
+    for attempt in range(max_retries):
+        try:
+            with db_write_lock:
+                return fn()
+        except OperationalError as e:
+            if "locked" not in str(e).lower() or attempt >= max_retries - 1:
+                raise
+            time.sleep(0.5 * (attempt + 1))
+
+
 def save_company_to_db(company_data: CompanyFinancialObject) -> None:
     """
     CompanyFinancialObject를 Django 모델로 변환하여 DB에 저장
@@ -197,62 +214,271 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
     YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
     now = timezone.now()
 
-    max_retries = 5
-    for attempt in range(max_retries):
-        try:
-            with db_write_lock:
-                with transaction.atomic():
-                    company, created = CompanyModel.objects.update_or_create(
-                        corp_code=company_data.corp_code,
-                        defaults={
-                            'company_name': company_data.company_name,
-                            'last_collected_at': now,
-                            'passed_all_filters': company_data.passed_all_filters,
-                            'filter_operating_income': company_data.filter_operating_income,
-                            'filter_net_income': company_data.filter_net_income,
-                            'filter_revenue_cagr': company_data.filter_revenue_cagr,
-                            'filter_operating_margin': company_data.filter_operating_margin,
-                            'filter_roe': company_data.filter_roe,
-                            'latest_annual_rcept_no': getattr(company_data, 'latest_annual_rcept_no', None),
-                            'latest_annual_report_year': getattr(company_data, 'latest_annual_report_year', None),
-                        }
-                    )
+    def _do():
+        with transaction.atomic():
+            company, created = CompanyModel.objects.update_or_create(
+                corp_code=company_data.corp_code,
+                defaults={
+                    'company_name': company_data.company_name,
+                    'last_collected_at': now,
+                    'passed_all_filters': company_data.passed_all_filters,
+                    'filter_operating_income': company_data.filter_operating_income,
+                    'filter_net_income': company_data.filter_net_income,
+                    'filter_revenue_cagr': company_data.filter_revenue_cagr,
+                    'filter_operating_margin': company_data.filter_operating_margin,
+                    'filter_roe': company_data.filter_roe,
+                    'latest_annual_rcept_no': getattr(company_data, 'latest_annual_rcept_no', None),
+                    'latest_annual_report_year': getattr(company_data, 'latest_annual_report_year', None),
+                }
+            )
 
-                    for yearly_data in company_data.yearly_data:
-                        YearlyFinancialDataModel.objects.update_or_create(
-                            company=company,
-                            year=yearly_data.year,
-                            defaults={
-                                'revenue': yearly_data.revenue,
-                                'operating_income': yearly_data.operating_income,
-                                'net_income': yearly_data.net_income,
-                                'total_assets': yearly_data.total_assets,
-                                'total_equity': yearly_data.total_equity,
-                                'operating_margin': yearly_data.operating_margin,
-                                'roe': yearly_data.roe,
-                                'debt_ratio': getattr(yearly_data, 'debt_ratio', None),
-                                'interest_bearing_debt': yearly_data.interest_bearing_debt or 0,
-                                'interest_expense': getattr(yearly_data, 'interest_expense', None),
-                                'cash_and_cash_equivalents': getattr(yearly_data, 'cash_and_cash_equivalents', None),
-                                'noncontrolling_interest': getattr(yearly_data, 'noncontrolling_interest', None),
-                                'current_assets': getattr(yearly_data, 'current_assets', None),
-                                'noncurrent_assets': getattr(yearly_data, 'noncurrent_assets', None),
-                                'current_liabilities': getattr(yearly_data, 'current_liabilities', None),
-                                'noncurrent_liabilities': getattr(yearly_data, 'noncurrent_liabilities', None),
-                                'total_liabilities': getattr(yearly_data, 'total_liabilities', None),
-                                'capital_stock': getattr(yearly_data, 'capital_stock', None),
-                                'retained_earnings': getattr(yearly_data, 'retained_earnings', None),
-                                'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
-                                'dividend_paid': getattr(yearly_data, 'dividend_paid', None),
-                                'ev': getattr(yearly_data, 'ev', None),
-                                'invested_capital': getattr(yearly_data, 'invested_capital', None),
-                                'selling_admin_expense_ratio': getattr(yearly_data, 'selling_admin_expense_ratio', None),
-                            }
-                        )
+            for yearly_data in company_data.yearly_data:
+                YearlyFinancialDataModel.objects.update_or_create(
+                    company=company,
+                    year=yearly_data.year,
+                    defaults={
+                        'revenue': yearly_data.revenue,
+                        'operating_income': yearly_data.operating_income,
+                        'net_income': yearly_data.net_income,
+                        'total_assets': yearly_data.total_assets,
+                        'total_equity': yearly_data.total_equity,
+                        'operating_margin': yearly_data.operating_margin,
+                        'roe': yearly_data.roe,
+                        'debt_ratio': getattr(yearly_data, 'debt_ratio', None),
+                        'interest_bearing_debt': yearly_data.interest_bearing_debt or 0,
+                        'interest_expense': getattr(yearly_data, 'interest_expense', None),
+                        'cash_and_cash_equivalents': getattr(yearly_data, 'cash_and_cash_equivalents', None),
+                        'noncontrolling_interest': getattr(yearly_data, 'noncontrolling_interest', None),
+                        'current_assets': getattr(yearly_data, 'current_assets', None),
+                        'noncurrent_assets': getattr(yearly_data, 'noncurrent_assets', None),
+                        'current_liabilities': getattr(yearly_data, 'current_liabilities', None),
+                        'noncurrent_liabilities': getattr(yearly_data, 'noncurrent_liabilities', None),
+                        'total_liabilities': getattr(yearly_data, 'total_liabilities', None),
+                        'capital_stock': getattr(yearly_data, 'capital_stock', None),
+                        'retained_earnings': getattr(yearly_data, 'retained_earnings', None),
+                        'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
+                        'dividend_paid': getattr(yearly_data, 'dividend_paid', None),
+                        'ev': getattr(yearly_data, 'ev', None),
+                        'invested_capital': getattr(yearly_data, 'invested_capital', None),
+                        'selling_admin_expense_ratio': getattr(yearly_data, 'selling_admin_expense_ratio', None),
+                        # ROIC/WACC/FCF/배당성향: 배치 자동계산(T3) 결과 영속화. 미계산 연도는 None.
+                        'roic': getattr(yearly_data, 'roic', None),
+                        'wacc': getattr(yearly_data, 'wacc', None),
+                        'fcf': getattr(yearly_data, 'fcf', None),
+                        'dividend_payout_ratio': getattr(yearly_data, 'dividend_payout_ratio', None),
+                    }
+                )
+            # yearly_indicators는 함수 내 임시 데이터(ROE 등 채움용). DB에 저장하지 않음.
 
-                    # yearly_indicators는 함수 내 임시 데이터(ROE 등 채움용). DB에 저장하지 않음.
-            return
-        except OperationalError as e:
-            if "locked" not in str(e).lower() or attempt >= max_retries - 1:
-                raise
-            time.sleep(0.5 * (attempt + 1))
+    run_with_write_lock_retry(_do)
+
+
+def update_second_filter_result(corp_code: str) -> None:
+    """
+    DB의 최근 3년 ROIC/WACC로 2차 필터 재계산 → Company.passed_second_filter 반영.
+
+    배치 자동수집(T3)에서 ROIC/WACC 저장 후 호출. 쓰기 락+재시도로 보호.
+    """
+    from apps.service.filter import CompanyFilter
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    passed = CompanyFilter.check_second_filter(corp_code)
+
+    def _do():
+        with transaction.atomic():
+            CompanyModel.objects.filter(corp_code=corp_code).update(
+                passed_second_filter=passed
+            )
+
+    run_with_write_lock_retry(_do)
+
+
+# ──────────────────────────────────────────────────────────────────
+# 뷰 레이어 계약(T10): companies 뷰는 .objects를 직접 쓰지 않고 아래 함수만 호출.
+# 쓰기는 run_with_write_lock_retry로 동시성 보호(T9).
+# ──────────────────────────────────────────────────────────────────
+
+def upsert_company_memo(corp_code: str, memo: str) -> dict:
+    """기업 메모 upsert. {"corp_code", "memo", "memo_updated_at"(iso|None), "created"} 반환."""
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    now = timezone.now()
+
+    def _do():
+        return CompanyModel.objects.update_or_create(
+            corp_code=corp_code,
+            defaults={"memo": memo, "memo_updated_at": now if memo else None},
+        )
+
+    company, created = run_with_write_lock_retry(_do)
+    return {
+        "corp_code": company.corp_code,
+        "memo": company.memo,
+        "memo_updated_at": company.memo_updated_at.isoformat() if company.memo_updated_at else None,
+        "created": created,
+    }
+
+
+def get_calculator_year_data(corp_code: str, year: int) -> tuple[dict | None, str | None]:
+    """계산기용 단일 연도 데이터 조회. (data, error). data는 total_equity/operating_income."""
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+    try:
+        company = CompanyModel.objects.get(corp_code=corp_code)
+    except CompanyModel.DoesNotExist:
+        return None, f"기업코드 {corp_code}에 해당하는 데이터를 찾을 수 없습니다."
+    try:
+        yd = YearlyFinancialDataModel.objects.get(company=company, year=year)
+    except YearlyFinancialDataModel.DoesNotExist:
+        return None, f"{year}년 데이터를 찾을 수 없습니다."
+    return {"total_equity": yd.total_equity or 0, "operating_income": yd.operating_income or 0}, None
+
+
+def get_company_market_cap(corp_code: str) -> int | None:
+    """Company.market_cap 단순 조회(없거나 기업 없으면 None)."""
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    try:
+        return getattr(CompanyModel.objects.get(corp_code=corp_code), "market_cap", None)
+    except CompanyModel.DoesNotExist:
+        return None
+
+
+def get_company_market_cap_info(corp_code: str) -> dict | None:
+    """시총 조회 뷰용. 기업 없으면 None, 있으면 {"market_cap", "market_cap_updated_at"(iso|None)}."""
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    try:
+        company = CompanyModel.objects.get(corp_code=corp_code)
+    except CompanyModel.DoesNotExist:
+        return None
+    updated = getattr(company, "market_cap_updated_at", None)
+    return {
+        "market_cap": getattr(company, "market_cap", None),
+        "market_cap_updated_at": updated.isoformat() if updated else None,
+    }
+
+
+def get_annual_report_info(corp_code: str) -> dict | None:
+    """사업보고서 링크 뷰용. 기업 없으면 None, 있으면 {"rcept_no", "year"}(rcept_no None 가능)."""
+    CompanyModel = django_apps.get_model('apps', 'Company')
+    try:
+        company = CompanyModel.objects.get(corp_code=corp_code)
+    except CompanyModel.DoesNotExist:
+        return None
+    return {
+        "rcept_no": company.latest_annual_rcept_no,
+        "year": company.latest_annual_report_year,
+    }
+
+
+def recompute_and_save_ev_ic(corp_code: str, market_cap: int | None,
+                             target_year: int | None = None) -> list[dict] | None:
+    """
+    연도별 EV/IC 재계산 후 저장. 연간 데이터 없으면 None.
+
+    계산은 IndicatorCalculator.compute_ic_ev로 단일화(T7). 저장은 한 트랜잭션 +
+    쓰기 락/재시도(T9). 계산(읽기)은 락 밖, 쓰기만 _do로 감싸 재시도 멱등 보장.
+    """
+    from apps.service.calculator import IndicatorCalculator
+    from apps.models import YearlyFinancialDataObject
+
+    YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+    yearly_list = list(
+        YearlyFinancialDataModel.objects.filter(company_id=corp_code).order_by("year")
+    )
+    if not yearly_list:
+        return None
+    if target_year is not None:
+        yearly_list = [yd for yd in yearly_list if yd.year == target_year]
+
+    to_save = []
+    results = []
+    for yd in yearly_list:
+        obj = YearlyFinancialDataObject(yd.year)
+        obj.equity = yd.total_equity or 0
+        obj.interest_bearing_debt = yd.interest_bearing_debt or 0
+        obj.cash_and_cash_equivalents = getattr(yd, "cash_and_cash_equivalents", None) or 0
+        obj.noncontrolling_interest = getattr(yd, "noncontrolling_interest", None) or 0
+
+        ic, ev = IndicatorCalculator.compute_ic_ev(obj, market_cap)
+        yd.invested_capital = ic
+        yd.ev = ev
+        to_save.append(yd)
+
+        ev_over_ic = (ev / ic) if (ev is not None and ic and ic != 0) else None
+        results.append({
+            "year": yd.year,
+            "ev": ev,
+            "invested_capital": ic,
+            "roic": yd.roic,
+            "wacc": yd.wacc,
+            "ev_over_ic": ev_over_ic,
+        })
+
+    def _do():
+        with transaction.atomic():
+            for yd in to_save:
+                yd.save(update_fields=["invested_capital", "ev"])
+
+    run_with_write_lock_retry(_do)
+    return results
+
+
+def query_passed_companies(page: int, page_size: int) -> dict:
+    """
+    1차 필터 통과(2차 미통과만 제외) 기업 목록 페이지네이션.
+    {"companies": [{corp_code, company_name}], "total", "page", "page_size",
+     "total_pages", "last_updated"(iso|None)} 반환. 종목코드 보강은 뷰에서.
+    """
+    import math
+    from django.db.models import Max
+
+    CompanyModel = django_apps.get_model("apps", "Company")
+    qs = CompanyModel.objects.filter(passed_all_filters=True).exclude(
+        passed_second_filter=False
+    ).order_by("company_name")
+
+    total = qs.count()
+    total_pages = math.ceil(total / page_size) if total > 0 else 0
+    if page > total_pages and total_pages > 0:
+        page = total_pages
+
+    start_idx = (page - 1) * page_size
+    page_queryset = qs[start_idx:start_idx + page_size]
+    companies = [
+        {"corp_code": c.corp_code, "company_name": c.company_name or ""}
+        for c in page_queryset
+    ]
+
+    last_updated = None
+    if total > 0:
+        agg = qs.aggregate(Max("updated_at"))
+        if agg.get("updated_at__max"):
+            last_updated = agg["updated_at__max"].isoformat()
+
+    return {
+        "companies": companies,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "last_updated": last_updated,
+    }
+
+
+def search_companies_in_db(query: str, limit: int) -> list[dict]:
+    """기업명 부분일치 + 종목코드(6)/기업번호(8) 정확일치 검색. [{corp_code, company_name}]."""
+    from django.db.models import Q
+    from apps.service.corp_code import resolve_corp_code
+
+    CompanyModel = django_apps.get_model("apps", "Company")
+    q_filter = Q(company_name__icontains=query)
+    if query.isdigit():
+        if len(query) == 8:
+            q_filter |= Q(corp_code=query)
+        elif len(query) == 6:
+            resolved, _ = resolve_corp_code(query)
+            if resolved:
+                q_filter |= Q(corp_code=resolved)
+
+    return [
+        {"corp_code": c.corp_code, "company_name": c.company_name or ""}
+        for c in CompanyModel.objects.filter(q_filter)[:limit]
+    ]

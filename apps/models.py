@@ -87,7 +87,7 @@ class YearlyFinancialData(models.Model):
     operating_margin = models.FloatField(default=0.0, null=True, blank=True, verbose_name='영업이익률')
     selling_admin_expense_ratio = models.FloatField(null=True, blank=True, verbose_name='판관비율')
     roe = models.FloatField(default=0.0, null=True, blank=True, verbose_name='ROE')
-    debt_ratio = models.FloatField(null=True, blank=True, verbose_name='부채비율')  # 자본총계/부채총계
+    debt_ratio = models.FloatField(null=True, blank=True, verbose_name='부채비율')  # 부채총계/자본총계(표준)
     interest_bearing_debt = models.BigIntegerField(default=0, null=True, blank=True, verbose_name='이자부채')
     interest_expense = models.BigIntegerField(null=True, blank=True, verbose_name='이자비용')
     cash_and_cash_equivalents = models.BigIntegerField(null=True, blank=True, verbose_name='현금및현금성자산')
@@ -311,7 +311,7 @@ class YearlyFinancialDataObject:
         self.operating_margin: float | None = 0.0  # 영업이익률 (%) - 계산 방식 (영업이익/매출액)
         self.selling_admin_expense_ratio: float | None = None  # 판관비율 (DART fnlttCmpnyIndx)
         self.roe: float | None = 0.0  # ROE (%) - 계산 방식 (당기순이익/자본총계)
-        self.debt_ratio: float | None = None  # 부채비율 - 자본총계/부채총계
+        self.debt_ratio: float | None = None  # 부채비율 - 부채총계/자본총계(표준)
 
         # === 다중회사 주요계정 확장 ===
         self.current_assets: int | None = None  # 유동자산
@@ -327,19 +327,15 @@ class YearlyFinancialDataObject:
         self.tangible_asset_acquisition: int = 0  # 유형자산 취득
         self.intangible_asset_acquisition: int = 0  # 무형자산 취득
         self.cfo: int = 0  # 영업활동현금흐름
-        self.equity: int = 0  # 자기자본
         self.cash_and_cash_equivalents: int = 0  # 현금및현금성자산
         self.interest_bearing_debt: int = 0  # 이자부채 (통합)
         self.interest_expense: int = 0  # 이자비용 (WACC 계산에 사용)
-        self.noncontrolling_interest: int = 0  # 비지배지분 (LLM 추출)
-        self.dividend_paid: int | None = None  # 배당금 지급 (LLM 추출)
+        self.noncontrolling_interest: int = 0  # 비지배지분 (DART 추출)
+        self.dividend_paid: int | None = None  # 배당금 지급 (DART 추출)
         self.dividend_payout_ratio: float | None = None  # 배당성향 (배당금/FCF, 기업 조회 시 계산)
-        self.beta: float = 1.0  # 베타 (고정)
-        self.mrp: float = 5.0  # MRP (고정)
-        
+
         # 계산된 지표
         self.fcf: int = 0  # 자유현금흐름
-        self.icr: float = 0.0  # 이자보상비율 (ratio)
         self.roic: float = 0.0  # 투하자본수익률 (%)
         self.wacc: float = 0.0  # 가중평균자본비용 (%)
         self.ev: int | None = None  # 기업가치 (EV)
@@ -348,6 +344,17 @@ class YearlyFinancialDataObject:
         # 사업보고서 접수번호 (fnlttSinglAcnt raw_data 기준, DB 미저장)
         # fill_basic_indicators 정렬 후 가장 최근 연도 것만 Company에 저장
         self.rcept_no: str | None = None
+
+    @property
+    def equity(self) -> int:
+        """자기자본 = 자본총계(total_equity). 별도 필드였으나 항상 동일 → 통합(T8).
+        DB 로드 객체도 total_equity만 채우면 ROIC/IC/WACC가 0이 되지 않는다."""
+        return self.total_equity or 0
+
+    @equity.setter
+    def equity(self, value):
+        self.total_equity = value
+
 
 class CompanyFinancialObject:
     """회사 재무제표 데이터 객체"""

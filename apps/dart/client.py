@@ -341,10 +341,46 @@ class DartClient:
             'industry_code': company_info.get('induty_code', '')  # induty_code를 industry_code로 매핑
         }
     
+    def get_financial_statement_all(self, corp_code, bsns_year, reprt_code='11011', fs_div='CFS'):
+        """
+        전체 재무제표 조회 (fnlttSinglAcntAll.json)
+
+        주요계정(fnlttSinglAcnt)과 달리 BS/IS/CIS/CF/SCE 전 계정을 account_id(IFRS 표준
+        택소노미)와 함께 반환한다. ROIC/WACC 입력(이자부채·이자비용·CFO·CAPEX·현금·
+        비지배지분)을 LLM 없이 계정 단위로 추출하기 위해 사용한다.
+
+        한 응답에 thstrm_amount(=bsns_year), frmtrm_amount(=bsns_year-1),
+        bfefrmtrm_amount(=bsns_year-2) 3개년이 들어온다.
+
+        Args:
+            corp_code: 기업 고유번호 (8자리)
+            bsns_year: 사업연도 (예: '2023')
+            reprt_code: 보고서 코드 ('11011': 사업보고서)
+            fs_div: 재무제표 구분 ('CFS': 연결, 'OFS': 별도)
+
+        Returns:
+            계정 행 리스트 (각 행: sj_div, account_id, account_nm, thstrm/frmtrm/bfefrmtrm_amount 등).
+            실패/데이터없음 시 빈 리스트.
+        """
+        params = {
+            'corp_code': corp_code,
+            'bsns_year': bsns_year,
+            'reprt_code': reprt_code,
+            'fs_div': fs_div,
+        }
+        result = self._make_request("fnlttSinglAcntAll.json", params=params)
+        if isinstance(result, dict) and result.get('status') != '000':
+            message = result.get('message', '알 수 없는 오류')
+            if '조회된 데이타가 없습니다' in message or '데이터가 없습니다' in message:
+                return []
+            raise Exception(f"전체 재무제표 조회 실패: {message}")
+        financial_list = result.get('list', [])
+        return financial_list if isinstance(financial_list, list) else []
+
     def get_financial_statement(self, corp_code, bsns_year, reprt_code='11011', fs_div='CFS'):
         """
         재무제표 조회 (원시 금액 데이터)
-        
+
         재무제표의 계정별 금액 데이터를 조회합니다.
         - API: fnlttSinglAcnt.json
         - 데이터 형태: 계정명(account_nm)과 금액(thstrm_amount) - 원 단위
