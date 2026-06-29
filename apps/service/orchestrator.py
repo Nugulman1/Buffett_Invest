@@ -30,6 +30,63 @@ class DataOrchestrator:
         self.dart_service = DartDataService()
         self.ecos_service = EcosDataService()
         self.dart_client = DartClient()
+        self._krx_index = None  # 종목코드->시총 인덱스(배치당 1회 로드, 시총 eager 수집용)
+
+    def _ensure_krx_index(self) -> dict:
+        """
+        KRX 스냅샷을 배치당 1회만 로드해 종목코드(ISU_CD)->시가총액(int) 인덱스로 캐싱.
+
+        회사마다 ensure_latest_snapshot()을 부르면 시장별 대용량 JSON(코스닥 수십MB)을
+        매번 재병합하므로, 반드시 1회 인덱싱 후 O(1) 조회한다. 실패 시 빈 dict.
+        """
+        if self._krx_index is not None:
+            return self._krx_index
+        index = {}
+        try:
+            from apps.service.krx_client import ensure_latest_snapshot
+            snap = ensure_latest_snapshot()
+            for row in (snap.get("rows") if snap else None) or []:
+                isu = (row.get("ISU_CD") or "").strip()
+                mk = row.get("MKTCAP")
+                if not isu or not mk:
+                    continue
+                try:
+                    index[isu] = int(str(mk).replace(",", ""))
+                except (TypeError, ValueError):
+                    continue
+        except Exception as e:
+            logger.warning("KRX 스냅샷 로드 실패(시총 수집 생략): %s", e)
+        self._krx_index = index
+        return index
+
+    def _fill_market_cap_and_ev(self, corp_code: str) -> None:
+        """
+        수집 시점에 KRX 시가총액을 Company에 저장하고 EV/IC를 계산·저장(eager).
+
+        기존엔 기업 상세 조회 시 lazy 호출이었으나 수집 단계로 이동. 스냅샷에 종목이
+        없으면 조용히 생략(시총 실패가 회사 수집 실패가 되면 안 됨). EV/IC는 저장된
+        연간 데이터를 읽어 계산하는 기존 함수(recompute_and_save_ev_ic)로 단일화(T7).
+        """
+        from apps.service.corp_code import get_stock_code_by_corp_code
+        from apps.service.db import recompute_and_save_ev_ic, run_with_write_lock_retry
+        from django.utils import timezone
+        from django.apps import apps as django_apps
+
+        stock_code = get_stock_code_by_corp_code(corp_code)
+        if not stock_code:
+            return
+        market_cap = self._ensure_krx_index().get(stock_code)
+        if market_cap is None:
+            return
+        CompanyModel = django_apps.get_model('apps', 'Company')
+        now = timezone.now()
+        run_with_write_lock_retry(
+            lambda: CompanyModel.objects.filter(corp_code=corp_code).update(
+                market_cap=market_cap,
+                market_cap_updated_at=now,
+            )
+        )
+        recompute_and_save_ev_ic(corp_code, market_cap)
 
     @staticmethod
     def _fill_roe_from_indicators(company_data: CompanyFinancialObject) -> None:
@@ -215,6 +272,13 @@ class DataOrchestrator:
                 logger.warning("DB 저장 실패 %s: %s", corp_code, e)
                 if raise_on_save_error:
                     raise
+            else:
+                # 시총·EV를 수집 시점에 eager 저장(기존 상세조회 lazy 경로 대체).
+                # 보조 단계라 실패해도 회사 수집 자체는 성공으로 둔다.
+                try:
+                    self._fill_market_cap_and_ev(corp_code)
+                except Exception as e:
+                    logger.warning("시총/EV 수집 실패 %s: %s", corp_code, e)
 
     def collect_company_data(self, corp_code: str, save_to_db: bool = True) -> CompanyFinancialObject:
         """
