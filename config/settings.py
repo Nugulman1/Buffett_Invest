@@ -170,7 +170,7 @@ DATA_COLLECTION = {
 # 재무 지표 계산기 기본값 (환경변수로 오버라이드 가능)
 CALCULATOR_DEFAULTS = {
     'TAX_RATE': int(os.getenv('CALCULATOR_TAX_RATE', '25')),  # 법인세율 (%)
-    'EQUITY_RISK_PREMIUM': float(os.getenv('CALCULATOR_EQUITY_RISK_PREMIUM', '10.0')),  # 주주기대수익률 (%)
+    'EQUITY_RISK_PREMIUM': float(os.getenv('CALCULATOR_EQUITY_RISK_PREMIUM', '7.0')),  # 주주기대수익률 (%). 한국 통상 6~8%(Damodaran·실무). 단 calculate_wacc가 buffer 0.5%p를 별도 가산하므로 실효 주식프리미엄은 7.5%.
     'WACC_EQUITY_PREMIUM_BUFFER': float(os.getenv('CALCULATOR_WACC_BUFFER', '0.5')),  # WACC 자기자본비용 보수 가산 (%p)
 }
 
