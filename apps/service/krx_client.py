@@ -378,7 +378,11 @@ def fetch_and_save_company_market_cap(corp_code: str) -> int | None:
 
 
 def _build_mktcap_index(snap: dict) -> dict:
-    """스냅샷 rows를 종목코드(ISU_CD)->시가총액(int) 인덱스로. 빈 값/파싱실패 제외."""
+    """스냅샷 rows를 종목코드(ISU_CD)->시가총액(int) 인덱스로. 빈 값/파싱실패/0이하 제외.
+
+    MKTCAP가 0 이하인 행(거래정지·관리종목 등)은 제외한다. 통과시키면 market_cap=0이
+    저장돼 EV(=시총+이자부채-현금-비지배지분)가 음수/왜곡값으로 산출되기 때문.
+    """
     index = {}
     for row in (snap.get("rows") if snap else None) or []:
         isu = (row.get("ISU_CD") or "").strip()
@@ -386,9 +390,12 @@ def _build_mktcap_index(snap: dict) -> dict:
         if not isu or not mk:
             continue
         try:
-            index[isu] = int(str(mk).replace(",", ""))
+            mk_int = int(str(mk).replace(",", ""))
         except (TypeError, ValueError):
             continue
+        if mk_int <= 0:
+            continue
+        index[isu] = mk_int
     return index
 
 

@@ -170,14 +170,19 @@ class IndicatorCalculator:
     def compute_ic_ev(
         yearly_data: YearlyFinancialDataObject,
         market_cap: int | None,
-    ) -> tuple[int, int | None]:
+    ) -> tuple[int | None, int | None]:
         """
         IC(투하자본)와 EV(기업가치)를 한 번에 계산. (ic, ev) 반환.
 
-        IC는 항상 계산. EV는 market_cap이 있을 때만 계산하고 없으면 None.
+        이자부채0/None = 미포착 의심(셀트리온형: 차입금을 '금융부채' 등으로 뭉뚱그려 못 잡았거나
+        진짜 무차입) → IC/EV가 왜곡되므로 둘 다 None. 수집 경로(_fill_advanced_indicators)와
+        재계산 저장 경로(recompute_and_save_ev_ic)가 같은 정책을 갖도록 이 단일 진실원에 가드를 둔다.
+        그 외엔 IC는 항상 계산, EV는 market_cap이 있을 때만 계산하고 없으면 None.
         EV/IC를 계산하는 모든 경로(배치 자동수집 orchestrator, calculate_ev_ic 뷰)가
         이 한 함수를 쓰도록 단일화(T7) — 입력(이자부채·현금·비지배지분) 정의를 한곳에서 보장.
         """
+        if not yearly_data.interest_bearing_debt:
+            return None, None
         ic = IndicatorCalculator.calculate_invested_capital(yearly_data)
         ev = None
         if market_cap is not None:

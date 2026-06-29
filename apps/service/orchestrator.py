@@ -43,17 +43,9 @@ class DataOrchestrator:
             return self._krx_index
         index = {}
         try:
-            from apps.service.krx_client import ensure_latest_snapshot
-            snap = ensure_latest_snapshot()
-            for row in (snap.get("rows") if snap else None) or []:
-                isu = (row.get("ISU_CD") or "").strip()
-                mk = row.get("MKTCAP")
-                if not isu or not mk:
-                    continue
-                try:
-                    index[isu] = int(str(mk).replace(",", ""))
-                except (TypeError, ValueError):
-                    continue
+            from apps.service.krx_client import ensure_latest_snapshot, _build_mktcap_index
+            # 시총 인덱싱은 _build_mktcap_index 단일 함수로(배치 갱신 경로와 동일 규칙).
+            index = _build_mktcap_index(ensure_latest_snapshot())
         except Exception as e:
             logger.warning("KRX 스냅샷 로드 실패(시총 수집 생략): %s", e)
         self._krx_index = index
