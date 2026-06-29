@@ -375,3 +375,79 @@ def fetch_and_save_company_market_cap(corp_code: str) -> int | None:
         logger.warning("Company 시가총액 갱신 실패 corp_code=%s: %s", corp_code, e)
         return None
     return market_cap
+
+
+def _build_mktcap_index(snap: dict) -> dict:
+    """스냅샷 rows를 종목코드(ISU_CD)->시가총액(int) 인덱스로. 빈 값/파싱실패 제외."""
+    index = {}
+    for row in (snap.get("rows") if snap else None) or []:
+        isu = (row.get("ISU_CD") or "").strip()
+        mk = row.get("MKTCAP")
+        if not isu or not mk:
+            continue
+        try:
+            index[isu] = int(str(mk).replace(",", ""))
+        except (TypeError, ValueError):
+            continue
+    return index
+
+
+def update_all_company_market_caps(recompute_ev: bool = True) -> dict:
+    """
+    전 종목 시가총액을 KRX 스냅샷 1회 로드로 일괄 갱신(일별 배치용, fetch_krx_daily에서 호출).
+
+    상세 조회 시 lazy 갱신을 제거한 대신 '하루 1회 전체 갱신'을 여기서 보장한다.
+    스냅샷·역매핑을 각 1회만 만들어 O(1) 조회. recompute_ev=True면 시총 갱신된 회사의
+    EV/IC도 재계산(EV는 시총 의존이라 같이 갱신해야 일관).
+
+    Returns: {"updated", "ev_recomputed", "skipped_no_stock", "skipped_not_in_snapshot"}
+    """
+    from django.apps import apps as django_apps
+    from django.utils import timezone
+    from apps.dart.client import DartClient
+    from apps.service.db import recompute_and_save_ev_ic, run_with_write_lock_retry
+
+    snap = ensure_latest_snapshot()
+    index = _build_mktcap_index(snap)
+    if not index:
+        logger.warning("시총 일괄 갱신: 스냅샷 비어있음 → 생략")
+        return {"updated": 0, "ev_recomputed": 0, "skipped_no_stock": 0, "skipped_not_in_snapshot": 0}
+
+    # corp_code -> stock_code 역매핑 1회 구성 (회사마다 선형스캔 방지)
+    dart_client = DartClient()
+    if not dart_client._corp_code_mapping_cache:
+        dart_client.load_corp_code_xml()
+    corp_to_stock = {v: k for k, v in dart_client._corp_code_mapping_cache.items()}
+
+    CompanyModel = django_apps.get_model("apps", "Company")
+    now = timezone.now()
+    updated = ev_cnt = no_stock = not_in_snap = 0
+    for corp_code in CompanyModel.objects.values_list("corp_code", flat=True).iterator():
+        stock_code = corp_to_stock.get(corp_code)
+        if not stock_code:
+            no_stock += 1
+            continue
+        market_cap = index.get(stock_code)
+        if market_cap is None:
+            not_in_snap += 1
+            continue
+        try:
+            run_with_write_lock_retry(
+                lambda c=corp_code, m=market_cap: CompanyModel.objects.filter(
+                    corp_code=c
+                ).update(market_cap=m, market_cap_updated_at=now)
+            )
+            updated += 1
+            if recompute_ev:
+                recompute_and_save_ev_ic(corp_code, market_cap)
+                ev_cnt += 1
+        except Exception as e:
+            logger.warning("시총 일괄 갱신 실패 corp_code=%s: %s", corp_code, e)
+    logger.info(
+        "시총 일괄 갱신 완료: 갱신 %s, EV재계산 %s, 종목코드없음 %s, 스냅샷없음 %s",
+        updated, ev_cnt, no_stock, not_in_snap,
+    )
+    return {
+        "updated": updated, "ev_recomputed": ev_cnt,
+        "skipped_no_stock": no_stock, "skipped_not_in_snapshot": not_in_snap,
+    }

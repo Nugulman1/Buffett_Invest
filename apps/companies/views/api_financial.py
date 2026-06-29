@@ -40,11 +40,8 @@ def get_financial_data(request, corp_code):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # 기업 조회 시 KRX 재수집 조건 확인 및 시가총액 갱신 (ensure_latest_snapshot 호출)
-        from apps.service.krx_client import fetch_and_save_company_market_cap
-        fetch_and_save_company_market_cap(corp_code)
-        if company:
-            company.refresh_from_db()
+        # 시가총액은 수집 시점(eager) + 일별 배치(fetch_krx_daily)에서 갱신하므로
+        # 상세 조회 시엔 DB 저장값만 읽는다. (조회마다 KRX 스냅샷 재파싱하던 lazy 경로 제거)
 
         memo = company.memo if company else None
         memo_updated_at = (

@@ -9,11 +9,22 @@ ensure_latest_snapshot()에서 API 호출 후 JSON 저장.
 cron 등으로 08:30 KST에 실행하도록 설정하면 됩니다.
 """
 from django.core.management.base import BaseCommand
-from apps.service.krx_client import ensure_latest_snapshot, _get_kst_now
+from apps.service.krx_client import (
+    ensure_latest_snapshot,
+    update_all_company_market_caps,
+    _get_kst_now,
+)
 
 
 class Command(BaseCommand):
-    help = "KRX 당일 전체 종목 JSON 스냅샷 수집 (재수집 조건 시에만 API 호출)"
+    help = "KRX 당일 전체 종목 JSON 스냅샷 수집 + 전 종목 시가총액/EV 일별 갱신"
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--no-market-cap",
+            action="store_true",
+            help="스냅샷만 갱신하고 Company 시가총액 일괄 갱신은 생략",
+        )
 
     def handle(self, *args, **options):
         now = _get_kst_now()
@@ -29,3 +40,16 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.WARNING("스냅샷 없음 (API 키 없음 또는 재수집 조건 미충족 시 기존 파일도 없음)")
             )
+            return
+
+        if options.get("no_market_cap"):
+            return
+
+        # 상세 조회 lazy 갱신을 제거한 대신, 여기서 전 종목 시총·EV를 하루 1회 일괄 갱신
+        stats = update_all_company_market_caps()
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"시총 일괄 갱신: 갱신 {stats['updated']}, EV재계산 {stats['ev_recomputed']}, "
+                f"종목코드없음 {stats['skipped_no_stock']}, 스냅샷없음 {stats['skipped_not_in_snapshot']}"
+            )
+        )
