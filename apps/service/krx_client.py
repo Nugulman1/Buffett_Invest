@@ -66,6 +66,21 @@ def _get_kst_now() -> datetime:
     return datetime.now(KST)
 
 
+def _bas_dd_to_aware_datetime(bas_dd: str | None) -> datetime | None:
+    """KRX bas_dd('YYYYMMDD')를 그날 0시 KST의 aware datetime으로 변환. 형식 오류면 None.
+
+    market_cap_updated_at에 '방금'(now) 대신 시세 기준일을 넣어 "방금 갱신" 착각을 막는다.
+    """
+    s = str(bas_dd).strip() if bas_dd else ""
+    if len(s) != 8:
+        return None
+    try:
+        d = datetime.strptime(s, "%Y%m%d")
+    except ValueError:
+        return None
+    return d.replace(tzinfo=KST)
+
+
 
 
 class KrxClient:
@@ -353,7 +368,8 @@ def fetch_and_save_company_market_cap(corp_code: str) -> int | None:
         return None
 
     CompanyModel = django_apps.get_model("apps", "Company")
-    now = timezone.now()
+    # 갱신 시각은 '방금'(now)이 아니라 시세 기준일(행의 BAS_DD) — "방금 갱신" 착각 방지.
+    updated_at = _bas_dd_to_aware_datetime(row.get("BAS_DD")) or timezone.now()
     mktcap_str = row.get("MKTCAP")
     market_cap = None
     if mktcap_str:
@@ -368,7 +384,7 @@ def fetch_and_save_company_market_cap(corp_code: str) -> int | None:
         run_with_write_lock_retry(
             lambda: CompanyModel.objects.filter(corp_code=corp_code).update(
                 market_cap=market_cap,
-                market_cap_updated_at=now,
+                market_cap_updated_at=updated_at,
             )
         )
     except Exception as e:
@@ -412,6 +428,7 @@ def update_all_company_market_caps(recompute_ev: bool = True) -> dict:
     from django.apps import apps as django_apps
     from django.utils import timezone
     from apps.dart.client import DartClient
+    from apps.service.corp_code import build_corp_to_stock_index
     from apps.service.db import recompute_and_save_ev_ic, run_with_write_lock_retry
 
     snap = ensure_latest_snapshot()
@@ -420,17 +437,23 @@ def update_all_company_market_caps(recompute_ev: bool = True) -> dict:
         logger.warning("시총 일괄 갱신: 스냅샷 비어있음 → 생략")
         return {"updated": 0, "ev_recomputed": 0, "skipped_no_stock": 0, "skipped_not_in_snapshot": 0}
 
-    # corp_code -> stock_code 역매핑 1회 구성 (회사마다 선형스캔 방지)
+    # corp_code -> stock_code 역매핑 1회 구성 (회사마다 선형스캔 방지, 보통주 우선 결정적 선택)
     dart_client = DartClient()
     if not dart_client._corp_code_mapping_cache:
         dart_client.load_corp_code_xml()
-    corp_to_stock = {v: k for k, v in dart_client._corp_code_mapping_cache.items()}
+    corp_to_stock = build_corp_to_stock_index(dart_client._corp_code_mapping_cache)
 
     CompanyModel = django_apps.get_model("apps", "Company")
-    now = timezone.now()
-    updated = ev_cnt = no_stock = not_in_snap = 0
-    for corp_code in CompanyModel.objects.values_list("corp_code", flat=True).iterator():
-        stock_code = corp_to_stock.get(corp_code)
+    # 갱신 시각은 '방금'(now)이 아니라 시세 기준일(bas_dd) — "방금 갱신" 착각 방지.
+    updated_at = _bas_dd_to_aware_datetime((snap or {}).get("bas_dd")) or timezone.now()
+
+    # 시총이 바뀐 회사만 모아 한 번에 bulk_update (회사마다 UPDATE 쿼리=N+1 제거).
+    # 무변동 회사는 쓰기·EV재계산 모두 skip → 같은 날 재실행은 멱등(updated=0).
+    to_update = []
+    changed = []  # [(corp_code, market_cap)] — EV 재계산 대상(시총 변동분만)
+    no_stock = not_in_snap = 0
+    for company in CompanyModel.objects.only("corp_code", "market_cap").iterator():
+        stock_code = corp_to_stock.get(company.corp_code)
         if not stock_code:
             no_stock += 1
             continue
@@ -438,18 +461,34 @@ def update_all_company_market_caps(recompute_ev: bool = True) -> dict:
         if market_cap is None:
             not_in_snap += 1
             continue
+        if company.market_cap == market_cap:
+            continue  # 무변동 → skip
+        company.market_cap = market_cap
+        company.market_cap_updated_at = updated_at
+        to_update.append(company)
+        changed.append((company.corp_code, market_cap))
+
+    updated = len(to_update)
+    if to_update:
         try:
             run_with_write_lock_retry(
-                lambda c=corp_code, m=market_cap: CompanyModel.objects.filter(
-                    corp_code=c
-                ).update(market_cap=m, market_cap_updated_at=now)
+                lambda: CompanyModel.objects.bulk_update(
+                    to_update, ["market_cap", "market_cap_updated_at"], batch_size=500
+                )
             )
-            updated += 1
-            if recompute_ev:
+        except Exception as e:
+            logger.warning("시총 일괄 bulk_update 실패: %s", e)
+            return {"updated": 0, "ev_recomputed": 0,
+                    "skipped_no_stock": no_stock, "skipped_not_in_snapshot": not_in_snap}
+
+    ev_cnt = 0
+    if recompute_ev:
+        for corp_code, market_cap in changed:
+            try:
                 recompute_and_save_ev_ic(corp_code, market_cap)
                 ev_cnt += 1
-        except Exception as e:
-            logger.warning("시총 일괄 갱신 실패 corp_code=%s: %s", corp_code, e)
+            except Exception as e:
+                logger.warning("EV 재계산 실패 corp_code=%s: %s", corp_code, e)
     logger.info(
         "시총 일괄 갱신 완료: 갱신 %s, EV재계산 %s, 종목코드없음 %s, 스냅샷없음 %s",
         updated, ev_cnt, no_stock, not_in_snap,

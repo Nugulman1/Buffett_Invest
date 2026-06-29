@@ -31,6 +31,7 @@ class DataOrchestrator:
         self.ecos_service = EcosDataService()
         self.dart_client = DartClient()
         self._krx_index = None  # 종목코드->시총 인덱스(배치당 1회 로드, 시총 eager 수집용)
+        self._krx_bas_dd = None  # 인덱스 출처 스냅샷의 거래일(market_cap_updated_at용)
 
     def _ensure_krx_index(self) -> dict:
         """
@@ -38,14 +39,19 @@ class DataOrchestrator:
 
         회사마다 ensure_latest_snapshot()을 부르면 시장별 대용량 JSON(코스닥 수십MB)을
         매번 재병합하므로, 반드시 1회 인덱싱 후 O(1) 조회한다. 실패 시 빈 dict.
+
+        빈 인덱스는 캐싱하지 않고(`if self._krx_index:`) 다음 호출에서 재시도한다 —
+        일시적 스냅샷 로드 실패가 배치 전체의 시총 누락으로 굳지 않도록.
         """
-        if self._krx_index is not None:
+        if self._krx_index:
             return self._krx_index
         index = {}
         try:
             from apps.service.krx_client import ensure_latest_snapshot, _build_mktcap_index
+            snap = ensure_latest_snapshot()
             # 시총 인덱싱은 _build_mktcap_index 단일 함수로(배치 갱신 경로와 동일 규칙).
-            index = _build_mktcap_index(ensure_latest_snapshot())
+            index = _build_mktcap_index(snap)
+            self._krx_bas_dd = (snap or {}).get("bas_dd")
         except Exception as e:
             logger.warning("KRX 스냅샷 로드 실패(시총 수집 생략): %s", e)
         self._krx_index = index
@@ -61,6 +67,7 @@ class DataOrchestrator:
         """
         from apps.service.corp_code import get_stock_code_by_corp_code
         from apps.service.db import recompute_and_save_ev_ic, run_with_write_lock_retry
+        from apps.service.krx_client import _bas_dd_to_aware_datetime
         from django.utils import timezone
         from django.apps import apps as django_apps
 
@@ -71,11 +78,12 @@ class DataOrchestrator:
         if market_cap is None:
             return
         CompanyModel = django_apps.get_model('apps', 'Company')
-        now = timezone.now()
+        # 갱신 시각은 '방금'(now)이 아니라 시세 기준일(bas_dd) — "방금 갱신" 착각 방지.
+        updated_at = _bas_dd_to_aware_datetime(self._krx_bas_dd) or timezone.now()
         run_with_write_lock_retry(
             lambda: CompanyModel.objects.filter(corp_code=corp_code).update(
                 market_cap=market_cap,
-                market_cap_updated_at=now,
+                market_cap_updated_at=updated_at,
             )
         )
         recompute_and_save_ev_ic(corp_code, market_cap)
