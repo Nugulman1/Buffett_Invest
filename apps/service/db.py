@@ -482,3 +482,117 @@ def search_companies_in_db(query: str, limit: int) -> list[dict]:
         {"corp_code": c.corp_code, "company_name": c.company_name or ""}
         for c in CompanyModel.objects.filter(q_filter)[:limit]
     ]
+
+
+# ──────────────────────────────────────────────────────────────────
+# 즐겨찾기(Favorite/FavoriteGroup) DB 접근: api_favorites 뷰 전용.
+# 동작 동등 유지를 위해 기존 favorites 경로에 없던 쓰기 락은 추가하지 않음.
+# ──────────────────────────────────────────────────────────────────
+
+def get_company_by_corp_code(corp_code: str):
+    """corp_code로 Company 조회. 없으면 None."""
+    CompanyModel = django_apps.get_model("apps", "Company")
+    try:
+        return CompanyModel.objects.get(corp_code=corp_code)
+    except CompanyModel.DoesNotExist:
+        return None
+
+
+def get_favorite_groups_with_favorites():
+    """그룹(name 오름차순) + 소속 즐겨찾기(company prefetch, company_name 정렬) 쿼리셋."""
+    from django.db.models import Prefetch
+
+    FavoriteGroupModel = django_apps.get_model("apps", "FavoriteGroup")
+    FavoriteModel = django_apps.get_model("apps", "Favorite")
+    return FavoriteGroupModel.objects.prefetch_related(
+        Prefetch(
+            "favorites",
+            queryset=FavoriteModel.objects.select_related("company").order_by(
+                "company__company_name"
+            ),
+        )
+    ).order_by("name")
+
+
+def get_all_favorite_groups():
+    """전체 즐겨찾기 그룹 (name 오름차순) 쿼리셋."""
+    FavoriteGroupModel = django_apps.get_model("apps", "FavoriteGroup")
+    return FavoriteGroupModel.objects.all().order_by("name")
+
+
+def get_favorite_group_by_id(group_id):
+    """그룹 id로 FavoriteGroup 조회. 없으면 None."""
+    FavoriteGroupModel = django_apps.get_model("apps", "FavoriteGroup")
+    try:
+        return FavoriteGroupModel.objects.get(id=group_id)
+    except FavoriteGroupModel.DoesNotExist:
+        return None
+
+
+def favorite_group_name_exists(name: str, exclude_id=None) -> bool:
+    """같은 이름의 그룹이 존재하는지. exclude_id 지정 시 그 id는 제외(rename용)."""
+    FavoriteGroupModel = django_apps.get_model("apps", "FavoriteGroup")
+    qs = FavoriteGroupModel.objects.filter(name=name)
+    if exclude_id is not None:
+        qs = qs.exclude(id=exclude_id)
+    return qs.exists()
+
+
+def create_favorite_group(name: str):
+    """이름으로 FavoriteGroup 생성 후 반환."""
+    FavoriteGroupModel = django_apps.get_model("apps", "FavoriteGroup")
+    return FavoriteGroupModel.objects.create(name=name)
+
+
+def rename_favorite_group(group, name: str):
+    """그룹 이름 변경 후 저장."""
+    group.name = name
+    group.save()
+    return group
+
+
+def delete_favorite_group(group) -> None:
+    """그룹 삭제(FK cascade로 소속 즐겨찾기도 삭제)."""
+    group.delete()
+
+
+def get_favorite_by_id(favorite_id):
+    """즐겨찾기 id로 Favorite 조회. 없으면 None."""
+    FavoriteModel = django_apps.get_model("apps", "Favorite")
+    try:
+        return FavoriteModel.objects.get(id=favorite_id)
+    except FavoriteModel.DoesNotExist:
+        return None
+
+
+def get_or_create_favorite(group, company):
+    """(group, company) 즐겨찾기 get_or_create. (favorite, created) 반환."""
+    FavoriteModel = django_apps.get_model("apps", "Favorite")
+    return FavoriteModel.objects.get_or_create(
+        group=group, company=company, defaults={}
+    )
+
+
+def favorite_exists_in_group(group, company) -> bool:
+    """해당 그룹에 같은 기업의 즐겨찾기가 존재하는지."""
+    FavoriteModel = django_apps.get_model("apps", "Favorite")
+    return FavoriteModel.objects.filter(group=group, company=company).exists()
+
+
+def move_favorite_to_group(favorite, group):
+    """즐겨찾기의 그룹 변경 후 저장."""
+    favorite.group = group
+    favorite.save()
+    return favorite
+
+
+def delete_favorite(favorite) -> None:
+    """단일 즐겨찾기 삭제."""
+    favorite.delete()
+
+
+def delete_favorites_by_company(company) -> int:
+    """해당 기업의 모든 즐겨찾기 삭제. 삭제된 건수 반환."""
+    FavoriteModel = django_apps.get_model("apps", "Favorite")
+    deleted_count, _ = FavoriteModel.objects.filter(company=company).delete()
+    return deleted_count

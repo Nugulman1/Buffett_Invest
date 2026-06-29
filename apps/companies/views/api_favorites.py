@@ -1,23 +1,27 @@
 """
 기업 API: 즐겨찾기
 """
-from django.db.models import Prefetch
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 
 from apps.service.corp_code import resolve_corp_code
-
-
-def _get_favorite_models():
-    """즐겨찾기 관련 모델 (FavoriteGroup, Favorite, Company) 반환."""
-    from django.apps import apps as django_apps
-
-    return (
-        django_apps.get_model("apps", "FavoriteGroup"),
-        django_apps.get_model("apps", "Favorite"),
-        django_apps.get_model("apps", "Company"),
-    )
+from apps.service.db import (
+    get_company_by_corp_code,
+    get_favorite_groups_with_favorites,
+    get_all_favorite_groups,
+    get_favorite_group_by_id,
+    favorite_group_name_exists,
+    create_favorite_group,
+    rename_favorite_group,
+    delete_favorite_group,
+    get_favorite_by_id,
+    get_or_create_favorite,
+    favorite_exists_in_group,
+    move_favorite_to_group,
+    delete_favorite,
+    delete_favorites_by_company,
+)
 
 
 @api_view(["GET"])
@@ -27,15 +31,7 @@ def get_favorites(request):
     GET /api/companies/favorites/
     """
     try:
-        FavoriteGroupModel, FavoriteModel, _ = _get_favorite_models()
-        groups = FavoriteGroupModel.objects.prefetch_related(
-            Prefetch(
-                "favorites",
-                queryset=FavoriteModel.objects.select_related("company").order_by(
-                    "company__company_name"
-                ),
-            )
-        ).order_by("name")
+        groups = get_favorite_groups_with_favorites()
         result = []
         for group in groups:
             favorites = group.favorites.all()
@@ -70,15 +66,13 @@ def favorite(request, corp_code):
     DELETE /api/companies/<corp_code>/favorites/ - 삭제
     """
     try:
-        FavoriteGroupModel, FavoriteModel, CompanyModel = _get_favorite_models()
         resolved, err = resolve_corp_code(corp_code)
         if err:
             return Response({"error": err}, status=status.HTTP_404_NOT_FOUND)
         corp_code = resolved
 
-        try:
-            company = CompanyModel.objects.get(corp_code=corp_code)
-        except CompanyModel.DoesNotExist:
+        company = get_company_by_corp_code(corp_code)
+        if company is None:
             return Response(
                 {"error": f"기업코드 {corp_code}에 해당하는 기업을 찾을 수 없습니다."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -98,18 +92,13 @@ def favorite(request, corp_code):
                     {"error": "group_id는 정수여야 합니다."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            try:
-                group = FavoriteGroupModel.objects.get(id=group_id)
-            except FavoriteGroupModel.DoesNotExist:
+            group = get_favorite_group_by_id(group_id)
+            if group is None:
                 return Response(
                     {"error": f"그룹 ID {group_id}를 찾을 수 없습니다."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
-            fav, created = FavoriteModel.objects.get_or_create(
-                group=group,
-                company=company,
-                defaults={},
-            )
+            fav, created = get_or_create_favorite(group, company)
             if not created:
                 return Response(
                     {"error": "이미 즐겨찾기에 추가된 기업입니다."},
@@ -129,9 +118,7 @@ def favorite(request, corp_code):
                 status=status.HTTP_201_CREATED,
             )
         elif request.method == "DELETE":
-            deleted_count, _ = FavoriteModel.objects.filter(
-                company=company
-            ).delete()
+            deleted_count = delete_favorites_by_company(company)
             if deleted_count == 0:
                 return Response(
                     {"error": "즐겨찾기에 없는 기업입니다."},
@@ -155,7 +142,6 @@ def favorite_detail(request, favorite_id):
     DELETE /api/companies/favorites/<favorite_id>/
     """
     try:
-        _, FavoriteModel, _ = _get_favorite_models()
         try:
             favorite_id = int(favorite_id)
         except (ValueError, TypeError):
@@ -163,9 +149,8 @@ def favorite_detail(request, favorite_id):
                 {"error": f"유효하지 않은 즐겨찾기 ID입니다: {favorite_id}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            favorite = FavoriteModel.objects.get(id=favorite_id)
-        except FavoriteModel.DoesNotExist:
+        favorite = get_favorite_by_id(favorite_id)
+        if favorite is None:
             return Response(
                 {"error": f"즐겨찾기 ID {favorite_id}를 찾을 수 없습니다."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -173,7 +158,7 @@ def favorite_detail(request, favorite_id):
         corp_code = favorite.company.corp_code
         company_name = favorite.company.company_name or ""
         group_name = favorite.group.name
-        favorite.delete()
+        delete_favorite(favorite)
         return Response(
             {
                 "id": favorite_id,
@@ -199,10 +184,8 @@ def change_favorite_group(request, favorite_id):
     Body: {"group_id": 2}
     """
     try:
-        FavoriteGroupModel, FavoriteModel, _ = _get_favorite_models()
-        try:
-            favorite = FavoriteModel.objects.get(id=favorite_id)
-        except FavoriteModel.DoesNotExist:
+        favorite = get_favorite_by_id(favorite_id)
+        if favorite is None:
             return Response(
                 {"error": f"즐겨찾기 ID {favorite_id}를 찾을 수 없습니다."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -220,9 +203,8 @@ def change_favorite_group(request, favorite_id):
                 {"error": "group_id는 정수여야 합니다."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            group = FavoriteGroupModel.objects.get(id=group_id)
-        except FavoriteGroupModel.DoesNotExist:
+        group = get_favorite_group_by_id(group_id)
+        if group is None:
             return Response(
                 {"error": f"그룹 ID {group_id}를 찾을 수 없습니다."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -238,15 +220,12 @@ def change_favorite_group(request, favorite_id):
                 },
                 status=status.HTTP_200_OK,
             )
-        if FavoriteModel.objects.filter(
-            group=group, company=favorite.company
-        ).exists():
+        if favorite_exists_in_group(group, favorite.company):
             return Response(
                 {"error": "해당 그룹에 이미 같은 기업이 있습니다."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        favorite.group = group
-        favorite.save()
+        move_favorite_to_group(favorite, group)
         return Response(
             {
                 "id": favorite.id,
@@ -272,9 +251,8 @@ def favorite_groups(request):
     POST /api/companies/favorite-groups/
     """
     try:
-        FavoriteGroupModel, _, _ = _get_favorite_models()
         if request.method == "GET":
-            groups = FavoriteGroupModel.objects.all().order_by("name")
+            groups = get_all_favorite_groups()
             return Response(
                 {
                     "groups": [
@@ -297,12 +275,12 @@ def favorite_groups(request):
                     {"error": "그룹명이 필요합니다."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            if FavoriteGroupModel.objects.filter(name=name).exists():
+            if favorite_group_name_exists(name):
                 return Response(
                     {"error": "이미 같은 이름의 그룹이 있습니다."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            group = FavoriteGroupModel.objects.create(name=name)
+            group = create_favorite_group(name)
             return Response(
                 {
                     "id": group.id,
@@ -328,10 +306,8 @@ def favorite_group_detail(request, group_id):
     DELETE /api/companies/favorite-groups/<group_id>/
     """
     try:
-        FavoriteGroupModel, _, _ = _get_favorite_models()
-        try:
-            group = FavoriteGroupModel.objects.get(id=group_id)
-        except FavoriteGroupModel.DoesNotExist:
+        group = get_favorite_group_by_id(group_id)
+        if group is None:
             return Response(
                 {"error": f"그룹 ID {group_id}를 찾을 수 없습니다."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -343,17 +319,12 @@ def favorite_group_detail(request, group_id):
                     {"error": "그룹명이 필요합니다."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            if (
-                FavoriteGroupModel.objects.filter(name=name)
-                .exclude(id=group_id)
-                .exists()
-            ):
+            if favorite_group_name_exists(name, exclude_id=group_id):
                 return Response(
                     {"error": "이미 같은 이름의 그룹이 있습니다."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            group.name = name
-            group.save()
+            rename_favorite_group(group, name)
             return Response(
                 {
                     "id": group.id,
@@ -369,7 +340,7 @@ def favorite_group_detail(request, group_id):
             )
         elif request.method == "DELETE":
             group_name = group.name
-            group.delete()
+            delete_favorite_group(group)
             return Response(
                 {
                     "id": group_id,

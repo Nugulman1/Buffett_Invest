@@ -16,7 +16,6 @@ from .api_financial import (
     get_quarterly_financial_data,
 )
 from .api_favorites import (
-    _get_favorite_models,
     get_favorites,
     favorite,
     favorite_detail,
@@ -38,7 +37,6 @@ __all__ = [
     "get_market_cap",
     "collect_quarterly_reports",
     "get_quarterly_financial_data",
-    "_get_favorite_models",
     "get_favorites",
     "favorite",
     "favorite_detail",
