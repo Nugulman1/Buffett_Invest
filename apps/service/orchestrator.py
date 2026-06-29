@@ -30,7 +30,7 @@ class DataOrchestrator:
         self.dart_service = DartDataService()
         self.ecos_service = EcosDataService()
         self.dart_client = DartClient()
-    
+
     @staticmethod
     def _fill_roe_from_indicators(company_data: CompanyFinancialObject) -> None:
         """yearly_indicators의 M211550(ROE) 값을 yearly_data.roe에 채움. 없으면 당기순이익/자본총계로 계산(폴백)."""
@@ -89,6 +89,12 @@ class DataOrchestrator:
             return
         try:
             rows = self.dart_client.get_financial_statement_all(corp_code, str(bsns_year))
+            if not rows:
+                # CFS(연결)를 안 내는 중소형사(별도만 제출)는 OFS로 폴백.
+                # 미폴백 시 cash·이자부채·CFO 미추출 → ROIC/WACC/FCF 전부 None.
+                rows = self.dart_client.get_financial_statement_all(
+                    corp_code, str(bsns_year), fs_div='OFS'
+                )
         except Exception as e:
             logger.warning("전체재무제표 조회 실패 %s: %s", corp_code, e)
             rows = []
