@@ -459,11 +459,104 @@ def nullify_uncomputed_indicators() -> int:
     return count[0]
 
 
+def rank_passed_companies() -> dict:
+    """
+    통과기업(passed_all_filters=True & not passed_second_filter=False) 크로스섹셔널 랭킹.
+
+    각 회사의 roic IS NOT NULL인 가장 최근 연도를 대표 스냅샷으로 축값 3개 추출:
+      quality = roic - wacc (둘 중 하나라도 None이면 None)
+      price   = ev / invested_capital (ev None 또는 ic None/0/음수면 None)
+      growth  = sustainable_growth (None 가능)
+    roic 있는 연도가 없으면 quality/price/growth 모두 None → 모든 축 최하위.
+
+    N+1 방지: 통과기업의 YearlyFinancialData를 한 번에 로드 후 파이썬에서 회사별 선별.
+
+    Returns:
+        dict[corp_code] -> {'rank', 'score', 'rank_quality', 'rank_price', 'rank_growth'}
+    """
+    from apps.service.ranking import rank_companies
+
+    CompanyModel = django_apps.get_model("apps", "Company")
+    YearlyFinancialDataModel = django_apps.get_model("apps", "YearlyFinancialData")
+
+    companies = list(
+        CompanyModel.objects.filter(passed_all_filters=True).exclude(
+            passed_second_filter=False
+        )
+    )
+    if not companies:
+        return {}
+
+    corp_codes = [c.corp_code for c in companies]
+
+    # 통과기업의 모든 연간 데이터 일괄 로드 (N+1 방지): (company_id, year 내림차순)
+    yearly_rows = list(
+        YearlyFinancialDataModel.objects.filter(
+            company_id__in=corp_codes
+        ).order_by("company_id", "-year")
+    )
+
+    # corp_code → roic IS NOT NULL인 가장 최근 연도 (정렬이 이미 내림차순이므로 첫 번째 hit)
+    rep_map: dict = {}
+    for yd in yearly_rows:
+        code = yd.company_id
+        if code not in rep_map and yd.roic is not None:
+            rep_map[code] = yd
+
+    def _quality(yd):
+        if yd is None or yd.roic is None or yd.wacc is None:
+            return None
+        return yd.roic - yd.wacc
+
+    def _price(yd):
+        if yd is None or yd.ev is None:
+            return None
+        ic = getattr(yd, "invested_capital", None)
+        # ic<=0(투하자본 0/음수: cash>equity+debt 등 비정상 자본구조)이면 price 의미 없음 → None.
+        # 음수 ic는 ev/ic 부호를 뒤집어 거짓 바겐을 가격축 최상위로 올리므로 반드시 배제.
+        if ic is None or ic <= 0:
+            return None
+        return yd.ev / ic
+
+    def _growth(yd):
+        if yd is None:
+            return None
+        return getattr(yd, "sustainable_growth", None)
+
+    ranking_input = []
+    for c in companies:
+        yd = rep_map.get(c.corp_code)
+        ranking_input.append({
+            "corp_code": c.corp_code,
+            "quality": _quality(yd),
+            "price": _price(yd),
+            "growth": _growth(yd),
+        })
+
+    ranked = rank_companies(ranking_input)
+
+    return {
+        r["corp_code"]: {
+            "rank": r["rank"],
+            "score": r["score"],
+            "rank_quality": r["rank_quality"],
+            "rank_price": r["rank_price"],
+            "rank_growth": r["rank_growth"],
+        }
+        for r in ranked
+    }
+
+
 def query_passed_companies(page: int, page_size: int) -> dict:
     """
     1차 필터 통과(2차 미통과만 제외) 기업 목록 페이지네이션.
-    {"companies": [{corp_code, company_name}], "total", "page", "page_size",
-     "total_pages", "last_updated"(iso|None)} 반환. 종목코드 보강은 뷰에서.
+    {"companies": [{corp_code, company_name, rank, score, rank_quality, rank_price, rank_growth}],
+     "total", "page", "page_size", "total_pages", "last_updated"(iso|None)} 반환.
+    rank 오름차순(동률 시 company_name 보조정렬). 종목코드 보강은 뷰에서.
+
+    성능 한계(통과기업 수가 적은 현재는 무해): 페이지마다 rank_passed_companies()를 호출해
+    전 통과기업 YearlyFinancialData를 전수 재로드하고, rank_companies는 축당 O(N²) 경쟁순위를
+    매긴다. 통과기업이 수천으로 늘면 페이지당 재계산 비용이 커지므로 그때 캐싱(요청·짧은 TTL)이 필요.
     """
     import math
     from django.db.models import Max
@@ -471,19 +564,38 @@ def query_passed_companies(page: int, page_size: int) -> dict:
     CompanyModel = django_apps.get_model("apps", "Company")
     qs = CompanyModel.objects.filter(passed_all_filters=True).exclude(
         passed_second_filter=False
-    ).order_by("company_name")
+    )
 
     total = qs.count()
     total_pages = math.ceil(total / page_size) if total > 0 else 0
     if page > total_pages and total_pages > 0:
         page = total_pages
 
+    # 랭킹 맵 조회 후 파이썬에서 rank 오름차순 정렬 (DB ORDER BY 대체)
+    rank_map = rank_passed_companies()
+    all_companies = list(qs)
+    all_companies.sort(
+        key=lambda c: (
+            rank_map.get(c.corp_code, {}).get("rank") or float("inf"),
+            c.company_name or "",
+        )
+    )
+
     start_idx = (page - 1) * page_size
-    page_queryset = qs[start_idx:start_idx + page_size]
-    companies = [
-        {"corp_code": c.corp_code, "company_name": c.company_name or ""}
-        for c in page_queryset
-    ]
+    page_slice = all_companies[start_idx: start_idx + page_size]
+
+    companies = []
+    for c in page_slice:
+        r = rank_map.get(c.corp_code, {})
+        companies.append({
+            "corp_code": c.corp_code,
+            "company_name": c.company_name or "",
+            "rank": r.get("rank"),
+            "score": r.get("score"),
+            "rank_quality": r.get("rank_quality"),
+            "rank_price": r.get("rank_price"),
+            "rank_growth": r.get("rank_growth"),
+        })
 
     last_updated = None
     if total > 0:

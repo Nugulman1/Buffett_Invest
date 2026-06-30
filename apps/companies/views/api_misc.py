@@ -30,6 +30,11 @@ def get_passed_companies(request):
             "stock_code": get_stock_code_by_corp_code(c["corp_code"]) or "",
             "company_name": c["company_name"],
             "corp_code": c["corp_code"],
+            "rank": c.get("rank"),
+            "score": c.get("score"),
+            "rank_quality": c.get("rank_quality"),
+            "rank_price": c.get("rank_price"),
+            "rank_growth": c.get("rank_growth"),
         }
         for c in result["companies"]
     ]

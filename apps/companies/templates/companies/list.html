@@ -180,6 +180,12 @@
                                     <strong x-text="company.company_name || '-'"></strong>
                                     <br>
                                     <small class="text-muted" x-text="company.stock_code || '-'"></small>
+                                    <br>
+                                    <small class="text-secondary" x-show="company.rank != null">
+                                        <span x-text="`순위 ${company.rank}위 · 점수 ${company.score}`"></span>
+                                        &nbsp;품질 <span x-text="company.rank_quality"></span>등 / 가격 <span x-text="company.rank_price"></span>등 / 성장 <span x-text="company.rank_growth"></span>등
+                                    </small>
+                                    <small class="text-muted" x-show="company.rank == null">순위 미산정</small>
                                 </div>
                             </a>
                         </template>
