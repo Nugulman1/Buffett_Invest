@@ -195,6 +195,53 @@ class IndicatorCalculator:
         return ic, ev
 
     @staticmethod
+    def flag_no_debt_suspect(yearly_data) -> tuple[bool, str]:
+        """
+        회사 단위 '무차입 의심'(셀트리온형 전수 미포착) 판정.
+
+        compute_ic_ev의 가드는 '연도별'(그 해 이자부채 0/None이면 IC/EV None)만 본다.
+        이 함수는 '모든(≥1개) 연도의 이자부채가 0 또는 None'인 **회사 단위** 의심을 판정한다.
+        0/None = falsy(미포착/무차입쪽)로 보는 compute_ic_ev의 정책과 일관되게 처리한다 —
+        이자부채 정책의 단일 진실원.
+
+        판정:
+          - 레코드 0건            → (False, 판정 불가/데이터 없음)
+          - ≥1건 & 모든 연도 0/None → (True, 무차입 의심)
+          - 양수가 한 연도라도 있음  → (False, 무차입 의심 아님)
+        단일 연도(1건)는 flag=True여도 신뢰도가 낮으므로 사유에 연도 수 단서를 노출한다.
+
+        Args:
+            yearly_data: .interest_bearing_debt 속성을 노출하는 연간 레코드의 iterable.
+                         (속성이 없으면 None으로 간주)
+
+        Returns:
+            (무차입_의심_여부, 사유 문자열)
+        """
+        records = list(yearly_data)
+        n = len(records)
+
+        if n == 0:
+            return False, '연간 재무데이터가 없어 무차입 의심 판정 불가(데이터 0건)'
+
+        # 0/None = falsy(미포착/무차입쪽). 0/None이 아닌 값(음수 포함)이 하나라도 있으면
+        # 전 연도 0/None이 아니므로 의심 아님. (음수도 truthy라 여기 잡힌다 — 사유 문구는
+        # '양수'가 아니라 '0/None이 아닌'으로 적어 사실과 일치시킨다.)
+        has_nonzero_debt = any(
+            getattr(rec, 'interest_bearing_debt', None) for rec in records
+        )
+
+        if has_nonzero_debt:
+            return False, f'0/None이 아닌 이자부채 연도가 있어 무차입 의심 아님(연도 수 {n})'
+
+        # 모든 연도 이자부채 0/None → 무차입 의심
+        if n == 1:
+            return True, (
+                '단일 연도(1개)만 이자부채 0/None — 무차입 의심이나 '
+                '연도 수 1로 신뢰도 낮음'
+            )
+        return True, f'전 연도({n}개) 이자부채가 0/None이라 무차입 의심'
+
+    @staticmethod
     def calculate_wacc(
         yearly_data: YearlyFinancialDataObject,
         bond_yield: float,

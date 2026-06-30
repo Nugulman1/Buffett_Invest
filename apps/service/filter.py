@@ -222,3 +222,45 @@ class CompanyFilter:
         avg_wacc = sum(d['wacc'] for d in valid) / len(valid)
         return (avg_roic - avg_wacc) >= spread
 
+    @staticmethod
+    def evaluate_second_filter(corp_code: str) -> dict:
+        """
+        2차 필터 통과 여부 + 무차입 의심(정보 노출)을 함께 반환.
+
+        'passed'는 기존 check_second_filter를 그대로 위임해 동일 값을 쓴다 —
+        무차입 의심이어도 통과/탈락 판정은 바꾸지 않는다(정보 노출만).
+        'no_debt_suspect'/'reason'은 surface 윈도우 = check_second_filter가 보는
+        **최근 3년 raw 이자부채**(order_by('-year')[:3])를
+        IndicatorCalculator.flag_no_debt_suspect에 넘긴 결과다(DEC-6). 여기서
+        roic/wacc not-None valid 필터는 적용하지 않는다 — 커플링상 valid 윈도우는
+        부채0 행을 구조적으로 배제해 무차입 의심을 영원히 못 잡기 때문이다
+        (orchestrator.py:184-186이 '이자부채 0/None ⟹ roic/wacc=None'을 강제하고
+        이것이 roic/wacc의 유일한 산출 경로라, valid 행집합은 곧 부채>0 행들뿐이다.
+        진짜 무차입 회사는 roic/wacc 전부 None → valid=[] → 의심을 침묵시킨다).
+        윈도우는 '최근 3년'이다(전 연도 아님): check_second_filter의 [:3] 결정
+        윈도우와 동일 범위 — 전 연도 전체를 넘기면 옛 차입연도가 최근 무차입을
+        가린다. 순수함수 flag_no_debt_suspect 자체는 사양 유지 — 바꾸는 건 넘기는
+        입력의 윈도우뿐. ORM 객체로 가져와 .interest_bearing_debt 속성에 접근한다.
+
+        Args:
+            corp_code: 기업 코드 (YearlyFinancialData.company_id)
+
+        Returns:
+            {'passed': bool, 'no_debt_suspect': bool, 'reason': str}
+        """
+        passed = CompanyFilter.check_second_filter(corp_code)
+
+        YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+        recent_three = list(
+            YearlyFinancialDataModel.objects.filter(company_id=corp_code)
+            .order_by('-year')[:3]
+        )
+        # surface 윈도우 = 최근 3년 raw 이자부채(valid 필터 미적용, DEC-6).
+        no_debt_suspect, reason = IndicatorCalculator.flag_no_debt_suspect(recent_three)
+
+        return {
+            'passed': passed,
+            'no_debt_suspect': no_debt_suspect,
+            'reason': reason,
+        }
+
