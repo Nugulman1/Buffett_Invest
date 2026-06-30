@@ -17,6 +17,7 @@ from apps.service.db import (
     get_annual_report_info,
     recompute_and_save_ev_ic,
 )
+from apps.service.calculator import IndicatorCalculator
 from apps.service.bond_yield import get_bond_yield_5y
 from apps.service.corp_code import resolve_corp_code, get_stock_code_by_corp_code
 
@@ -56,6 +57,10 @@ def get_financial_data(request, corp_code):
             else None
         )
         sorted_yearly = sorted(company_data.yearly_data, key=lambda x: x.year, reverse=True)
+        # 회사단위 FCF 음수 경보(최근 3년 윈도우). 연도별 컬럼이 아니라 조회 시 계산.
+        fcf_negative_flag, fcf_negative_reason = IndicatorCalculator.flag_fcf_negative(
+            company_data.yearly_data
+        )
         consecutive_dividend_years = 0
         for yd in sorted_yearly:
             if yd.dividend_paid is None or yd.dividend_paid <= 0:
@@ -96,9 +101,18 @@ def get_financial_data(request, corp_code):
                     "dividend_paid": getattr(yd, "dividend_paid", None),
                     "dividend_payout_ratio": getattr(yd, "dividend_payout_ratio", None),
                     "interest_expense": getattr(yd, "interest_expense", None),
+                    # 내재가치 5선(연도별). 미계산은 None.
+                    "sustainable_growth": getattr(yd, "sustainable_growth", None),
+                    "altman_z": getattr(yd, "altman_z", None),
+                    "altman_z_class": getattr(yd, "altman_z_class", None),
+                    "zmijewski": getattr(yd, "zmijewski", None),
+                    "zmijewski_flag": getattr(yd, "zmijewski_flag", None),
                 }
                 for yd in company_data.yearly_data
             ],
+            # 회사단위 FCF 음수 경보(최근 3년 윈도우, 연도별 컬럼 아님)
+            "fcf_negative_flag": fcf_negative_flag,
+            "fcf_negative_reason": fcf_negative_reason,
         }
         return Response(data, status=status.HTTP_200_OK)
 

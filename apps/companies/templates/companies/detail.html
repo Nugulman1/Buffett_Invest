@@ -233,6 +233,18 @@
                 if (roic == null || wacc == null || wacc === 0) return '-';
                 return (roic / wacc).toFixed(2);
             },
+            // Altman Z'' 점수(소수 2자리). 미계산 None은 '-'.
+            formatZScore(value) {
+                if (value === null || value === undefined) return '-';
+                return value.toFixed(2);
+            },
+            // Altman Z'' 등급 색상: safe=초록 / grey=노랑 / distress=빨강(굵게)
+            zClassColor(cls) {
+                if (cls === 'safe') return 'text-success';
+                if (cls === 'grey') return 'text-warning';
+                if (cls === 'distress') return 'text-danger fw-bold';
+                return '';
+            },
 
             // 메모 날짜 포맷팅
             formatMemoDate(dateString) {
@@ -552,6 +564,9 @@
                                             <th class="text-end py-2">WACC (%)</th>
                                             <th class="text-end py-2">ROIC/WACC</th>
                                             <th class="text-end py-2">EV/IC</th>
+                                            <th class="text-end py-2">성장률 g</th>
+                                            <th class="text-end py-2">Altman Z''</th>
+                                            <th class="text-end py-2">Zmijewski</th>
                                             <th class="text-end py-2">부채비율</th>
                                             <th class="text-end py-2">배당성향</th>
                                             <th class="text-end py-2">배당지급액</th>
@@ -576,6 +591,9 @@
                                                 <td class="text-end py-2" x-text="formatPercent(data.wacc)"></td>
                                                 <td class="text-end py-2" x-text="formatRoicWaccRatio(data.roic, data.wacc)"></td>
                                                 <td class="text-end py-2" x-text="formatEvIcRatio(data.ev, data.invested_capital)"></td>
+                                                <td class="text-end py-2" x-text="formatPercent(data.sustainable_growth)"></td>
+                                                <td class="text-end py-2" :class="zClassColor(data.altman_z_class)" x-text="formatZScore(data.altman_z)"></td>
+                                                <td class="text-end py-2" :class="data.zmijewski_flag ? 'text-danger fw-bold' : ''" x-text="formatPercent(data.zmijewski)"></td>
                                                 <td class="text-end py-2" x-text="formatPercent(data.debt_ratio)"></td>
                                                 <td class="text-end py-2" x-text="formatPercent(data.dividend_payout_ratio)"></td>
                                                 <td class="text-end py-2" x-text="formatAmount(data.dividend_paid)"></td>
