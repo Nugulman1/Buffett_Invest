@@ -167,6 +167,10 @@ class DataOrchestrator:
                 yd.roic = None
                 yd.wacc = None
                 yd.fcf = None
+                # 입력이 없어 roic/wacc/fcf는 계산 불가이지만,
+                # current_assets·total_liabilities 등이 있으면 Z''·Zmijewski는 계산 가능.
+                # fill을 여기서도 호출해야 save_company_to_db가 백필값을 덮지 않는다.
+                IndicatorCalculator.fill_valuation_indicators(yd)
                 continue
             # equity는 total_equity 기반 property(T8) — 별도 세팅 불필요
             yd.cfo = row["cfo"]
@@ -198,6 +202,9 @@ class DataOrchestrator:
                     yd.ev = ev
             if yd.fcf and yd.fcf > 0 and yd.dividend_paid:
                 yd.dividend_payout_ratio = yd.dividend_paid / yd.fcf
+            # 내재가치 5선 지표(g·Z''·등급·Zmijewski·경보) 자동 세팅 — roic가 막 채워진
+            # 직후라 g 계산 입력이 yd에 있다. 이후 save_company_to_db가 5필드를 영속화.
+            IndicatorCalculator.fill_valuation_indicators(yd)
 
     def _ensure_bond_yield(self) -> float:
         """

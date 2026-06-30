@@ -98,6 +98,12 @@ class YearlyFinancialData(models.Model):
     wacc = models.FloatField(default=0.0, null=True, blank=True, verbose_name='가중평균자본비용')
     ev = models.BigIntegerField(null=True, blank=True, verbose_name='기업가치')
     invested_capital = models.BigIntegerField(null=True, blank=True, verbose_name='투하자본')
+    # 내재가치 5선 신규(연도별 저장). 미계산=None(0과 구분, ev/ic 패턴). 회사단위 플래그(FCF음수·무차입의심)는 윈도우 판정이라 저장 제외.
+    sustainable_growth = models.FloatField(null=True, blank=True, verbose_name='지속가능성장률g')  # g = ROIC×유보율
+    altman_z = models.FloatField(null=True, blank=True, verbose_name="Altman Z''-Score")  # 비제조·신흥시장 4변수
+    altman_z_class = models.CharField(max_length=10, null=True, blank=True, verbose_name='Altman Z등급')  # safe/grey/distress
+    zmijewski = models.FloatField(null=True, blank=True, verbose_name='Zmijewski부실확률')  # 0~1
+    zmijewski_flag = models.BooleanField(null=True, blank=True, verbose_name='Zmijewski부실경보')  # prob≥0.5
     # 다중회사 주요계정 확장 (DART 주요계정 전부 저장)
     current_assets = models.BigIntegerField(null=True, blank=True, verbose_name='유동자산')
     noncurrent_assets = models.BigIntegerField(null=True, blank=True, verbose_name='비유동자산')
@@ -330,11 +336,18 @@ class YearlyFinancialDataObject:
         self.dividend_payout_ratio: float | None = None  # 배당성향 (배당금/FCF, 기업 조회 시 계산)
 
         # 계산된 지표
-        self.fcf: int = 0  # 자유현금흐름
-        self.roic: float = 0.0  # 투하자본수익률 (%)
-        self.wacc: float = 0.0  # 가중평균자본비용 (%)
+        self.fcf: int | None = None  # 자유현금흐름 (미계산=None)
+        self.roic: float | None = None  # 투하자본수익률 (%) (미계산=None)
+        self.wacc: float | None = None  # 가중평균자본비용 (%) (미계산=None)
         self.ev: int | None = None  # 기업가치 (EV)
         self.invested_capital: int | None = None  # 투하자본 (IC)
+
+        # 내재가치 5선 신규(연도별). 미계산=None
+        self.sustainable_growth: float | None = None  # g = ROIC×유보율
+        self.altman_z: float | None = None  # Altman Z''-Score
+        self.altman_z_class: str | None = None  # safe/grey/distress
+        self.zmijewski: float | None = None  # Zmijewski 부실확률 (0~1)
+        self.zmijewski_flag: bool | None = None  # Zmijewski 부실경보 (prob≥0.5)
 
         # 사업보고서 접수번호 (fnlttSinglAcnt raw_data 기준, DB 미저장)
         # fill_basic_indicators 정렬 후 가장 최근 연도 것만 Company에 저장

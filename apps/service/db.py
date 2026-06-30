@@ -168,6 +168,11 @@ def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None,
             yearly_data_obj.wacc = yearly_data_db.wacc
             yearly_data_obj.ev = getattr(yearly_data_db, 'ev', None)
             yearly_data_obj.invested_capital = getattr(yearly_data_db, 'invested_capital', None)
+            yearly_data_obj.sustainable_growth = getattr(yearly_data_db, 'sustainable_growth', None)
+            yearly_data_obj.altman_z = getattr(yearly_data_db, 'altman_z', None)
+            yearly_data_obj.altman_z_class = getattr(yearly_data_db, 'altman_z_class', None)
+            yearly_data_obj.zmijewski = getattr(yearly_data_db, 'zmijewski', None)
+            yearly_data_obj.zmijewski_flag = getattr(yearly_data_db, 'zmijewski_flag', None)
 
             company_data.yearly_data.append(yearly_data_obj)
 
@@ -262,6 +267,12 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                         'wacc': getattr(yearly_data, 'wacc', None),
                         'fcf': getattr(yearly_data, 'fcf', None),
                         'dividend_payout_ratio': getattr(yearly_data, 'dividend_payout_ratio', None),
+                        # 내재가치 5선 신규(연도별 저장). 미계산 연도는 None.
+                        'sustainable_growth': getattr(yearly_data, 'sustainable_growth', None),
+                        'altman_z': getattr(yearly_data, 'altman_z', None),
+                        'altman_z_class': getattr(yearly_data, 'altman_z_class', None),
+                        'zmijewski': getattr(yearly_data, 'zmijewski', None),
+                        'zmijewski_flag': getattr(yearly_data, 'zmijewski_flag', None),
                     }
                 )
             # yearly_indicators는 함수 내 임시 데이터(ROE 등 채움용). DB에 저장하지 않음.
@@ -415,6 +426,37 @@ def recompute_and_save_ev_ic(corp_code: str, market_cap: int | None,
 
     run_with_write_lock_retry(_do)
     return results
+
+
+def nullify_uncomputed_indicators() -> int:
+    """
+    DB의 YearlyFinancialData 중 미계산 행(roic=0.0 AND wacc=0.0)의 roic·wacc·fcf를 None으로 갱신.
+
+    선택 기준: roic=0.0 AND wacc=0.0 이중 조건.
+    - 진짜 계산된 roic=0.0·wacc≠0 행은 보존(방어적 이중조건).
+    - 런타임/테스트용. 데이터 마이그레이션(0022)은 동일 로직을 historical 모델로 self-contained
+      재현하므로 이 함수를 import하지 않는다.
+
+    한계(degenerate, 라이브 0건): total_equity=0(완전자본잠식) + interest_expense=0 +
+    interest_bearing_debt>0 + operating_income=0 인 행은 calculate_roic/calculate_wacc가
+    둘 다 정확히 0.0을 내므로 실측인데도 정리 대상이 되어 fcf까지 소실될 수 있다.
+    현실 회사에선 자본잠식+무이자비용+영업이익0이 동시 성립해야 해 극히 드물고 현 DB엔 0건.
+
+    Returns:
+        갱신된 행 수 (int)
+    """
+    YearlyFinancialDataModel = django_apps.get_model("apps", "YearlyFinancialData")
+    count = [0]
+
+    def _do():
+        with transaction.atomic():
+            updated = YearlyFinancialDataModel.objects.filter(
+                roic=0.0, wacc=0.0
+            ).update(roic=None, wacc=None, fcf=None)
+            count[0] = updated
+
+    run_with_write_lock_retry(_do)
+    return count[0]
 
 
 def query_passed_companies(page: int, page_size: int) -> dict:

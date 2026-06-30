@@ -447,6 +447,34 @@ class IndicatorCalculator:
         return prob >= 0.5
 
     @staticmethod
+    def fill_valuation_indicators(yearly_data) -> None:
+        """
+        내재가치 5선 지표를 yd에 in-place 세팅(반환 None).
+
+        기존 검증된 calculate_*/classify/flag 함수들을 조합해 5속성을 채운다.
+        - sustainable_growth = calculate_g(yd)
+        - altman_z           = calculate_altman_z_double_prime(yd)
+        - altman_z_class     = classify_altman_z(altman_z)
+        - zmijewski          = calculate_zmijewski(yd)
+        - zmijewski_flag     = flag_zmijewski(zmijewski)
+
+        yd는 속성 접근/세팅만 하면 되므로 YearlyFinancialDataObject와
+        YearlyFinancialData(DB 모델 인스턴스) 둘 다에 동작(duck typing).
+        입력이 부족한 지표는 각 calculate_* 정책에 따라 None으로 남는다.
+        """
+        yearly_data.sustainable_growth = IndicatorCalculator.calculate_g(yearly_data)
+        yearly_data.altman_z = IndicatorCalculator.calculate_altman_z_double_prime(
+            yearly_data
+        )
+        yearly_data.altman_z_class = IndicatorCalculator.classify_altman_z(
+            yearly_data.altman_z
+        )
+        yearly_data.zmijewski = IndicatorCalculator.calculate_zmijewski(yearly_data)
+        yearly_data.zmijewski_flag = IndicatorCalculator.flag_zmijewski(
+            yearly_data.zmijewski
+        )
+
+    @staticmethod
     def flag_fcf_negative(yearly_data_list, lookback: int = 3,
                           min_negative: int = 2) -> tuple[bool, str]:
         """
