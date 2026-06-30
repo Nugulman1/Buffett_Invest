@@ -63,23 +63,6 @@ class TestNetIncome:
         assert F.filter_net_income(c) is False
 
 
-# ── 매출 CAGR 필터: ≥ 10% (함수 자체, apply에선 미사용) ───
-class TestRevenueCagr:
-    def test_growth_10pct_passes(self):
-        revs = [100, 110, 121, 133.1, 146.41]  # 정확히 10%/년
-        c = make_company([make_year(2020 + i, revenue=v) for i, v in enumerate(revs)])
-        assert F.filter_revenue_cagr(c) is True
-
-    def test_declining_fails(self):
-        revs = [200, 180, 160, 140, 120]
-        c = make_company([make_year(2020 + i, revenue=v) for i, v in enumerate(revs)])
-        assert F.filter_revenue_cagr(c) is False
-
-    def test_less_than_two_valid_passes(self):
-        c = make_company([make_year(2024, revenue=100)])
-        assert F.filter_revenue_cagr(c) is True
-
-
 # ── 영업이익률 필터: 평균 ≥ 10% ──────────────────────────
 class TestOperatingMargin:
     def test_avg_above_threshold_passes(self):
@@ -123,7 +106,7 @@ class TestRoe:
         assert F.filter_roe(c) is False
 
 
-# ── apply_all_filters: revenue_cagr는 True 하드코딩(T13 문서화) ──
+# ── apply_all_filters ────────────────────────────────────
 class TestApplyAllFilters:
     def _passing_company(self):
         years = [
@@ -138,14 +121,6 @@ class TestApplyAllFilters:
         c = self._passing_company()
         F.apply_all_filters(c)
         assert c.passed_all_filters is True
-
-    def test_revenue_cagr_always_true_even_if_declining(self):
-        # 매출이 급감해도 filter_revenue_cagr는 True 고정(현 동작 캡처)
-        c = self._passing_company()
-        for i, y in enumerate(sorted(c.yearly_data, key=lambda d: d.year)):
-            y.revenue = 1000 - i * 200  # 감소 추세
-        F.apply_all_filters(c)
-        assert c.filter_revenue_cagr is True
 
     def test_one_failing_filter_fails_overall(self):
         c = self._passing_company()

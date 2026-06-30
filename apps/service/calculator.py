@@ -2,6 +2,8 @@
 재무 지표 계산 서비스
 """
 import logging
+import math
+
 from django.conf import settings
 
 from apps.models import YearlyFinancialDataObject, CompanyFinancialObject
@@ -27,62 +29,6 @@ def _get_wacc_equity_premium_buffer():
 class IndicatorCalculator:
     """재무 지표 계산 서비스"""
 
-    @staticmethod
-    def calculate_cagr(start_value: float, end_value: float, years: int) -> float:
-        """
-        CAGR (Compound Annual Growth Rate, 연평균 성장률) 계산
-        
-        공식: CAGR = (end_value / start_value)^(1/years) - 1
-        
-        CAGR은 복리 기준 연평균 성장률로, 시작값에서 최종값까지 일정한 연평균 성장률로
-        증가했다고 가정했을 때의 성장률을 의미합니다. 중간 연도의 변동을 평활화하여
-        전체 기간의 성장 추세를 파악하는 데 사용됩니다.
-        
-        예시: 5년 CAGR의 경우
-        - 시작값: 1년차 값 (예: 2020년 매출액)
-        - 최종값: 5년차 값 (예: 2024년 매출액)
-        - years: 4 (1년차와 5년차 사이의 간격, 2020~2024는 4년 간격)
-        - CAGR = (5년차 값 / 1년차 값)^(1/4) - 1
-        
-        구체적 계산 예시:
-        - 2020년 매출액: 100억원
-        - 2024년 매출액: 146.41억원
-        - CAGR = (146.41 / 100)^(1/4) - 1 = 1.4641^0.25 - 1 = 1.1 - 1 = 0.1 = 10%
-        
-        주의사항:
-        - 현재 코드에서는 매출액(revenue) 기준으로 사용되지만, 이 함수는 범용 함수로
-          어떤 재무 지표(영업이익, 당기순이익, 자산총계 등)에도 적용 가능합니다.
-        - years는 시작값과 최종값 사이의 간격이므로, 데이터 개수 - 1입니다.
-          예: 2020, 2021, 2022, 2023, 2024 (5개 데이터) → years = 4
-        
-        Args:
-            start_value: 시작값 (첫 년도 값)
-            end_value: 최종값 (마지막 년도 값)
-            years: 기간 (년수, 시작값과 최종값 사이의 간격)
-        
-        Returns:
-            CAGR (소수 형태, float). 계산 불가능한 경우 0.0 반환
-            예: 0.105 = 10.5%의 CAGR
-        """
-        if start_value <= 0:
-            logger.warning(f"CAGR 계산 실패: 시작값이 0 이하입니다 (start_value: {start_value})")
-            return 0.0
-        
-        if end_value < 0:
-            logger.warning(f"CAGR 계산 실패: 최종값이 음수입니다 (end_value: {end_value})")
-            return 0.0
-        
-        if years <= 0:
-            logger.warning(f"CAGR 계산 실패: 기간이 0 이하입니다 (years: {years})")
-            return 0.0
-        
-        # CAGR 계산: (end_value / start_value)^(1/years) - 1
-        ratio = end_value / start_value
-        cagr = (ratio ** (1.0 / years)) - 1
-        
-        # 소수 형태로 반환 (예: 0.10 = 10%)
-        return cagr
-    
     @staticmethod
     def calculate_fcf(yearly_data: YearlyFinancialDataObject) -> int:
         """
@@ -355,6 +301,193 @@ class IndicatorCalculator:
         if total_equity is None or total_equity <= 0:
             return None
         return total_liabilities / total_equity
+
+    @staticmethod
+    def calculate_g(yearly_data: YearlyFinancialDataObject) -> float | None:
+        """
+        지속가능성장률 g = ROIC × 유보율(b) 계산.
+
+        - 배당성향(payout) = dividend_paid / net_income
+        - 유보율 b = 1 − payout, b를 [0, 1] 구간으로 클램프(과배당·음의배당 방어)
+        - g = roic × b
+
+        None 처리:
+        - roic None → None (성장률 산출 근거 없음)
+        - net_income None 또는 ≤ 0 → None (배당성향 정의 불가/적자)
+        - dividend_paid None → 배당성향 0 으로 간주(b=1.0, g=roic)
+
+        Returns:
+            g (소수). 산출 불가 시 None
+        """
+        roic = yearly_data.roic
+        if roic is None:
+            return None
+        net_income = yearly_data.net_income
+        if net_income is None or net_income <= 0:
+            return None
+        dividend_paid = yearly_data.dividend_paid
+        payout = 0.0 if dividend_paid is None else dividend_paid / net_income
+        b = 1.0 - payout
+        # 유보율을 [0, 1]로 클램프
+        b = max(0.0, min(1.0, b))
+        return roic * b
+
+    @staticmethod
+    def calculate_altman_z_double_prime(yearly_data: YearlyFinancialDataObject) -> float | None:
+        """
+        Altman Z''-Score (1995, 비제조·신흥시장용 4변수 모형) 계산.
+
+        Z'' = 3.25 + 6.56·X1 + 3.26·X2 + 6.72·X3 + 1.05·X4
+          X1 = (유동자산 − 유동부채) / 자산총계
+          X2 = 이익잉여금 / 자산총계
+          X3 = 영업이익 / 자산총계
+          X4 = 자본총계 / 부채총계
+
+        None 처리:
+        - total_assets None 또는 ≤ 0 → None (분모 무효)
+        - total_liabilities None 또는 ≤ 0 → None (X4 분모 무효)
+        - current_assets·current_liabilities·retained_earnings·operating_income·
+          total_equity 중 하나라도 None → None
+
+        Returns:
+            Z'' 점수 (float). 산출 불가 시 None
+        """
+        total_assets = yearly_data.total_assets
+        if total_assets is None or total_assets <= 0:
+            return None
+        total_liabilities = yearly_data.total_liabilities
+        if total_liabilities is None or total_liabilities <= 0:
+            return None
+        current_assets = yearly_data.current_assets
+        current_liabilities = yearly_data.current_liabilities
+        retained_earnings = yearly_data.retained_earnings
+        operating_income = yearly_data.operating_income
+        total_equity = yearly_data.total_equity
+        if None in (current_assets, current_liabilities, retained_earnings,
+                    operating_income, total_equity):
+            return None
+
+        x1 = (current_assets - current_liabilities) / total_assets
+        x2 = retained_earnings / total_assets
+        x3 = operating_income / total_assets
+        x4 = total_equity / total_liabilities
+        return 3.25 + 6.56 * x1 + 3.26 * x2 + 6.72 * x3 + 1.05 * x4
+
+    @staticmethod
+    def calculate_zmijewski(yearly_data: YearlyFinancialDataObject) -> float | None:
+        """
+        Zmijewski (1984) 부실확률 계산.
+
+        X = −4.336 − 4.513·(net_income/total_assets)
+                  + 5.679·(total_liabilities/total_assets)
+                  + 0.004·(current_assets/current_liabilities)
+        P = 1 / (1 + e^(−X))
+
+        None 처리:
+        - total_assets None 또는 ≤ 0 → None (분모 무효)
+        - net_income None → None
+        - total_liabilities None → None
+        - current_assets None → None
+        - current_liabilities None 또는 ≤ 0 → None (유동비율 분모 무효)
+
+        Returns:
+            부실확률 P (0~1, float). 산출 불가 시 None
+        """
+        total_assets = yearly_data.total_assets
+        if total_assets is None or total_assets <= 0:
+            return None
+        net_income = yearly_data.net_income
+        if net_income is None:
+            return None
+        total_liabilities = yearly_data.total_liabilities
+        if total_liabilities is None:
+            return None
+        current_assets = yearly_data.current_assets
+        if current_assets is None:
+            return None
+        current_liabilities = yearly_data.current_liabilities
+        if current_liabilities is None or current_liabilities <= 0:
+            return None
+
+        roa = net_income / total_assets
+        leverage = total_liabilities / total_assets
+        liquidity = current_assets / current_liabilities
+        x = -4.336 - 4.513 * roa + 5.679 * leverage + 0.004 * liquidity
+        return 1.0 / (1.0 + math.exp(-x))
+
+    @staticmethod
+    def classify_altman_z(z: float | None) -> str | None:
+        """
+        Altman Z'' 점수를 부실등급으로 분류.
+
+        - None → None
+        - z ≥ 2.6           → 'safe'
+        - 1.1 ≤ z < 2.6     → 'grey'
+        - z < 1.1           → 'distress'
+        """
+        if z is None:
+            return None
+        if z >= 2.6:
+            return 'safe'
+        if z >= 1.1:
+            return 'grey'
+        return 'distress'
+
+    @staticmethod
+    def flag_zmijewski(prob: float | None) -> bool | None:
+        """
+        Zmijewski 부실확률 경보 플래그.
+
+        - None → None
+        - prob ≥ 0.5 → True (부실 경보)
+        - 그 외      → False
+        """
+        if prob is None:
+            return None
+        return prob >= 0.5
+
+    @staticmethod
+    def flag_fcf_negative(yearly_data_list, lookback: int = 3,
+                          min_negative: int = 2) -> tuple[bool, str]:
+        """
+        최근 lookback개 연도 중 음의 FCF가 min_negative회 이상이면 경보.
+
+        절차:
+        1) year 내림차순 정렬 후 최근 lookback개만 잘라낸다(윈도우 고정).
+        2) 그 윈도우 안에서 fcf가 None 아닌 레코드만 모은다.
+        3) fcf < 0 개수가 min_negative 이상이면 (True, 사유), 아니면 (False, 사유).
+        레코드 0건 또는 유효 fcf 0건이면 (False, 데이터 없음 취지 사유).
+
+        Args:
+            yearly_data_list: .year, .fcf 속성을 노출하는 연간 레코드 iterable
+            lookback: 최근 몇 개 연도를 볼지 (기본 3)
+            min_negative: 음의 FCF 몇 회 이상이면 경보 (기본 2)
+
+        Returns:
+            (음의FCF_경보_여부, 사유 문자열)
+        """
+        records = list(yearly_data_list)
+        if not records:
+            return False, 'FCF 연간 레코드가 없어 음의 FCF 경보 판정 불가(데이터 0건)'
+
+        # year 내림차순 정렬 후 최근 lookback개를 먼저 자른다
+        sorted_recs = sorted(records, key=lambda r: r.year, reverse=True)
+        window = sorted_recs[:lookback]
+
+        valid_fcfs = [r.fcf for r in window if r.fcf is not None]
+        if not valid_fcfs:
+            return False, f'최근 {lookback}년 윈도우에 유효한 FCF가 없어 판정 불가'
+
+        negative_count = sum(1 for f in valid_fcfs if f < 0)
+        if negative_count >= min_negative:
+            return True, (
+                f'최근 {lookback}년 중 유효 FCF {len(valid_fcfs)}개에서 '
+                f'음의 FCF {negative_count}회(≥{min_negative}) — 음의 FCF 경보'
+            )
+        return False, (
+            f'최근 {lookback}년 중 유효 FCF {len(valid_fcfs)}개에서 '
+            f'음의 FCF {negative_count}회(<{min_negative}) — 경보 아님'
+        )
 
     @staticmethod
     def calculate_basic_financial_ratios(company_data: CompanyFinancialObject) -> None:

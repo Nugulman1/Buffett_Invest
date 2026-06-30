@@ -141,7 +141,6 @@ def load_company_from_db(corp_code: str) -> tuple[CompanyFinancialObject | None,
         company_data.passed_all_filters = company.passed_all_filters
         company_data.filter_operating_income = company.filter_operating_income
         company_data.filter_net_income = company.filter_net_income
-        company_data.filter_revenue_cagr = company.filter_revenue_cagr
         company_data.filter_operating_margin = company.filter_operating_margin
         company_data.filter_roe = company.filter_roe
 
@@ -224,7 +223,6 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                     'passed_all_filters': company_data.passed_all_filters,
                     'filter_operating_income': company_data.filter_operating_income,
                     'filter_net_income': company_data.filter_net_income,
-                    'filter_revenue_cagr': company_data.filter_revenue_cagr,
                     'filter_operating_margin': company_data.filter_operating_margin,
                     'filter_roe': company_data.filter_roe,
                     'latest_annual_rcept_no': getattr(company_data, 'latest_annual_rcept_no', None),
@@ -254,9 +252,7 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
                         'current_liabilities': getattr(yearly_data, 'current_liabilities', None),
                         'noncurrent_liabilities': getattr(yearly_data, 'noncurrent_liabilities', None),
                         'total_liabilities': getattr(yearly_data, 'total_liabilities', None),
-                        'capital_stock': getattr(yearly_data, 'capital_stock', None),
                         'retained_earnings': getattr(yearly_data, 'retained_earnings', None),
-                        'profit_before_tax': getattr(yearly_data, 'profit_before_tax', None),
                         'dividend_paid': getattr(yearly_data, 'dividend_paid', None),
                         'ev': getattr(yearly_data, 'ev', None),
                         'invested_capital': getattr(yearly_data, 'invested_capital', None),

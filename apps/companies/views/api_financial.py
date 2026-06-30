@@ -72,7 +72,6 @@ def get_financial_data(request, corp_code):
             "consecutive_dividend_years": consecutive_dividend_years,
             "filter_operating_income": company_data.filter_operating_income,
             "filter_net_income": company_data.filter_net_income,
-            "filter_revenue_cagr": company_data.filter_revenue_cagr,
             "filter_operating_margin": company_data.filter_operating_margin,
             "filter_roe": company_data.filter_roe,
             "memo": memo,

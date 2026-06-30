@@ -177,6 +177,23 @@ CALCULATOR_DEFAULTS = {
 # 2차 필터: ROIC - WACC >= 이 값(소수, 0.02 = 2%)이면 통과
 SECOND_FILTER_ROIC_WACC_SPREAD = float(os.getenv('SECOND_FILTER_ROIC_WACC_SPREAD', '0.02'))
 
+# 1차 필터 임계값 (실험용 config화) — 초기값은 현행 유지
+FIRST_FILTER = {
+    'OPERATING_MARGIN_MIN': float(os.getenv('FIRST_FILTER_OPERATING_MARGIN_MIN', '0.10')),
+    'OPERATING_INCOME_MAX_NEGATIVE_YEARS': int(os.getenv('FIRST_FILTER_OP_INCOME_MAX_NEG_YEARS', '1')),
+    'ROE_MIN': {
+        'large': float(os.getenv('FIRST_FILTER_ROE_MIN_LARGE', '0.08')),
+        'medium': float(os.getenv('FIRST_FILTER_ROE_MIN_MEDIUM', '0.10')),
+        'small': float(os.getenv('FIRST_FILTER_ROE_MIN_SMALL', '0.12')),
+    },
+}
+# 랭킹 가중치 (질·가격·성장 동등 1:1:1, config로 실험 조정)
+RANKING_WEIGHTS = {
+    'quality': float(os.getenv('RANKING_WEIGHT_QUALITY', '1.0')),
+    'price': float(os.getenv('RANKING_WEIGHT_PRICE', '1.0')),
+    'growth': float(os.getenv('RANKING_WEIGHT_GROWTH', '1.0')),
+}
+
 # 채권수익률(국채 5년) 조회 실패 시 WACC/계산기 폴백값 (퍼센트). 매직넘버 3.5 일원화(T6).
 BOND_YIELD_FALLBACK_PCT = float(os.getenv('BOND_YIELD_FALLBACK_PCT', '3.5'))
 

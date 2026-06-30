@@ -13,6 +13,28 @@ from apps.service.calculator import IndicatorCalculator
 # 영업이익률 평균 ≥ 10%
 # ROE 평균 (규모별): 대기업 ≥ 8%, 중견기업 ≥ 10%, 중소기업 ≥ 12%
 
+
+_FIRST_FILTER_DEFAULTS = {
+    'OPERATING_MARGIN_MIN': 0.10,
+    'OPERATING_INCOME_MAX_NEGATIVE_YEARS': 1,
+    'ROE_MIN': {'large': 0.08, 'medium': 0.10, 'small': 0.12},
+}
+
+
+def _first_filter():
+    """1차 필터 임계값을 settings.FIRST_FILTER에서 읽는다.
+    누락 키는 기본값으로 병합 폴백 — 실험용 '부분 override'(일부 키만 지정)도
+    KeyError 없이 안전하게 동작한다(전체 dict 부재만이 아니라 부분 누락까지 커버)."""
+    cfg = getattr(settings, 'FIRST_FILTER', {}) or {}
+    merged = dict(_FIRST_FILTER_DEFAULTS)
+    merged.update(cfg)
+    # ROE_MIN 하위 dict도 부분 누락(예: small만 지정) 대비 규모별 기본값 병합
+    roe = dict(_FIRST_FILTER_DEFAULTS['ROE_MIN'])
+    roe.update(cfg.get('ROE_MIN', {}) or {})
+    merged['ROE_MIN'] = roe
+    return merged
+
+
 class CompanyFilter:
     """장기 투자 필터링 서비스"""
     
@@ -42,7 +64,7 @@ class CompanyFilter:
         if not valid_data:
             return False
         negative_count = sum(1 for d in valid_data if d.operating_income <= 0)
-        return negative_count <= 1
+        return negative_count <= _first_filter()['OPERATING_INCOME_MAX_NEGATIVE_YEARS']
     
     @staticmethod
     def filter_net_income(company_data: CompanyFinancialObject) -> bool:
@@ -73,34 +95,6 @@ class CompanyFilter:
         return total_net_income > 0
     
     @staticmethod
-    def filter_revenue_cagr(company_data: CompanyFinancialObject) -> bool:
-        """
-        매출액 CAGR 필터: 매출액 CAGR ≥ 10%
-        (5년 데이터가 없어도 수집된 데이터로 계산, 최소 2년 데이터 필요)
-        
-        Args:
-            company_data: CompanyFinancialObject 객체
-        
-        Returns:
-            필터 통과 여부 (bool)
-        """
-        if not company_data.yearly_data:
-            return False
-        
-        # 데이터 정렬 (오름차순)
-        sorted_data = sorted(company_data.yearly_data, key=lambda x: x.year)
-        
-        # 데이터 없음(None) 또는 0인 연도 제외, revenue > 0인 연도만 사용
-        valid_data = [d for d in sorted_data if d.revenue is not None and d.revenue > 0]
-        if len(valid_data) < 2:
-            return True
-        start_value = valid_data[0].revenue
-        end_value = valid_data[-1].revenue
-        years_span = valid_data[-1].year - valid_data[0].year
-        cagr = IndicatorCalculator.calculate_cagr(start_value, end_value, years_span)
-        return cagr >= 0.10
-    
-    @staticmethod
     def filter_operating_margin(company_data: CompanyFinancialObject) -> bool:
         """
         영업이익률 필터: 영업이익률 평균 ≥ 10%
@@ -126,7 +120,7 @@ class CompanyFilter:
         if not ratios:
             return False
         average_ratio = sum(ratios) / len(ratios)
-        return average_ratio >= 0.10
+        return average_ratio >= _first_filter()['OPERATING_MARGIN_MIN']
     
     @staticmethod
     def filter_roe(company_data: CompanyFinancialObject) -> bool:
@@ -161,7 +155,7 @@ class CompanyFilter:
         latest_total_assets = valid_for_assets[0].total_assets
         company_size = classify_company_size(latest_total_assets)
         
-        roe_thresholds = {'large': 0.08, 'medium': 0.10, 'small': 0.12}
+        roe_thresholds = _first_filter()['ROE_MIN']
         threshold = roe_thresholds[company_size]
         
         data_to_check = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
@@ -187,17 +181,13 @@ class CompanyFilter:
         # 각 필터 적용
         company_data.filter_operating_income = cls.filter_operating_income(company_data)
         company_data.filter_net_income = cls.filter_net_income(company_data)
-        # 매출 CAGR 필터: 이번 기업 분석에서 미사용
-        # company_data.filter_revenue_cagr = cls.filter_revenue_cagr(company_data)
-        company_data.filter_revenue_cagr = True  # 미적용(통과로 간주)
         company_data.filter_operating_margin = cls.filter_operating_margin(company_data)
         company_data.filter_roe = cls.filter_roe(company_data)
-        
+
         # 전체 필터 통과 여부: 모든 필터가 True여야 함
         company_data.passed_all_filters = (
             company_data.filter_operating_income and
             company_data.filter_net_income and
-            company_data.filter_revenue_cagr and  # 현재 미적용(True 고정)
             company_data.filter_operating_margin and
             company_data.filter_roe
         )

@@ -12,7 +12,6 @@ class Company(models.Model):
     passed_all_filters = models.BooleanField(default=False, verbose_name='전체필터통과')
     filter_operating_income = models.BooleanField(default=False, verbose_name='영업이익필터')
     filter_net_income = models.BooleanField(default=False, verbose_name='당기순이익필터')
-    filter_revenue_cagr = models.BooleanField(default=False, verbose_name='매출액CAGR필터')
     filter_operating_margin = models.BooleanField(default=False, verbose_name='영업이익률필터')
     filter_roe = models.BooleanField(default=False, verbose_name='ROE필터')
     passed_second_filter = models.BooleanField(null=True, default=None, verbose_name='2차필터통과')
@@ -105,9 +104,7 @@ class YearlyFinancialData(models.Model):
     current_liabilities = models.BigIntegerField(null=True, blank=True, verbose_name='유동부채')
     noncurrent_liabilities = models.BigIntegerField(null=True, blank=True, verbose_name='비유동부채')
     total_liabilities = models.BigIntegerField(null=True, blank=True, verbose_name='부채총계')
-    capital_stock = models.BigIntegerField(null=True, blank=True, verbose_name='자본금')
     retained_earnings = models.BigIntegerField(null=True, blank=True, verbose_name='이익잉여금')
-    profit_before_tax = models.BigIntegerField(null=True, blank=True, verbose_name='법인세차감전순이익')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일시')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일시')
     
@@ -319,9 +316,7 @@ class YearlyFinancialDataObject:
         self.current_liabilities: int | None = None  # 유동부채
         self.noncurrent_liabilities: int | None = None  # 비유동부채
         self.total_liabilities: int | None = None  # 부채총계
-        self.capital_stock: int | None = None  # 자본금
         self.retained_earnings: int | None = None  # 이익잉여금
-        self.profit_before_tax: int | None = None  # 법인세차감전순이익
         
         # === 계산에 사용하는 기본 지표 ===
         self.tangible_asset_acquisition: int = 0  # 유형자산 취득
@@ -380,6 +375,5 @@ class CompanyFinancialObject:
         self.passed_all_filters: bool = False  # 전체 필터 통과 여부
         self.filter_operating_income: bool = False  # 영업이익 필터 통과 여부
         self.filter_net_income: bool = False  # 당기순이익 필터 통과 여부
-        self.filter_revenue_cagr: bool = False  # 매출액 CAGR 필터 통과 여부
         self.filter_operating_margin: bool = False  # 영업이익률 필터 통과 여부
         self.filter_roe: bool = False  # ROE 필터 통과 여부

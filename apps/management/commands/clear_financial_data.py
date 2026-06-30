@@ -79,7 +79,6 @@ class Command(BaseCommand):
                     company.passed_all_filters = False
                     company.filter_operating_income = False
                     company.filter_net_income = False
-                    company.filter_revenue_cagr = False
                     company.filter_operating_margin = False
                     company.filter_roe = False
                     # 최근 사업보고서 링크용 필드 초기화
@@ -90,7 +89,6 @@ class Command(BaseCommand):
                         'passed_all_filters',
                         'filter_operating_income',
                         'filter_net_income',
-                        'filter_revenue_cagr',
                         'filter_operating_margin',
                         'filter_roe',
                         'latest_annual_rcept_no',
@@ -150,7 +148,6 @@ class Command(BaseCommand):
                     passed_second_filter=None,
                     filter_operating_income=False,
                     filter_net_income=False,
-                    filter_revenue_cagr=False,
                     filter_operating_margin=False,
                     filter_roe=False,
                     latest_annual_rcept_no=None,

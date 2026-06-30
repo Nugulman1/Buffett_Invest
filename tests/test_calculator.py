@@ -19,23 +19,6 @@ def make_year(year=2024, **kw):
     return y
 
 
-# ── CAGR ────────────────────────────────────────────────
-class TestCagr:
-    def test_basic_10pct(self):
-        # 100 → 146.41 over 4 years = 정확히 10%
-        assert C.calculate_cagr(100, 146.41, 4) == pytest.approx(0.10, abs=1e-4)
-
-    def test_start_value_nonpositive_returns_zero(self):
-        assert C.calculate_cagr(0, 100, 4) == 0.0
-        assert C.calculate_cagr(-10, 100, 4) == 0.0
-
-    def test_end_value_negative_returns_zero(self):
-        assert C.calculate_cagr(100, -10, 4) == 0.0
-
-    def test_years_nonpositive_returns_zero(self):
-        assert C.calculate_cagr(100, 200, 0) == 0.0
-
-
 # ── FCF = CFO - |유형취득 + 무형취득| ────────────────────
 class TestFcf:
     def test_basic(self):
