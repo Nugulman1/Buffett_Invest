@@ -48,3 +48,10 @@ db.sqlite3-journal
 .DS_Store
 Thumbs.db
 
+# 데이터 스냅샷 (KRX 일별 — 매일 갱신되므로 추적 제외)
+data/krx_daily_snapshot*.json
+
+# 작업 도구·메모
+.omx/
+명령어_투자프로그램.txt
+
