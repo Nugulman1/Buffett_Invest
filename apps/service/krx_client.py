@@ -176,14 +176,10 @@ class KrxClient:
 
 
 # 스냅샷 파일 캐싱(재수집 판단·JSON 로드/저장·병합·확보)은 krx_cache.py로 분리.
-# 기존 참조 경로(apps.service.krx_client.ensure_latest_snapshot 등, patch 대상 포함) 보존을 위해 재수출.
-from apps.service.krx_cache import (  # noqa: E402,F401
-    _should_refresh_snapshot,
-    _load_snapshot_json,
-    _save_snapshot_json,
-    _load_merged_snapshot,
-    ensure_latest_snapshot,
-)
+# 공개 진입점 ensure_latest_snapshot만 재수출(기존 patch 경로 보존). 하위 도우미(_로 시작)는
+# krx_cache 내부 전용이므로 재수출 안 함 — krx_client 경로로 patch해도 실제 호출부(krx_cache
+# 모듈-로컬)에 안 닿는 함정을 원천 차단. 도우미 patch가 필요하면 apps.service.krx_cache 경로로.
+from apps.service.krx_cache import ensure_latest_snapshot  # noqa: E402,F401
 
 
 def serialize_krx_daily_row(row: dict) -> dict:
@@ -315,11 +311,14 @@ def update_all_company_market_caps(recompute_ev: bool = True) -> dict:
 
     Returns: {"updated", "ev_recomputed", "skipped_no_stock", "skipped_not_in_snapshot"}
     """
-    from django.apps import apps as django_apps
     from django.utils import timezone
     from apps.dart.client import DartClient
     from apps.service.corp_code import build_corp_to_stock_index
-    from apps.service.db import recompute_and_save_ev_ic, bulk_update_market_caps
+    from apps.service.db import (
+        recompute_and_save_ev_ic,
+        bulk_update_market_caps,
+        iter_companies_for_market_cap_update,
+    )
 
     snap = ensure_latest_snapshot()
     index = _build_mktcap_index(snap)
@@ -333,7 +332,6 @@ def update_all_company_market_caps(recompute_ev: bool = True) -> dict:
         dart_client.load_corp_code_xml()
     corp_to_stock = build_corp_to_stock_index(dart_client._corp_code_mapping_cache)
 
-    CompanyModel = django_apps.get_model("apps", "Company")
     # 갱신 시각은 '방금'(now)이 아니라 시세 기준일(bas_dd) — "방금 갱신" 착각 방지.
     updated_at = _bas_dd_to_aware_datetime((snap or {}).get("bas_dd")) or timezone.now()
 
@@ -342,7 +340,7 @@ def update_all_company_market_caps(recompute_ev: bool = True) -> dict:
     to_update = []
     changed = []  # [(corp_code, market_cap)] — EV 재계산 대상(시총 변동분만)
     no_stock = not_in_snap = 0
-    for company in CompanyModel.objects.only("corp_code", "market_cap").iterator():
+    for company in iter_companies_for_market_cap_update():
         stock_code = corp_to_stock.get(company.corp_code)
         if not stock_code:
             no_stock += 1

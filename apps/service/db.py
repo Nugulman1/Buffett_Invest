@@ -299,6 +299,17 @@ def update_company_market_cap(corp_code: str, market_cap, updated_at) -> None:
     run_with_write_lock_retry(_do)
 
 
+def iter_companies_for_market_cap_update():
+    """
+    시총 일괄 갱신용: 전 회사의 corp_code/market_cap만 스트리밍(iterator) 조회.
+
+    krx_client.update_all_company_market_caps가 직접 ORM 대신 호출(T-DB위임).
+    읽기 전용, 락 없음.
+    """
+    CompanyModel = django_apps.get_model("apps", "Company")
+    return CompanyModel.objects.only("corp_code", "market_cap").iterator()
+
+
 def bulk_update_market_caps(companies: list, batch_size: int = 500) -> None:
     """
     Company 인스턴스 리스트(각 market_cap/market_cap_updated_at 세팅 완료)를 일괄 갱신.
