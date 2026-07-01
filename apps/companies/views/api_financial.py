@@ -56,16 +56,13 @@ def get_financial_data(request, corp_code):
             if company and getattr(company, "market_cap_updated_at", None)
             else None
         )
-        sorted_yearly = sorted(company_data.yearly_data, key=lambda x: x.year, reverse=True)
         # 회사단위 FCF 음수 경보(최근 3년 윈도우). 연도별 컬럼이 아니라 조회 시 계산.
         fcf_negative_flag, fcf_negative_reason = IndicatorCalculator.flag_fcf_negative(
             company_data.yearly_data
         )
-        consecutive_dividend_years = 0
-        for yd in sorted_yearly:
-            if yd.dividend_paid is None or yd.dividend_paid <= 0:
-                break
-            consecutive_dividend_years += 1
+        consecutive_dividend_years = IndicatorCalculator.count_consecutive_dividend_years(
+            company_data.yearly_data
+        )
         data = {
             "corp_code": company_data.corp_code,
             "company_name": company_data.company_name,
@@ -207,7 +204,11 @@ def get_market_cap(request, corp_code):
         return Response({"error": err}, status=status.HTTP_404_NOT_FOUND)
     corp_code = resolved
 
-    from apps.service.krx_client import fetch_and_save_company_market_cap, get_snapshot_row_by_isu_cd
+    from apps.service.krx_client import (
+        fetch_and_save_company_market_cap,
+        get_snapshot_row_by_isu_cd,
+        serialize_krx_daily_row,
+    )
 
     if get_company_market_cap_info(corp_code) is None:
         return Response(
@@ -225,20 +226,7 @@ def get_market_cap(request, corp_code):
     if stock_code:
         row = get_snapshot_row_by_isu_cd(stock_code)
         if row:
-            krx_daily = {
-                "BAS_DD": row.get("BAS_DD"),
-                "IDX_CLSS": row.get("MKT_NM"),
-                "IDX_NM": row.get("ISU_NM"),
-                "CLSPRC_IDX": row.get("TDD_CLSPRC"),
-                "CMPPREVDD_IDX": row.get("CMPPREVDD_PRC"),
-                "FLUC_RT": row.get("FLUC_RT"),
-                "OPNPRC_IDX": row.get("TDD_OPNPRC"),
-                "HGPRC_IDX": row.get("TDD_HGPRC"),
-                "LWPRC_IDX": row.get("TDD_LWPRC"),
-                "ACC_TRDVOL": row.get("ACC_TRDVOL"),
-                "ACC_TRDVAL": row.get("ACC_TRDVAL"),
-                "MKTCAP": row.get("MKTCAP"),
-            }
+            krx_daily = serialize_krx_daily_row(row)
 
     return Response({
         "market_cap": market_cap,

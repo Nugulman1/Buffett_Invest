@@ -518,6 +518,28 @@ class IndicatorCalculator:
         )
 
     @staticmethod
+    def count_consecutive_dividend_years(yearly_data) -> int:
+        """
+        최신 연도부터 역순으로 연속 배당 연수를 센다.
+
+        절차: year 내림차순 정렬 후 최신부터 순회. dividend_paid가 None이거나
+        0 이하면 즉시 중단(그 이전 연도에 배당이 있어도 무시). 0 초과면 +1.
+
+        Args:
+            yearly_data: .year, .dividend_paid 속성을 노출하는 연간 레코드 iterable.
+
+        Returns:
+            연속 배당 연수 (int, 0 이상)
+        """
+        sorted_data = sorted(yearly_data, key=lambda x: x.year, reverse=True)
+        count = 0
+        for yd in sorted_data:
+            if yd.dividend_paid is None or yd.dividend_paid <= 0:
+                break
+            count += 1
+        return count
+
+    @staticmethod
     def calculate_basic_financial_ratios(company_data: CompanyFinancialObject) -> None:
         """
         기본 재무지표 계산 (영업이익률, 부채비율)

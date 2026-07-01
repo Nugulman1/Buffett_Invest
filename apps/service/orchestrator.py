@@ -66,10 +66,9 @@ class DataOrchestrator:
         연간 데이터를 읽어 계산하는 기존 함수(recompute_and_save_ev_ic)로 단일화(T7).
         """
         from apps.service.corp_code import get_stock_code_by_corp_code
-        from apps.service.db import recompute_and_save_ev_ic, run_with_write_lock_retry
+        from apps.service.db import recompute_and_save_ev_ic, update_company_market_cap
         from apps.service.krx_client import _bas_dd_to_aware_datetime
         from django.utils import timezone
-        from django.apps import apps as django_apps
 
         stock_code = get_stock_code_by_corp_code(corp_code)
         if not stock_code:
@@ -77,15 +76,9 @@ class DataOrchestrator:
         market_cap = self._ensure_krx_index().get(stock_code)
         if market_cap is None:
             return
-        CompanyModel = django_apps.get_model('apps', 'Company')
         # 갱신 시각은 '방금'(now)이 아니라 시세 기준일(bas_dd) — "방금 갱신" 착각 방지.
         updated_at = _bas_dd_to_aware_datetime(self._krx_bas_dd) or timezone.now()
-        run_with_write_lock_retry(
-            lambda: CompanyModel.objects.filter(corp_code=corp_code).update(
-                market_cap=market_cap,
-                market_cap_updated_at=updated_at,
-            )
-        )
+        update_company_market_cap(corp_code, market_cap, updated_at)
         recompute_and_save_ev_ic(corp_code, market_cap)
 
     @staticmethod

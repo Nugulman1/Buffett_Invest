@@ -27,9 +27,6 @@ MARKET_KOSDAQ = "KOSDAQ"
 MARKET_KONEX = "KONEX"
 MARKET_ORDER = (MARKET_KOSPI, MARKET_KOSDAQ, MARKET_KONEX)
 
-# 메모리 캐시: 마지막 로드한 스냅샷 (ensure_latest_snapshot 결과)
-_snapshot_cache: dict | None = None
-
 KST = timezone(timedelta(hours=9))
 
 
@@ -113,12 +110,14 @@ class KrxClient:
         url = f"{self.base_url}{service_path}"
         params = {"basDd": bas_dd}
         req_headers = self._headers()
-        max_attempts = 3
-        retry_delay_sec = 2
+        data_collection = getattr(settings, "DATA_COLLECTION", {}) or {}
+        max_attempts = data_collection.get("API_MAX_RETRIES", 2) + 1
+        retry_delay_sec = data_collection.get("KRX_RETRY_DELAY_SEC", 2)
+        api_timeout = data_collection.get("API_TIMEOUT", 30)
 
         for attempt in range(max_attempts):
             try:
-                resp = requests.get(url, headers=req_headers, params=params, timeout=30)
+                resp = requests.get(url, headers=req_headers, params=params, timeout=api_timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 return self._parse_full_block_list(data)
@@ -176,135 +175,33 @@ class KrxClient:
         return result
 
 
-def _should_refresh_snapshot(path: Path) -> bool:
-    """
-    재수집 필요 여부.
-    1. JSON 파일이 없으면 True.
-    2. 저장된 bas_dd를 파싱할 수 없거나 형식이 잘못되면 True.
-    3. 저장된 bas_dd가 오늘보다 미래(시스템 날짜 오류 등)면 True.
-    4. 저장된 bas_dd가 어제(한국날짜)보다 이전이면 True.
-    (어제 또는 오늘 데이터가 이미 있으면 재수집하지 않음.)
-    """
-    if not path.exists():
-        return True
-    now = _get_kst_now()
-    today = now.date()
-    yesterday = today - timedelta(days=1)
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            obj = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return True
-    stored_bas_dd = (obj.get("bas_dd") or "").strip()
-    if not stored_bas_dd or len(stored_bas_dd) != 8:
-        return True
-    try:
-        stored_date = datetime.strptime(stored_bas_dd, "%Y%m%d").date()
-    except ValueError:
-        return True
-    if stored_date > today:
-        return True
-    if stored_date < yesterday:
-        logger.warning(
-            "KRX 스냅샷이 오래됨 (저장 bas_dd=%s < 어제=%s) → 재수집 시도",
-            stored_bas_dd, yesterday.strftime("%Y%m%d"),
-        )
-        return True
-    return False
+# 스냅샷 파일 캐싱(재수집 판단·JSON 로드/저장·병합·확보)은 krx_cache.py로 분리.
+# 기존 참조 경로(apps.service.krx_client.ensure_latest_snapshot 등, patch 대상 포함) 보존을 위해 재수출.
+from apps.service.krx_cache import (  # noqa: E402,F401
+    _should_refresh_snapshot,
+    _load_snapshot_json,
+    _save_snapshot_json,
+    _load_merged_snapshot,
+    ensure_latest_snapshot,
+)
 
 
-def _load_snapshot_json(path: Path) -> dict | None:
-    """스냅샷 JSON 로드. 없거나 깨지면 None."""
-    if not path.exists():
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return None
-
-
-def _save_snapshot_json(path: Path, bas_dd: str, rows: list[dict]) -> None:
-    """collected_at(KST ISO8601), bas_dd, rows로 JSON 저장. 15개 필드 그대로."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    collected_at = _get_kst_now().strftime("%Y-%m-%dT%H:%M:%S+09:00")
-    payload = {"collected_at": collected_at, "bas_dd": bas_dd, "rows": rows}
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-
-
-def _load_merged_snapshot() -> dict | None:
-    """유가 -> 코스닥 -> 코넥스 순으로 시장별 스냅샷 파일 로드 후 rows 병합. 조회 시 같은 순서로 찾으면 데이터 얻었으면 break."""
-    all_rows = []
-    collected_at = None
-    bas_dd = None
-    for market in MARKET_ORDER:
-        path = _get_snapshot_path(market)
-        snap = _load_snapshot_json(path)
-        if snap and snap.get("rows"):
-            all_rows.extend(snap["rows"])
-            if collected_at is None:
-                collected_at = snap.get("collected_at")
-                bas_dd = snap.get("bas_dd")
-    if not all_rows:
-        return None
-    now = _get_kst_now()
+def serialize_krx_daily_row(row: dict) -> dict:
+    """KRX 원본 일별 행(dict)을 프론트 계약 키로 매핑. 누락 키는 None(.get 시맨틱)."""
     return {
-        "collected_at": collected_at or now.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
-        "bas_dd": bas_dd or now.strftime("%Y%m%d"),
-        "rows": all_rows,
+        "BAS_DD": row.get("BAS_DD"),
+        "IDX_CLSS": row.get("MKT_NM"),
+        "IDX_NM": row.get("ISU_NM"),
+        "CLSPRC_IDX": row.get("TDD_CLSPRC"),
+        "CMPPREVDD_IDX": row.get("CMPPREVDD_PRC"),
+        "FLUC_RT": row.get("FLUC_RT"),
+        "OPNPRC_IDX": row.get("TDD_OPNPRC"),
+        "HGPRC_IDX": row.get("TDD_HGPRC"),
+        "LWPRC_IDX": row.get("TDD_LWPRC"),
+        "ACC_TRDVOL": row.get("ACC_TRDVOL"),
+        "ACC_TRDVAL": row.get("ACC_TRDVAL"),
+        "MKTCAP": row.get("MKTCAP"),
     }
-
-
-def ensure_latest_snapshot() -> dict | None:
-    """
-    최신 스냅샷 확보. 재수집 조건 만족 시에만 API 호출(유가/코스닥/코넥스, 하루 전→이틀 전 순).
-    아니면 시장별 파일 로드·병합 후 반환. 반환: {"collected_at", "bas_dd", "rows"}.
-    """
-    global _snapshot_cache
-    need_refresh = any(
-        _should_refresh_snapshot(_get_snapshot_path(m)) for m in MARKET_ORDER if _get_api_path(m)
-    )
-    if not need_refresh:
-        snap = _load_merged_snapshot()
-        if snap is not None:
-            _snapshot_cache = snap
-        return snap
-
-    now = _get_kst_now()
-    client = KrxClient()
-    all_rows = []
-    bas_dd_used = None
-    # data-dbg가 최근일 빈 배열 반환 시 대비, 최대 14일 전까지 시도
-    bas_dd_candidates = [(now - timedelta(days=d)).strftime("%Y%m%d") for d in range(1, 15)]
-    for market in MARKET_ORDER:
-        if not _get_api_path(market):
-            continue
-        rows = None
-        market_bas_dd = None
-        for bas_dd in bas_dd_candidates:
-            rows = client.get_all_daily_data(bas_dd, market=market)
-            if rows:
-                market_bas_dd = bas_dd
-                break
-        if rows and market_bas_dd:
-            if bas_dd_used is None:
-                bas_dd_used = market_bas_dd
-            path = _get_snapshot_path(market)
-            _save_snapshot_json(path, market_bas_dd, rows)
-            all_rows.extend(rows)
-    if not all_rows:
-        snap = _load_merged_snapshot()
-        if snap is not None:
-            _snapshot_cache = snap
-        return snap
-    _snapshot_cache = {
-        "collected_at": now.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
-        "bas_dd": bas_dd_used or bas_dd_candidates[0],
-        "rows": all_rows,
-    }
-    return _snapshot_cache
 
 
 def get_snapshot_row_by_isu_cd(isu_cd: str) -> dict | None:
@@ -350,7 +247,6 @@ def fetch_and_save_company_market_cap(corp_code: str) -> int | None:
     corp_code에 해당하는 종목코드로 스냅샷에서 행 조회 후
     Company.market_cap / market_cap_updated_at 만 갱신. 시가총액(원) 반환.
     """
-    from django.apps import apps as django_apps
     from django.utils import timezone
     from apps.service.corp_code import get_stock_code_by_corp_code
 
@@ -367,7 +263,6 @@ def fetch_and_save_company_market_cap(corp_code: str) -> int | None:
         )
         return None
 
-    CompanyModel = django_apps.get_model("apps", "Company")
     # 갱신 시각은 '방금'(now)이 아니라 시세 기준일(행의 BAS_DD) — "방금 갱신" 착각 방지.
     updated_at = _bas_dd_to_aware_datetime(row.get("BAS_DD")) or timezone.now()
     mktcap_str = row.get("MKTCAP")
@@ -378,15 +273,10 @@ def fetch_and_save_company_market_cap(corp_code: str) -> int | None:
         except (TypeError, ValueError):
             pass
 
-    # 쓰기 락+재시도로 동시성 보호(T9): 배치 수집 중 시총 갱신이 겹쳐도 'database is locked' 회피
-    from apps.service.db import run_with_write_lock_retry
+    # DB 쓰기는 db.py 게이트웨이로 위임(쓰기 락+재시도 T9는 게이트웨이 내부에 내장)
+    from apps.service.db import update_company_market_cap
     try:
-        run_with_write_lock_retry(
-            lambda: CompanyModel.objects.filter(corp_code=corp_code).update(
-                market_cap=market_cap,
-                market_cap_updated_at=updated_at,
-            )
-        )
+        update_company_market_cap(corp_code, market_cap, updated_at)
     except Exception as e:
         logger.warning("Company 시가총액 갱신 실패 corp_code=%s: %s", corp_code, e)
         return None
@@ -429,7 +319,7 @@ def update_all_company_market_caps(recompute_ev: bool = True) -> dict:
     from django.utils import timezone
     from apps.dart.client import DartClient
     from apps.service.corp_code import build_corp_to_stock_index
-    from apps.service.db import recompute_and_save_ev_ic, run_with_write_lock_retry
+    from apps.service.db import recompute_and_save_ev_ic, bulk_update_market_caps
 
     snap = ensure_latest_snapshot()
     index = _build_mktcap_index(snap)
@@ -471,11 +361,7 @@ def update_all_company_market_caps(recompute_ev: bool = True) -> dict:
     updated = len(to_update)
     if to_update:
         try:
-            run_with_write_lock_retry(
-                lambda: CompanyModel.objects.bulk_update(
-                    to_update, ["market_cap", "market_cap_updated_at"], batch_size=500
-                )
-            )
+            bulk_update_market_caps(to_update, batch_size=500)
         except Exception as e:
             logger.warning("시총 일괄 bulk_update 실패: %s", e)
             return {"updated": 0, "ev_recomputed": 0,

@@ -280,6 +280,85 @@ def save_company_to_db(company_data: CompanyFinancialObject) -> None:
     run_with_write_lock_retry(_do)
 
 
+def update_company_market_cap(corp_code: str, market_cap, updated_at) -> None:
+    """
+    Company.market_cap / market_cap_updated_at 단일 갱신 게이트웨이.
+
+    krx_client.fetch_and_save_company_market_cap·orchestrator._fill_market_cap_and_ev가
+    직접 ORM 대신 이 함수를 호출(T-DB위임). 쓰기 락+재시도로 보호.
+    """
+    CompanyModel = django_apps.get_model("apps", "Company")
+
+    def _do():
+        with transaction.atomic():
+            CompanyModel.objects.filter(corp_code=corp_code).update(
+                market_cap=market_cap,
+                market_cap_updated_at=updated_at,
+            )
+
+    run_with_write_lock_retry(_do)
+
+
+def bulk_update_market_caps(companies: list, batch_size: int = 500) -> None:
+    """
+    Company 인스턴스 리스트(각 market_cap/market_cap_updated_at 세팅 완료)를 일괄 갱신.
+
+    krx_client.update_all_company_market_caps가 직접 bulk_update 대신 호출(T-DB위임).
+    쓰기 락+재시도로 보호.
+    """
+    CompanyModel = django_apps.get_model("apps", "Company")
+
+    def _do():
+        CompanyModel.objects.bulk_update(
+            companies, ["market_cap", "market_cap_updated_at"], batch_size=batch_size
+        )
+
+    run_with_write_lock_retry(_do)
+
+
+def get_or_create_bond_yield(defaults: dict):
+    """
+    BondYield 단일 레코드(id=1) 조회/기본생성 게이트웨이. (bond_yield_obj, created) 반환.
+
+    bond_yield.py의 조회는 원래 쓰기 락이 없었다(조회 성격) — 동작 보존을 위해
+    여기서도 run_with_write_lock_retry를 씌우지 않는다.
+    """
+    BondYieldModel = django_apps.get_model('apps', 'BondYield')
+    return BondYieldModel.objects.get_or_create(id=1, defaults=defaults)
+
+
+def load_recent_roic_wacc(corp_code: str, limit: int = 3) -> list[dict]:
+    """
+    해당 기업의 최근 N년(연도 내림차순) roic/wacc 조회. [{"roic": ..., "wacc": ...}, ...].
+
+    filter.check_second_filter의 최근3년 조회를 게이트웨이로 위임(T-DB위임). 읽기 전용,
+    락 없음. 순환 방지: filter.py에서 이 함수는 lazy import(db.py가 filter를 이미
+    lazy import하므로 상호 순환 방지).
+    """
+    YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+    return list(
+        YearlyFinancialDataModel.objects.filter(company_id=corp_code)
+        .order_by('-year')
+        .values('roic', 'wacc')[:limit]
+    )
+
+
+def load_recent_yearly_data(corp_code: str, limit: int = 3) -> list:
+    """
+    해당 기업의 최근 N년(연도 내림차순) YearlyFinancialData ORM 객체 리스트 조회.
+
+    filter.evaluate_second_filter의 flag_no_debt_suspect 입력(전체 ORM 객체,
+    .interest_bearing_debt 등 속성 접근 필요)을 게이트웨이로 위임(T-DB위임).
+    읽기 전용, 락 없음. 순환 방지: filter.py에서 이 함수는 lazy import(db.py가
+    filter를 이미 lazy import하므로 상호 순환 방지).
+    """
+    YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
+    return list(
+        YearlyFinancialDataModel.objects.filter(company_id=corp_code)
+        .order_by('-year')[:limit]
+    )
+
+
 def update_second_filter_result(corp_code: str) -> None:
     """
     DB의 최근 3년 ROIC/WACC로 2차 필터 재계산 → Company.passed_second_filter 반영.

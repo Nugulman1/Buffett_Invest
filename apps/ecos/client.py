@@ -69,7 +69,10 @@ class EcosClient:
                 EcosClient._api_call_count += 1
                 EcosClient._update_daily_stats()
             
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(
+                url, params=params,
+                timeout=getattr(settings, "DATA_COLLECTION", {}).get("API_TIMEOUT", 30),
+            )
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:

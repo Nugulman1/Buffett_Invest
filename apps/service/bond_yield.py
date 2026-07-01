@@ -1,9 +1,10 @@
 """
 국채 5년 수익률 조회 (BondYield 모델)
 """
-from django.apps import apps as django_apps
 from django.utils import timezone
 from datetime import timedelta
+
+from apps.service.db import get_or_create_bond_yield
 
 
 def get_bond_yield_5y() -> float:
@@ -19,16 +20,11 @@ def get_bond_yield_5y() -> float:
     단위 주의: 이 값은 '소수'다. calculator.calculate_wacc()는 '퍼센트' 입력을 기대하므로
     WACC 계산 전 ×100 변환이 필요하다(orchestrator._fill_advanced에서 처리).
     """
-    BondYieldModel = django_apps.get_model('apps', 'BondYield')
-
     try:
-        bond_yield_obj, created = BondYieldModel.objects.get_or_create(
-            id=1,
-            defaults={
-                'yield_value': 0.0,
-                'collected_at': timezone.now() - timedelta(days=2)
-            }
-        )
+        bond_yield_obj, created = get_or_create_bond_yield({
+            'yield_value': 0.0,
+            'collected_at': timezone.now() - timedelta(days=2)
+        })
         return bond_yield_obj.yield_value
     except Exception:
         return 0.0

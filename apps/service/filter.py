@@ -1,7 +1,6 @@
 """
 장기 투자 필터링 서비스
 """
-from django.apps import apps as django_apps
 from django.conf import settings
 
 from apps.models import CompanyFinancialObject
@@ -199,12 +198,8 @@ class CompanyFilter:
         DB YearlyFinancialData에서 해당 기업의 최근 3년 roic, wacc 평균 사용.
         """
         spread = getattr(settings, 'SECOND_FILTER_ROIC_WACC_SPREAD', 0.02)
-        YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
-        latest_three = list(
-            YearlyFinancialDataModel.objects.filter(company_id=corp_code)
-            .order_by('-year')
-            .values('roic', 'wacc')[:3]
-        )
+        from apps.service.db import load_recent_roic_wacc  # lazy: db.py가 filter를 lazy import(순환 방지)
+        latest_three = load_recent_roic_wacc(corp_code, limit=3)
         valid = [d for d in latest_three if d.get('roic') is not None and d.get('wacc') is not None]
         if not valid:
             return False
@@ -240,11 +235,8 @@ class CompanyFilter:
         """
         passed = CompanyFilter.check_second_filter(corp_code)
 
-        YearlyFinancialDataModel = django_apps.get_model('apps', 'YearlyFinancialData')
-        recent_three = list(
-            YearlyFinancialDataModel.objects.filter(company_id=corp_code)
-            .order_by('-year')[:3]
-        )
+        from apps.service.db import load_recent_yearly_data  # lazy: db.py가 filter를 lazy import(순환 방지)
+        recent_three = load_recent_yearly_data(corp_code, limit=3)
         # surface 윈도우 = 최근 3년 raw 이자부채(valid 필터 미적용, DEC-6).
         no_debt_suspect, reason = IndicatorCalculator.flag_no_debt_suspect(recent_three)
 
