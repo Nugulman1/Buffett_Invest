@@ -368,7 +368,7 @@ class DartDataService:
         
         Args:
             corp_code: 고유번호 (8자리)
-            quarterly_reports: 분기보고서 목록 (get_quarterly_reports_after_date 반환값)
+            quarterly_reports: 분기보고서 목록 (get_recent_quarterly_reports 반환값)
             
         Returns:
             수집된 분기 데이터 리스트 [(year, quarter, quarterly_data, rcept_no), ...]

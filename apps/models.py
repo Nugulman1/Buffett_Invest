@@ -275,22 +275,6 @@ class FinancialStatementData:
                     normalized_key = normalize_account_name(account_nm)
                     if normalized_key not in self.normalized_account_index:
                         self.normalized_account_index[normalized_key] = account_data
-    
-    def get_account_value(self, account_name, amount_type='thstrm_amount'):
-        """
-        계정값 추출 (O(1) 조회)
-        
-        Args:
-            account_name: 계정명 (정확히 일치)
-            amount_type: 금액 타입 ('thstrm_amount', 'frmtrm_amount' 등)
-        
-        Returns:
-            계정값 (정수, 없으면 0)
-        """
-        if account_name in self.account_index:
-            amount = self.account_index[account_name].get(amount_type, '0')
-            return int(amount.replace(',', '')) if amount else 0
-        return 0
 
 
 class YearlyFinancialDataObject:

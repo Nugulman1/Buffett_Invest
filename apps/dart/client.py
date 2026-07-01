@@ -12,7 +12,6 @@ import xml.etree.ElementTree as ET
 import json
 from datetime import date
 from django.conf import settings
-from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -319,28 +318,6 @@ class DartClient:
         
         return company_info
     
-    def get_company_basic_info(self, stock_code):
-        """
-        종목코드로 기업 기본 정보 조회 (corp_name, corp_code, industry_code)
-        
-        Args:
-            stock_code: 종목코드 (6자리, 예: '005930')
-            
-        Returns:
-            dict: {
-                'corp_name': str,      # 기업명
-                'corp_code': str,       # 고유번호
-                'industry_code': str   # 산업코드 (induty_code를 industry_code로 매핑)
-            }
-        """
-        company_info = self.get_company_by_stock_code(stock_code)
-        
-        return {
-            'corp_name': company_info.get('corp_name', ''),
-            'corp_code': company_info.get('corp_code', ''),
-            'industry_code': company_info.get('induty_code', '')  # induty_code를 industry_code로 매핑
-        }
-    
     def get_financial_statement_all(self, corp_code, bsns_year, reprt_code='11011', fs_div='CFS'):
         """
         전체 재무제표 조회 (fnlttSinglAcntAll.json)
@@ -595,41 +572,6 @@ class DartClient:
             logger.exception("%s년 사업보고서 접수번호 조회 실패: %s", year, e)
             return None
     
-    def get_latest_annual_report_date(self, corp_code: str) -> str | None:
-        """
-        가장 최근 사업보고서의 접수일자 조회
-        
-        Args:
-            corp_code: 고유번호 (8자리)
-            
-        Returns:
-            접수일자 (YYYYMMDD 형식) 또는 None
-        """
-        from datetime import datetime
-        
-        # 최근 5년 동안 사업보고서 찾기
-        current_year = datetime.now().year
-        current_month = datetime.now().month
-        
-        # 현재 월이 4월 이후면 작년 사업보고서가 이미 제출됨
-        if current_month >= 4:
-            latest_year = current_year - 1
-        else:
-            latest_year = current_year - 2
-        
-        # 최근 5년 동안 찾기
-        for year_offset in range(5):
-            try_year = latest_year - year_offset
-            rcept_no = self.get_annual_report_rcept_no(corp_code, str(try_year))
-            
-            if rcept_no:
-                # 접수번호에서 접수일자 추출 (접수번호 형식: YYYYMMDDXXXXXX)
-                if len(rcept_no) >= 8:
-                    rcept_date = rcept_no[:8]  # YYYYMMDD
-                    return rcept_date
-        
-        return None
-    
     @staticmethod
     def _is_actual_quarterly_report(report_nm: str) -> bool:
         """report_nm이 실제 분기(재무)보고서인지 여부. 3분기배당·수시공시 등은 제외."""
@@ -641,135 +583,6 @@ class DartClient:
             or "반기보고서" in report_nm
             or "3분기보고서" in report_nm
         )
-
-    def get_quarterly_reports_after_date(self, corp_code: str, after_date: str) -> list:
-        """
-        특정 날짜 이후의 분기보고서 목록 조회
-        
-        Args:
-            corp_code: 고유번호 (8자리)
-            after_date: 기준 날짜 (YYYYMMDD 형식)
-            
-        Returns:
-            분기보고서 목록 (접수일자 기준 내림차순 정렬)
-        """
-        from datetime import datetime
-        
-        # 현재 날짜까지 조회
-        end_date = datetime.now().strftime('%Y%m%d')
-        
-        # 분기보고서 코드 매핑
-        quarterly_codes = {
-            '11013': 1,  # 1분기보고서
-            '11012': 2,  # 반기보고서
-            '11014': 3,  # 3분기보고서
-        }
-        
-        try:
-            # 모든 보고서 조회
-            all_reports = []
-            page_no = 1
-            total_page = 1
-            
-            while True:
-                result = self.get_report_list(corp_code, after_date, end_date, last_reprt_at='N', page_no=page_no, page_count=1000)
-                report_list = result.get('list', []) if isinstance(result, dict) else []
-                total_page = result.get('total_page', 1) if isinstance(result, dict) else 1
-                
-                if not report_list:
-                    break
-                all_reports.extend(report_list)
-                if page_no >= total_page:
-                    break
-                page_no += 1
-            
-            # 분기보고서만 필터링: reprt_code 우선(11013/11012/11014), 없으면 report_nm으로 판별
-            # after_date는 DART API에 조회 구간(bgn_de~end_de)으로 필요 + "최근 사업보고서 이후" 분기만 수집
-            quarterly_reports = []
-            skipped_quarterly = []  # 분기로 인식했으나 제외된 건 (디버깅용)
-            for report in all_reports:
-                report_nm = report.get('report_nm', '') or ''
-                reprt_code = (report.get('reprt_code') or '').strip()
-                rcept_dt = report.get('rcept_dt', '')
-                quarter = None
-                detected_reprt_code = None
-
-                # 1) reprt_code로 분기보고서 여부·분기 판별 (DART가 주면 가장 확실함)
-                if reprt_code in quarterly_codes:
-                    if self._is_actual_quarterly_report(report_nm):
-                        quarter = quarterly_codes[reprt_code]
-                        detected_reprt_code = reprt_code
-                    else:
-                        # reprt_code는 분기코드지만 report_nm이 3분기배당·수시공시 등 실제 분기보고서가 아님
-                        skipped_quarterly.append({
-                            "report_nm": report_nm,
-                            "rcept_dt": rcept_dt[:8] if rcept_dt and len(rcept_dt) >= 8 else rcept_dt or "(없음)",
-                            "quarter": quarterly_codes[reprt_code],
-                            "reason": "report_nm이 분기보고서가 아님(3분기배당 등 제외)",
-                        })
-                else:
-                    # 2) report_nm으로 판별 (reprt_code 비어있거나 분기코드가 아닐 때)
-                    quarterly_match = re.search(r'분기보고서\s*\((\d{4})\.(\d{2})\)', report_nm)
-                    if quarterly_match:
-                        year = int(quarterly_match.group(1))
-                        month = int(quarterly_match.group(2))
-                        # 분기 종료월(3,6,9) 또는 제출월(5,8,11) 모두 허용
-                        if month in (3, 5):
-                            quarter, detected_reprt_code = 1, '11013'
-                        elif month in (6, 8):
-                            quarter, detected_reprt_code = 2, '11012'
-                        elif month in (9, 11):
-                            quarter, detected_reprt_code = 3, '11014'
-                    elif '1분기보고서' in report_nm or '1분기' in report_nm or '제1분기' in report_nm:
-                        quarter, detected_reprt_code = 1, '11013'
-                    elif '반기보고서' in report_nm or '반기' in report_nm or '제2분기' in report_nm or '1·2분기' in report_nm:
-                        quarter, detected_reprt_code = 2, '11012'
-                    elif '3분기보고서' in report_nm or '3분기' in report_nm or '제3분기' in report_nm:
-                        quarter, detected_reprt_code = 3, '11014'
-                    # report_nm으로만 매칭된 경우 실제 분기보고서인지 한 번 더 검사 (3분기배당 등 제외)
-                    if quarter is not None and not self._is_actual_quarterly_report(report_nm):
-                        skipped_quarterly.append({
-                            "report_nm": report_nm,
-                            "rcept_dt": rcept_dt[:8] if rcept_dt and len(rcept_dt) >= 8 else rcept_dt or "(없음)",
-                            "quarter": quarter,
-                            "reason": "report_nm이 분기보고서가 아님(3분기배당 등 제외)",
-                        })
-                        quarter, detected_reprt_code = None, None
-
-                if quarter is not None:
-                    # 접수일자 추출
-                    if rcept_dt and len(rcept_dt) >= 8:
-                        rcept_date = rcept_dt[:8]  # YYYYMMDD
-                        if rcept_date > after_date:
-                            quarterly_reports.append({
-                                'rcept_no': report.get('rcept_no', ''),
-                                'rcept_dt': rcept_date,
-                                'reprt_code': detected_reprt_code or '',
-                                'report_nm': report_nm,
-                                'quarter': quarter,
-                            })
-                        else:
-                            skipped_quarterly.append({
-                                'report_nm': report_nm,
-                                'rcept_dt': rcept_date,
-                                'quarter': quarter,
-                                'reason': f"rcept_dt({rcept_date}) <= after_date({after_date})",
-                            })
-                    else:
-                        skipped_quarterly.append({
-                            'report_nm': report_nm,
-                            'rcept_dt': rcept_dt or '(없음)',
-                            'quarter': quarter,
-                            'reason': 'rcept_dt 길이 부족',
-                        })
-
-            # 접수일자 기준 내림차순 정렬 (가장 최근 것부터)
-            quarterly_reports.sort(key=lambda x: x['rcept_dt'], reverse=True)
-            return quarterly_reports
-
-        except Exception as e:
-            logger.warning("분기보고서 목록 조회 실패: %s", e)
-            return []
 
     def get_recent_quarterly_reports(self, corp_code: str, limit: int = 3) -> list:
         """

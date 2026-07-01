@@ -263,7 +263,6 @@ def main(limit: int = None, stock_code: str = None):
     dart_api_calls = final_dart_calls - initial_dart_calls
     ecos_api_calls = final_ecos_calls - initial_ecos_calls
     total_api_calls = dart_api_calls + ecos_api_calls
-    batch_count = (total_count + batch_size - 1) // batch_size if batch_size else 0
 
     # 일별 통계 조회 및 출력
     from django.apps import apps as django_apps
